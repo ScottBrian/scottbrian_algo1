@@ -37,10 +37,9 @@ setup(
           'License :: OSI Approved :: MIT License',
           'Development Status :: 5 - Production/Stable',
           'Intended Audience :: Developers',
-          'Topic :: Utilities',
+          'Intended Audience :: Financial and Insurance Industry',
+          'Topic :: Office/Business :: Financial :: Investment',
           'Programming Language :: Python :: 3',
-          'Programming Language :: Python :: 3.6',
-          'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8',
           'Operating System :: POSIX :: Linux'
                   ],
@@ -48,10 +47,10 @@ setup(
           'Documentation': 'https://scottbrian-algo1.readthedocs.io/en'
                            '/latest/',
           'Source': 'https://github.com/ScottBrian/scottbrian_algo1.git'},
-      python_requires='>=3.6',
-      packages=find_packages('src'),
-      package_dir={'': 'src'},
-      install_requires=['ibapi', 'pandas', 'scottbrian_utils'],
+      python_requires='>=3.8',
+      packages=['ibapi', 'scottbrian_algo1'],
+      package_dir={'ibapi': 'pythonclient/ibapi', '': 'src'},
+      install_requires=['pandas', 'scottbrian_utils'],
       package_data={"scottbrian_algo1": ["__init__.pyi", "py.typed"]},
       zip_safe=False
      )

@@ -12,7 +12,7 @@ trades.
 import pandas as pd  # type: ignore
 from threading import Thread, Event
 # from pathlib import Path
-
+from scottbrian_utils.diag_msg import diag_msg
 import time
 
 from ibapi.wrapper import EWrapper  # type: ignore
@@ -38,6 +38,8 @@ from typing import Type, TYPE_CHECKING
 import string
 
 # from scottbrian_utils.file_catalog import FileCatalog
+
+# from datetime import datetime
 
 
 class AlgoApp(EWrapper, EClient):  # type: ignore
@@ -84,6 +86,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             errorString: text to explain the error
 
         """
+        diag_msg('entered', depth=3)
         print("Error: ", reqId, " ", errorCode, " ", errorString)
 
     def nextValidId(self, request_id: int) -> None:
@@ -93,12 +96,11 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             request_id: next id to use for a request to IB
 
         """
-        print('get_stock_symbols:AlgoApp:nextValidId entered with request_id',
-              request_id)
+        diag_msg('entered with request_id', request_id)
         self.next_request_id = request_id
         self.nextValidId_event.set()
 
-    def connect_to_ib(self, ip_addr: str, port: int, client_id: int) -> None:
+    def connect_to_ib(self, ip_addr: str, port: int, client_id: int) -> bool:
         """Connect to IB on the given addr and port and client id.
 
         Args:
@@ -109,8 +111,16 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         """
         self.connect(ip_addr, port, client_id)
 
-        print('SBT AlgoApp:connect_to_ib about to start run thread')
+        diag_msg('about to start run thread')
         self.run_thread.start()
+
+        # we will wait on the first requestID here for 10 seconds
+        if not self.nextValidId_event.wait(timeout=5):  # if we timed out
+            diag_msg("timed out waiting for next valid request ID")
+            return False
+
+        diag_msg("back from wait")
+        return True
 
     def symbolSamples(self, request_id: int,
                       contract_descriptions: ListOfContractDescription
