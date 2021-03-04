@@ -12,7 +12,7 @@ trades.
 import pandas as pd  # type: ignore
 from threading import Thread, Event
 # from pathlib import Path
-from scottbrian_utils.diag_msg import diag_msg
+from scottbrian_utils.file_catalog import FileCatalog  # ,diag_msg
 import time
 
 from ibapi.wrapper import EWrapper  # type: ignore
@@ -40,16 +40,29 @@ import string
 # from scottbrian_utils.file_catalog import FileCatalog
 
 # from datetime import datetime
+import logging
 
+# set looging for debug for now until things ar working
+logging.basicConfig(filename='AlgoApp.log',
+                    filemode='w',
+                    level=logging.DEBUG,
+                    format='%(asctime)s '
+                           '%(levelname)s '
+                           '%(filename)s:'
+                           '%(funcName)s:'
+                           '%(lineno)d '
+                           '%(message)s')
+
+logger = logging.getLogger(__name__)
 
 class AlgoApp(EWrapper, EClient):  # type: ignore
     """AlgoApp class."""
 
-    def __init__(self) -> None:
+    def __init__(self, ds_catalog: FileCatalog) -> None:
         """Instantiate the AlgoApp."""
         EWrapper.__init__(self)
         EClient.__init__(self, wrapper=self)
-        # self.ds_catalog = ds_catalog
+        self.ds_catalog = ds_catalog
         self.next_request_id: int = 0
         self.stock_symbols = pd.DataFrame()
         self.response_complete_event = Event()

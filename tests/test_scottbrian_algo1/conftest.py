@@ -9,11 +9,14 @@ import pytest
 from ibapi.connection import Connection  # type: ignore
 from ibapi.connection import *
 from scottbrian_algo1.algo_api import AlgoApp
+from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import diag_msg
 import queue
+from pathlib import Path
 
+proj_dir = Path.cwd().resolve().parents[1]  # back two directories
 
-
+test_cat = FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv')})
 
 
 # class TAlgoApp(AlgoApp):
@@ -160,7 +163,7 @@ def algo_app(monkeypatch) -> "AlgoApp":
 
         return buf
     monkeypatch.setattr(Connection, "recvMsg", mock_connection_recvMsg)
-    a_algo_app = AlgoApp()
+    a_algo_app = AlgoApp(test_cat)
     return a_algo_app
 
 class MockSendRecv:
