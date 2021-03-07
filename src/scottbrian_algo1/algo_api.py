@@ -11,7 +11,7 @@ trades.
 
 import pandas as pd  # type: ignore
 from threading import Thread, Event
-# from pathlib import Path
+from pathlib import Path
 from scottbrian_utils.file_catalog import FileCatalog  # ,diag_msg
 import time
 
@@ -37,7 +37,7 @@ from ibapi.common import ListOfContractDescription  # type: ignore
 from typing import Type, TYPE_CHECKING
 import string
 
-# from scottbrian_utils.file_catalog import FileCatalog
+from scottbrian_utils.file_catalog import FileCatalog
 
 # from datetime import datetime
 import logging
@@ -64,6 +64,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         EClient.__init__(self, wrapper=self)
         self.ds_catalog = ds_catalog
         self.next_request_id: int = 0
+        self.num_stock_symbols_received = 0
         self.stock_symbols = pd.DataFrame()
         self.response_complete_event = Event()
         self.nextValidId_event = Event()
@@ -109,7 +110,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             request_id: next id to use for a request to IB
 
         """
-        # diag_msg('entered with request_id', request_id)
+        logger.info('next valid ID is %i', request_id)
         self.next_request_id = request_id
         self.nextValidId_event.set()
 
@@ -124,23 +125,23 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         """
         self.connect(ip_addr, port, client_id)
 
-        # diag_msg('about to start run thread')
+        logger.info('starting run thread')
         self.run_thread.start()
 
         # we will wait on the first requestID here for 10 seconds
-        if not self.nextValidId_event.wait(timeout=5):  # if we timed out
-            # diag_msg("timed out waiting for next valid request ID")
+        if not self.nextValidId_event.wait(timeout=10):  # if we timed out
+            logger.debug("timed out waiting for next valid request ID")
             return False
 
-        # diag_msg("back from wait")
+        logger.info('connect complete')
         return True
 
     def disconnect_from_ib(self):
-        # diag_msg('calling EClient disconnect', depth=3)
+        logger.info('calling EClient disconnect')
         EClient.disconnect(self)
-        # diag_msg('join thread')
+        logger.info('join thread to wait for all threads to come home')
         self.run_thread.join()
-        # diag_msg('exiting')
+        logger.info('disconnect complete')
 
 
     def symbolSamples(self, request_id: int,
@@ -160,19 +161,20 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         stored into a data frame as contracts that can be used later to
         request additional information or to make trades.
         """
-        print('get_stock_symbols:AlgoApp:symbolSamples entered for '
-              'request_id', request_id)
-        print('Number of descriptions received: {}'.
-              format(len(contract_descriptions)))
+        logger.info('entered for request_id %d', request_id)
+        self.num_stock_symbols_received = len(contract_descriptions)
+        logger.info('Number of descriptions received: %d',
+                    self.num_stock_symbols_received)
+
         for desc in contract_descriptions:
             print('Symbol: {}'.format(desc.contract.symbol))
-            # print('desc.contract:')
-            # print(desc.contract)
-            # print('    conId              :', desc.contract.conId)
-            # print('    secType            :', desc.contract.secType)
-            # print('    primaryExchange    :', desc.contract.primaryExchange)
-            # print('    currency           :', desc.contract.currency)
-            # print('    derivativeSecTypes :', desc.derivativeSecTypes)
+            print('desc.contract:')
+            print(desc.contract)
+            print('    conId              :', desc.contract.conId)
+            print('    secType            :', desc.contract.secType)
+            print('    primaryExchange    :', desc.contract.primaryExchange)
+            print('    currency           :', desc.contract.currency)
+            print('    derivativeSecTypes :', desc.derivativeSecTypes)
             if desc.contract.secType == 'STK' and \
                     desc.contract.currency == 'USD':
                 self.stock_symbols = self.stock_symbols.append(
@@ -181,8 +183,8 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                                    desc.contract.primaryExchange,
                                    ]],
                                  columns=['symbol',
-                                          'con_id',
-                                          'primary_exchange']))
+                                          'conId',
+                                          'primaryExchange']))
         self.response_complete_event.set()
 
     def get_symbols(self, start_char: str, end_char: str) -> None:
@@ -194,14 +196,13 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         """
         # if symbols data set exists, load it and reset the index
-        stock_symbols_path = 'unknown'  # self.ds_catalog.catalog.loc[
-        #  'stock_symbols'].full_path
-        print('path:', stock_symbols_path)
+        stock_symbols_path = self.ds_catalog.get_path('symbols')
+        logger.info('path: %s', stock_symbols_path)
 
-        # if Path(stock_symbols_path).exists():
-        #     self.stock_symbols = pd.read_csv(stock_symbols_path,
-        #                                      header=0,
-        #                                      index_col=False)
+        if stock_symbols_path.exists():
+            self.stock_symbols = pd.read_csv(stock_symbols_path,
+                                             header=0,
+                                             index_col=0)
         for first_char in string.ascii_uppercase:
             # The reqMatchingSymbols request looks for matching
             # symbols based on the input string which acts as a simple pattern
@@ -221,26 +222,42 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             if end_char < first_char:
                 break  # we are done for the requested range of chars
 
-            self.request_symbols(first_char)
-            for second_char in string.ascii_uppercase:
-                self.request_symbols(first_char + second_char)
-                for third_char in string.ascii_uppercase:
-                    self.request_symbols(first_char + second_char + third_char)
+            self.get_symbols_recursive(first_char)
 
-        print('AlgoApp:get_symbols Symbols obtained')
-        print('Number of entries before drop dups, index and sort:',
-              self.stock_symbols.shape)
+        #######################################################################
+        # Save stock_symbols DataFrame to csv
+        #######################################################################
+        logger.info('Symbols obtained')
+        logger.info('Number of entries before drop dups, index and sort: %d',
+                    self.stock_symbols.shape)
 
         self.stock_symbols.drop_duplicates(inplace=True)
         self.stock_symbols = self.stock_symbols.set_index(
             ['symbol']).sort_index()
 
-        print('Number of entries after drop dups, index, and sort:',
-              self.stock_symbols.shape)
-        print(self.stock_symbols)
-        print('AlgoApp: get_symbols saving DataFrame to csv')
-        # self.stock_symbols.to_csv(stock_symbols_path)
+        logger.info('Number of entries after drop dups, index, and sort: %d',
+                    self.stock_symbols.shape)
 
+        logger.info('saving stock_symbols DataFrame to csv')
+        self.stock_symbols.to_csv(stock_symbols_path)
+
+    ###########################################################################
+    def get_symbols_recursive(self, search_string: str) -> None:
+        """Gets symbols and place them in the stock_symbols list.
+
+        Args:
+            search_string: string to start with
+
+        """
+
+        for add_char in string.ascii_uppercase:
+            longer_search_string = search_string + add_char
+            self.request_symbols(longer_search_string)
+            if self.num_stock_symbols_received > 0:  # productive obtain
+                # call recursively to get more symbols for this char sequence
+                self.get_symbols_recursive(longer_search_string)
+
+    ###########################################################################
     def request_symbols(self, symbol_to_get: str) -> None:
         """Request contract info from IB for given symbol.
 
@@ -249,11 +266,12 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         """
         self.response_complete_event.clear()
-        print('AlgoApp: request_symbols getting symbols that start with',
-              symbol_to_get)
+        logger.info('getting symbols that start with %s', symbol_to_get)
         self.next_request_id += 1
-        self.reqMatchingSymbols(self.next_request_id,
-                                symbol_to_get)
+        #######################################################################
+        # send request to IB
+        #######################################################################
+        self.reqMatchingSymbols(self.next_request_id, symbol_to_get)
         # the following sleep for 1 second is required to avoid
         # overloading IB with requests (they ask for 1 second). Note that we
         # are doing the sleep after the request is made and before we wait
@@ -271,34 +289,35 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 #                            )
 
 # @time_box
-# def main():
-#     ds_catalog = FileCatalog()
-#
-#     try:
-#         algo_app = AlgoApp(ds_catalog)
-#
-#         algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
-#
-#         print("serverVersion:%s connectionTime:%s" %
-#         (algo_app.serverVersion(),
-#         algo_app.twsConnectionTime()))
-#     except:
-#         raise
-#
-#     print('get_stock_symbols:main about to sleep 2 seconds')
-#     time.sleep(2)
-#     print('SBT get_stock_symbols:main about to wait on nextValidId_event')
-#     algo_app.nextValidId_event.wait()
-#     print('SBT get_stock_symbols:main about to call get_symbols')
-#     algo_app.get_symbols(start_char='A', end_char='A')
-#     algo_app.get_symbols(start_char='B', end_char='B')
-#
-#     algo_app.disconnect()
-#     print('get_stock_symbols: main About to sleep for 2  seconds before
-#     exit')
-#     time.sleep(2)
-#     print('get_stock_symbols: main exiting')
-#
-#
-# if __name__ == "__main__":
-#     main()
+def main():
+    ds_catalog = FileCatalog()
+
+    try:
+        algo_app = AlgoApp(ds_catalog)
+
+        algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+
+        print("serverVersion:%s connectionTime:%s" %
+        (algo_app.serverVersion(),
+        algo_app.twsConnectionTime()))
+    except:
+        raise
+
+    print('get_stock_symbols:main about to sleep 2 seconds')
+    time.sleep(2)
+    print('SBT get_stock_symbols:main about to wait on nextValidId_event')
+    algo_app.nextValidId_event.wait()
+    print('SBT get_stock_symbols:main about to call get_symbols')
+    # algo_app.get_symbols(start_char='A', end_char='A')
+    # algo_app.get_symbols(start_char='B', end_char='B')
+
+    algo_app.request_symbols('ABBNA')
+
+    algo_app.disconnect()
+    print('get_stock_symbols: main About to sleep for 2  seconds before exit')
+    time.sleep(2)
+    print('get_stock_symbols: main exiting')
+
+
+if __name__ == "__main__":
+    main()

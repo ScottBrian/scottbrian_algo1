@@ -4,10 +4,13 @@ from datetime import datetime, timedelta, timezone
 # from datetime import timedelta
 
 import pytest
+import pandas as pd  # type: ignore
 
 #from ibapi.client import EClient  # type: ignore
 from ibapi.connection import Connection  # type: ignore
+from ibapi.message import IN, OUT
 from ibapi.connection import *
+from ibapi.comm import (make_field, make_msg, read_msg, read_fields)
 from scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import diag_msg
@@ -16,7 +19,11 @@ from pathlib import Path
 
 proj_dir = Path.cwd().resolve().parents[1]  # back two directories
 
-test_cat = FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv')})
+test_cat = \
+    FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
+                 'mock_con_descs': Path(proj_dir /
+                          't_datasets/mock_contract_descriptions.csv')
+                 })
 
 
 # class TAlgoApp(AlgoApp):
@@ -171,10 +178,18 @@ class MockSendRecv:
         self.msg_rcv_q = queue.Queue()
 
     def send_msg(self, msg):
-        # diag_msg('entered', msg)
+        diag_msg('entered', msg)
+        (size, msg2, buf) = read_msg(msg)
+        diag_msg('msg size:', size)
+        diag_msg('msg2:', msg2)
+        diag_msg('buf:', buf)
+
+        fields = read_fields(msg2)
+        diag_msg('fields:', fields)
+
         recv_msg = b''
         #######################################################################
-        # get version and connect time
+        # get version and connect time (special case - not decode able)
         #######################################################################
         if msg == b'API\x00\x00\x00\x00\tv100..157':
             current_dt = datetime.now(
@@ -185,11 +200,63 @@ class MockSendRecv:
                        + current_dt.encode('utf-8') + b' EST\x00'
 
         #######################################################################
-        # get next requestID
+        # reqId (get next valid requestID)
+        # b'\x00\x00\x00\x0871\x002\x000\x00\x00'
         #######################################################################
-        elif msg == b'\x00\x00\x00\x0871\x002\x000\x00\x00':
-            recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
+        elif int(fields[0]) == OUT.START_API:
+            diag_msg('startAPI detected')
+            # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
+            msg3 = make_field(IN.NEXT_VALID_ID) \
+                    + make_field('1') \
+                    + make_field('1')
+            diag_msg('msg3:', msg3)
+            msg4 = make_msg(msg3)
+            diag_msg('msg4:', msg4)
+            recv_msg = make_msg(make_field(IN.NEXT_VALID_ID)
+                            + make_field('1')
+                            + make_field('1'))
+            diag_msg('recv_msg:', recv_msg)
+        #######################################################################
+        # reqMatchingSymbols
+        #######################################################################
+        elif int(fields[0]) == OUT.REQ_MATCHING_SYMBOLS:
+            diag_msg('reqMatchingSymbols detected')
+            reqId = int(fields[1])
+            pattern = fields[2].decode(errors='backslashreplace')
+            diag_msg('pattern:', pattern)
+            diag_msg('type(pattern):', type(pattern))
+            build_msg = make_field(IN.SYMBOL_SAMPLES) \
+                + make_field(reqId)
+            # load mock data base
+            con_descs_path = test_cat.get_path('mock_con_descs')
+            contract_descriptions = pd.read_csv(con_descs_path,
+                                                header=0,
+                                                index_col=0)
 
+            # scan each record to see if pattern matches
+            diag_msg('contract_descriptions:', contract_descriptions)
+            match_descs = contract_descriptions.loc[
+                contract_descriptions['symbol'].str.startswith(pattern)]
+            diag_msg('match_descs:', match_descs)
+            num_found = match_descs.shape[0]
+            build_msg = build_msg + make_field(num_found)
+            for i in range(num_found):
+                conId = match_descs.iloc[i].conId
+                symbol = match_descs.iloc[i].symbol
+                secType = match_descs.iloc[i].secType
+                primaryExchange = match_descs.iloc[i].primaryExchange
+                currency = match_descs.iloc[i].currency
+                build_msg = build_msg + make_field(conId) \
+                            + make_field(symbol) \
+                            + make_field(secType) \
+                            + make_field(primaryExchange) \
+                            + make_field(currency) \
+                            + make_field(0)  # zero derivativeSecTypes for now
+            recv_msg = make_msg(build_msg)
+            diag_msg('recv_msg:', recv_msg)
+        #######################################################################
+        # queue the message to be received
+        #######################################################################
         self.msg_rcv_q.put(recv_msg, timeout=5)
 
 
@@ -200,3 +267,17 @@ class MockSendRecv:
         return msg
 
 mock_send_recv = MockSendRecv()
+
+# class MockSymbols:
+#     def __init__(self):
+#         self.symbols = pd.DataFrame()
+#
+#     def create_symbols(self):
+#         self.symbols = self.symbols.append(
+#             pd.DataFrame([[desc.contract.symbol,
+#                            desc.contract.conId,
+#                            desc.contract.primaryExchange,
+#                            ]],
+#                          columns=['symbol',
+#                                   'con_id',
+#                                   'primary_exchange']))
