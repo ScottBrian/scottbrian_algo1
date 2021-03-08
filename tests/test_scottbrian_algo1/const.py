@@ -1,0 +1,4 @@
+"""Constants used for testing."""
+
+MAX_CONTRACT_DESCS_RETURNED = 16
+PORT_FOR_REQID_TIMEOUT = 9001

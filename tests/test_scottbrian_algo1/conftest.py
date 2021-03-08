@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 import pandas as pd  # type: ignore
+from typing import Any, cast
 
 #from ibapi.client import EClient  # type: ignore
 from ibapi.connection import Connection  # type: ignore
@@ -17,65 +18,24 @@ from scottbrian_utils.diag_msg import diag_msg
 import queue
 from pathlib import Path
 
+from test_scottbrian_algo1.const import MAX_CONTRACT_DESCS_RETURNED, \
+    PORT_FOR_REQID_TIMEOUT
+
 proj_dir = Path.cwd().resolve().parents[1]  # back two directories
 
 test_cat = \
     FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
-                 'mock_con_descs': Path(proj_dir /
-                          't_datasets/mock_contract_descriptions.csv')
                  })
 
 
-# class TAlgoApp(AlgoApp):
-#     """Class used to test the algo app."""
-#     def __init__(self) -> None:
-#         """Initialize the test algo app."""
-#         diag_msg('entered')
-#         AlgoApp.__init__(self)
-#         # self.run_thread = Thread(target=self.run)
-#         diag_msg('exiting')
-
-    # def run(self) -> None:
-    #     """Run loop for testing."""
-    #     diag_msg('entered')
-    #     for i in range(5):
-    #         time.sleep(1)
-    #         if i == 3:
-    #             diag_msg('about to call nextValidId')
-    #             self.nextValidId(1)
-
-
 @pytest.fixture(scope='function')
-def algo_app(monkeypatch) -> "AlgoApp":
+def algo_app(monkeypatch,
+             mock_send_recv) -> "AlgoApp":
     """Instantiate and return an AlgoApp for testing.
 
     Returns:
         An instance of AlgoApp
     """
-
-    # def mock_client_run(self) -> None:
-    #     """Run loop for testing."""
-    #     diag_msg('entered')
-    #     for i in range(5):
-    #         time.sleep(1)
-    #         if i == 3:
-    #             diag_msg('about to call nextValidId')
-    #             self.nextValidId(1)
-
-    # monkeypatch.setattr(EClient, 'run', mock_client_run)
-
-    # def mock_client_connect(self,
-    #                         ip_addr: str,
-    #                         port: int,
-    #                         client_id: int) -> None:
-    #     diag_msg('ip_addr:', ip_addr,
-    #              'port:', port,
-    #              'client_id:', client_id)
-    #     # algo_app.nextValidId(1)
-    #     return None
-
-    # monkeypatch.setattr(EClient, "connect", mock_client_connect)
-
     def mock_connection_connect(self):
         # diag_msg('entered')
         try:
@@ -87,7 +47,8 @@ def algo_app(monkeypatch) -> "AlgoApp":
                 self.wrapper.error(NO_VALID_ID, FAIL_CREATE_SOCK.code(), FAIL_CREATE_SOCK.msg())
 
         try:
-            pass   # <-- bypass real
+            if self.port == PORT_FOR_REQID_TIMEOUT:
+                mock_send_recv.reqId_timeout = True
             # self.socket.connect((self.host, self.port))  # <--- real
         except socket.error:
             # diag_msg('socket error')
@@ -170,12 +131,16 @@ def algo_app(monkeypatch) -> "AlgoApp":
 
         return buf
     monkeypatch.setattr(Connection, "recvMsg", mock_connection_recvMsg)
+
     a_algo_app = AlgoApp(test_cat)
     return a_algo_app
 
+
 class MockSendRecv:
-    def __init__(self):
+    def __init__(self, the_contract_descriptions):
         self.msg_rcv_q = queue.Queue()
+        self.reqId_timeout = False
+        self.contract_descriptions = the_contract_descriptions
 
     def send_msg(self, msg):
         diag_msg('entered', msg)
@@ -206,15 +171,18 @@ class MockSendRecv:
         elif int(fields[0]) == OUT.START_API:
             diag_msg('startAPI detected')
             # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
-            msg3 = make_field(IN.NEXT_VALID_ID) \
-                    + make_field('1') \
-                    + make_field('1')
-            diag_msg('msg3:', msg3)
-            msg4 = make_msg(msg3)
-            diag_msg('msg4:', msg4)
-            recv_msg = make_msg(make_field(IN.NEXT_VALID_ID)
-                            + make_field('1')
-                            + make_field('1'))
+            if self.reqId_timeout:
+                recv_msg = make_msg('0')
+            else:
+                msg3 = make_field(IN.NEXT_VALID_ID) \
+                        + make_field('1') \
+                        + make_field('1')
+                diag_msg('msg3:', msg3)
+                msg4 = make_msg(msg3)
+                diag_msg('msg4:', msg4)
+                recv_msg = make_msg(make_field(IN.NEXT_VALID_ID)
+                                + make_field('1')
+                                + make_field('1'))
             diag_msg('recv_msg:', recv_msg)
         #######################################################################
         # reqMatchingSymbols
@@ -227,18 +195,13 @@ class MockSendRecv:
             diag_msg('type(pattern):', type(pattern))
             build_msg = make_field(IN.SYMBOL_SAMPLES) \
                 + make_field(reqId)
-            # load mock data base
-            con_descs_path = test_cat.get_path('mock_con_descs')
-            contract_descriptions = pd.read_csv(con_descs_path,
-                                                header=0,
-                                                index_col=0)
 
             # scan each record to see if pattern matches
-            diag_msg('contract_descriptions:', contract_descriptions)
-            match_descs = contract_descriptions.loc[
-                contract_descriptions['symbol'].str.startswith(pattern)]
+            diag_msg('contract_descriptions:', self.contract_descriptions)
+            match_descs = self.contract_descriptions.loc[
+                self.contract_descriptions['symbol'].str.startswith(pattern)]
             diag_msg('match_descs:', match_descs)
-            num_found = match_descs.shape[0]
+            num_found = min(MAX_CONTRACT_DESCS_RETURNED, match_descs.shape[0])
             build_msg = build_msg + make_field(num_found)
             for i in range(num_found):
                 conId = match_descs.iloc[i].conId
@@ -266,18 +229,97 @@ class MockSendRecv:
         # diag_msg('exit with msg:', msg)
         return msg
 
-mock_send_recv = MockSendRecv()
 
-# class MockSymbols:
-#     def __init__(self):
-#         self.symbols = pd.DataFrame()
-#
-#     def create_symbols(self):
-#         self.symbols = self.symbols.append(
-#             pd.DataFrame([[desc.contract.symbol,
-#                            desc.contract.conId,
-#                            desc.contract.primaryExchange,
-#                            ]],
-#                          columns=['symbol',
-#                                   'con_id',
-#                                   'primary_exchange']))
+@pytest.fixture(scope='function')
+def mock_send_recv(mock_contract_descriptions) -> "MockSendRecv":
+    """Provide a list of symbols for testing.
+
+    Returns:
+        An instance of MockSendRecv
+    """
+    return MockSendRecv(mock_contract_descriptions)
+
+
+@pytest.fixture(scope='session')
+def mock_contract_descriptions() -> Any:  # "MockContractDescriptions"
+    """Provide a DataFrame of contract descriptions for testing.
+
+    Returns:
+        An instance of MockContractDescriptions
+    """
+    # since ib will return only 16 symbols per request, we need to
+    # create a table with earlier entries being the single character symbols
+    # and longer symbols later in the table. We also need:
+    #  1) symbols with same name but different primary exchange
+    #  2) symbols with USD and non-USD for currency
+    #  3) symbols with STK and non-STK
+    #  4) symbols starting with one char and going up to 6 chars, and
+    #     enough of each to drive the recursion code to 6 char exact names
+    #
+    contract_descriptions = pd.DataFrame()
+    next_con_id = 7000
+
+
+    def build_desc(chr):
+        nonlocal contract_descriptions, next_con_id
+        combos = (('CASH', 'ISLAND', 'EUR'),
+                  ('STK', 'CBOE', 'USD'),
+                  ('IND', 'NYSE', 'GBP'),
+                  ('OPT', 'BOX', 'YEN'),
+                  ('STK', 'ISLAND', 'USD'),
+                  ('OPT', 'NYSE', 'USD'),
+                  ('IND', 'BOX', 'YEN'),
+                  ('STK', 'BOX', 'GBP')
+                  )
+        for combo in combos:
+            next_con_id += 1
+            contract_descriptions = contract_descriptions.append(
+                            pd.DataFrame([[next_con_id,
+                                           chr,
+                                           combo[0],
+                                           combo[1],
+                                           combo[2]
+                                           ]],
+                                         columns=['conId',
+                                                  'symbol',
+                                                  'secType',
+                                                  'primaryExchange',
+                                                  'currency']))
+
+    for chr1 in ['A', 'B', 'C', 'D', 'F', 'G']:  # skipping E on purpose
+        build_desc(chr1)
+        for chr2 in ['C', 'D', 'F', 'G']:
+            build_desc(chr1 + chr2)
+            for chr3 in ['C', 'D', 'F', 'G']:
+                build_desc(chr1 + chr2 + chr3)
+                for chr4 in ['H', 'J', 'L', 'N']:
+                    build_desc(chr1 + chr2 + chr3 + chr4)
+                    for chr5 in ['I', 'K', 'M', 'O']:
+                        build_desc(chr1 + chr2 + chr3 + chr4 + chr5)
+                        for chr6 in ['W', 'X', 'Y', 'Z']:
+                            build_desc(chr1 + chr2 + chr3 + chr4 + chr5 + chr6)
+
+    return contract_descriptions
+
+
+nonexistent_symbol_arg_list = ['E',
+                               'EF',
+                               'EFG',
+                               'FA',
+                               'FB',
+                               'FAB',
+                               'FBA'
+                               ]
+
+
+@pytest.fixture(params=nonexistent_symbol_arg_list)  # type: ignore
+def nonexistent_symbol_arg(request: Any) -> str:
+    """Provide symbol patterns that are not in the mock contract descriptions.
+
+    Args:
+        request: pytest fixture that returns the fixture params
+
+    Returns:
+        The params values are returned one at a time
+    """
+    return cast(str, request.param)

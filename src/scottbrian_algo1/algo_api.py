@@ -12,13 +12,13 @@ trades.
 import pandas as pd  # type: ignore
 from threading import Thread, Event
 from pathlib import Path
-from scottbrian_utils.file_catalog import FileCatalog  # ,diag_msg
+from scottbrian_utils.file_catalog import FileCatalog
 import time
 
 from ibapi.wrapper import EWrapper  # type: ignore
 # from ibapi import utils
 from ibapi.client import EClient  # type: ignore
-# from ibapi.utils import iswrapper
+from ibapi.utils import current_fn_name
 
 # types
 from ibapi.common import ListOfContractDescription  # type: ignore
@@ -100,7 +100,8 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             errorString: text to explain the error
 
         """
-        # diag_msg('entered', depth=3)
+        self.logAnswer(current_fn_name(), vars())
+        logger.error("ERROR %s %s %s", reqId, errorCode, errorString)
         print("Error: ", reqId, " ", errorCode, " ", errorString)
 
     def nextValidId(self, request_id: int) -> None:
@@ -131,6 +132,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # we will wait on the first requestID here for 10 seconds
         if not self.nextValidId_event.wait(timeout=10):  # if we timed out
             logger.debug("timed out waiting for next valid request ID")
+            self.disconnect_from_ib()
             return False
 
         logger.info('connect complete')
