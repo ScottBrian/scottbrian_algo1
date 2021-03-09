@@ -144,7 +144,7 @@ class TestAlgoApp:
 
         Args:
             algo_app: pytest fixture instance of AlgoApp (see conftest.py)
-            mock_contract_descriptions: pytest fixture of contract_descriptions
+            nonexistent_symbol_arg: pytest fixture of symbols
 
         The steps are:
             * mock connect to ib
@@ -174,12 +174,13 @@ class TestAlgoApp:
 
     def test_request_symbols_one_result(self,
                                         algo_app: "AlgoApp",
-                                        mock_contract_descriptions) -> None:
+                                        mock_ib,
+                                        symbol_pattern_arg) -> None:
         """Test request_symbols with pattern that finds exactly one symbol.
 
         Args:
             algo_app: instance of AlgoApp from conftest pytest fixture
-            mock_contract_descriptions: pytest fixture of contract_descriptions
+            mock_ib: pytest fixture of contract_descriptions
 
         The steps are:
             * mock connect to ib
@@ -198,35 +199,45 @@ class TestAlgoApp:
         logger.info('path: %s', stock_symbols_path)
         stock_symbols_path.unlink(missing_ok=True)
 
-        # create mock data base of symbols to be returned by mock ib
-        # call reqMatchingSymbols for
-        # case 1: unknown symbol
-        # case 2: 1 known exact case
-        # case 3: 1 known case with short search symbol
-        # case 4: 2 known cases with short search symbol
-
-        contract_description = ContractDescription()
-        contract_description.contract.conId = 12345678
-        contract_description.contract.symbol = 'ABCD'
-        contract_description.contract.secType = 'STK'
-        contract_description.contract.primaryExchange = 'NYSE'
-        contract_description.contract.currency = 'USD'
-
-        # verify that the symbol table is empty
-        diag_msg('mock_contract_descriptions', mock_contract_descriptions)
-
         # make request for symbol that will be returned
-        symbol_to_get = 'A'
-        algo_app.request_symbols(symbol_to_get)
+
+        algo_app.request_symbols(symbol_pattern_arg)
 
         # verify symbol table has one entry for the symbol
-        assert len(algo_app.stock_symbols) == 1
-        assert algo_app.stock_symbols.iloc[0].symbol == \
-               contract_description.contract.symbol
-        assert algo_app.stock_symbols.iloc[0].conId == \
-               contract_description.contract.conId
-        assert algo_app.stock_symbols.iloc[0].primaryExchange == \
-               contract_description.contract.primaryExchange
+        match_descs = mock_ib.contract_descriptions.loc[
+            (mock_ib.contract_descriptions['symbol'].str.startswith(symbol_pattern_arg))] # &
+            # (mock_ib.contract_descriptions['secType'].str == 'STK') &
+            # (mock_ib.contract_descriptions['currency'].str == 'USD')]
+        diag_msg('len(match_descs):', len(match_descs))
+        diag_msg('len(algo_app.stock_symbols):', len(algo_app.stock_symbols))
+        diag_msg('match_descs:', match_descs)
+        diag_msg('algo_app.stock_symbols:', algo_app.stock_symbols)
+        assert len(algo_app.stock_symbols) == len(match_descs)
+
+        # valid_combos = mock_ib.get_combos(symbol_pattern_arg)
+        # for combo in valid_combos:
+        #     if combo[0] == 'STK' and combo[2] == 'USD':
+        #         match_entry1 = mock_ib.contract_descriptions.loc[
+        #             mock_ib.contract_descriptions['symbol'].str
+        #             == symbol_pattern_arg and
+        #             mock_ib.contract_descriptions['secType'].str == 'STK' and
+        #             mock_ib.contract_descriptions['currency'].str == 'USD' and
+        #             mock_ib.contract_descriptions['primaryExchange'].str
+        #             == combo[1]]
+        #         assert len(match_entry1) == 1
+        #
+        #         match_entry2 = algo_app.stock_symbols.loc[
+        #             algo_app.stock_symbols['conId']
+        #             == match_entry1.iloc[0].conId]
+        #
+        #         match_entry2.drop(columns=['secType', 'currency'],
+        #                           inplace=True)
+        #         comp_df2 = match_entry1.compare(match_entry2)
+        #         assert comp_df2.empty
+
+        match_descs = match_descs.drop(columns=['secType', 'currency'])
+        comp_df = algo_app.stock_symbols.compare(match_descs)
+        assert comp_df.empty
 
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)

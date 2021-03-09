@@ -170,22 +170,22 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         for desc in contract_descriptions:
             print('Symbol: {}'.format(desc.contract.symbol))
-            print('desc.contract:')
-            print(desc.contract)
-            print('    conId              :', desc.contract.conId)
-            print('    secType            :', desc.contract.secType)
-            print('    primaryExchange    :', desc.contract.primaryExchange)
-            print('    currency           :', desc.contract.currency)
-            print('    derivativeSecTypes :', desc.derivativeSecTypes)
+            # print('desc.contract:')
+            # print(desc.contract)
+            # print('    conId              :', desc.contract.conId)
+            # print('    secType            :', desc.contract.secType)
+            # print('    primaryExchange    :', desc.contract.primaryExchange)
+            # print('    currency           :', desc.contract.currency)
+            # print('    derivativeSecTypes :', desc.derivativeSecTypes)
             if desc.contract.secType == 'STK' and \
                     desc.contract.currency == 'USD':
                 self.stock_symbols = self.stock_symbols.append(
-                    pd.DataFrame([[desc.contract.symbol,
-                                   desc.contract.conId,
+                    pd.DataFrame([[desc.contract.conId,
+                                   desc.contract.symbol,
                                    desc.contract.primaryExchange,
                                    ]],
-                                 columns=['symbol',
-                                          'conId',
+                                 columns=['conId',
+                                          'symbol',
                                           'primaryExchange']))
         self.response_complete_event.set()
 
@@ -235,7 +235,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         self.stock_symbols.drop_duplicates(inplace=True)
         self.stock_symbols = self.stock_symbols.set_index(
-            ['symbol']).sort_index()
+            ['conId']).sort_index()
 
         logger.info('Number of entries after drop dups, index, and sort: %d',
                     self.stock_symbols.shape)

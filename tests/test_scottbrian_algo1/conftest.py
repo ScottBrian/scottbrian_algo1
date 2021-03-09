@@ -1,11 +1,11 @@
 """conftest.py module for testing."""
 
 from datetime import datetime, timedelta, timezone
-# from datetime import timedelta
+import string
 
 import pytest
 import pandas as pd  # type: ignore
-from typing import Any, cast
+from typing import Any, cast, List
 
 #from ibapi.client import EClient  # type: ignore
 from ibapi.connection import Connection  # type: ignore
@@ -25,6 +25,8 @@ proj_dir = Path.cwd().resolve().parents[1]  # back two directories
 
 test_cat = \
     FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
+                 'mock_contract_descs':
+                     Path(proj_dir / 't_datasets/mock_contract_descs.csv')
                  })
 
 
@@ -137,10 +139,10 @@ def algo_app(monkeypatch,
 
 
 class MockSendRecv:
-    def __init__(self, the_contract_descriptions):
+    def __init__(self, mock_ib):
         self.msg_rcv_q = queue.Queue()
         self.reqId_timeout = False
-        self.contract_descriptions = the_contract_descriptions
+        self.mock_ib = mock_ib
 
     def send_msg(self, msg):
         diag_msg('entered', msg)
@@ -197,9 +199,11 @@ class MockSendRecv:
                 + make_field(reqId)
 
             # scan each record to see if pattern matches
-            diag_msg('contract_descriptions:', self.contract_descriptions)
-            match_descs = self.contract_descriptions.loc[
-                self.contract_descriptions['symbol'].str.startswith(pattern)]
+            diag_msg('contract descriptions:',
+                     self.mock_ib.contract_descriptions)
+            match_descs = self.mock_ib.contract_descriptions.loc[
+                self.mock_ib.contract_descriptions['symbol'].str.
+                    startswith(pattern)]
             diag_msg('match_descs:', match_descs)
             num_found = min(MAX_CONTRACT_DESCS_RETURNED, match_descs.shape[0])
             build_msg = build_msg + make_field(num_found)
@@ -231,22 +235,33 @@ class MockSendRecv:
 
 
 @pytest.fixture(scope='function')
-def mock_send_recv(mock_contract_descriptions) -> "MockSendRecv":
+def mock_send_recv(mock_ib) -> "MockSendRecv":
     """Provide a list of symbols for testing.
 
     Returns:
         An instance of MockSendRecv
     """
-    return MockSendRecv(mock_contract_descriptions)
+    return MockSendRecv(mock_ib)
 
 
-@pytest.fixture(scope='session')
-def mock_contract_descriptions() -> Any:  # "MockContractDescriptions"
-    """Provide a DataFrame of contract descriptions for testing.
 
-    Returns:
-        An instance of MockContractDescriptions
-    """
+class MockIB:
+    """Class provides simulation data and methods for testing with ibapi."""
+
+    def __init__(self, test_cat):
+        self.test_cat = test_cat
+        self.next_con_id = 7000
+        self.valid_first_chars = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+                                 'J', 'K', 'L', 'M', 'N', 'O')
+        self.valid_second_chars = ('C', 'D', 'F')
+        self.valid_third_chars = ('D', 'F', 'G')
+        self.valid_fourth_chars = ('H', 'J', 'L')
+        self.valid_fifth_chars = ('S', 'B', 'T')
+        self.valid_sixth_chars = ('X', 'Y', 'Z')
+        self.contract_descriptions = pd.DataFrame()
+
+        self.build_contract_descriptions()
+    ###########################################################################
     # since ib will return only 16 symbols per request, we need to
     # create a table with earlier entries being the single character symbols
     # and longer symbols later in the table. We also need:
@@ -255,27 +270,20 @@ def mock_contract_descriptions() -> Any:  # "MockContractDescriptions"
     #  3) symbols with STK and non-STK
     #  4) symbols starting with one char and going up to 6 chars, and
     #     enough of each to drive the recursion code to 6 char exact names
-    #
-    contract_descriptions = pd.DataFrame()
-    next_con_id = 7000
+    ###########################################################################
+    def build_desc(self, symbol):
+        """Build the mock contract_descriptions.
 
-
-    def build_desc(chr):
-        nonlocal contract_descriptions, next_con_id
-        combos = (('CASH', 'ISLAND', 'EUR'),
-                  ('STK', 'CBOE', 'USD'),
-                  ('IND', 'NYSE', 'GBP'),
-                  ('OPT', 'BOX', 'YEN'),
-                  ('STK', 'ISLAND', 'USD'),
-                  ('OPT', 'NYSE', 'USD'),
-                  ('IND', 'BOX', 'YEN'),
-                  ('STK', 'BOX', 'GBP')
-                  )
+        Args:
+            symbol: symbol to be built
+        """
+        # combos = self.get_combos(symbol)
+        combos = (('STK', 'CBOE', 'USD'),)
         for combo in combos:
-            next_con_id += 1
-            contract_descriptions = contract_descriptions.append(
-                            pd.DataFrame([[next_con_id,
-                                           chr,
+            self.next_con_id += 1
+            self.contract_descriptions = self.contract_descriptions.append(
+                            pd.DataFrame([[self.next_con_id,
+                                           symbol,
                                            combo[0],
                                            combo[1],
                                            combo[2]
@@ -286,35 +294,167 @@ def mock_contract_descriptions() -> Any:  # "MockContractDescriptions"
                                                   'primaryExchange',
                                                   'currency']))
 
-    for chr1 in ['A', 'B', 'C', 'D', 'F', 'G']:  # skipping E on purpose
-        build_desc(chr1)
-        for chr2 in ['C', 'D', 'F', 'G']:
-            build_desc(chr1 + chr2)
-            for chr3 in ['C', 'D', 'F', 'G']:
-                build_desc(chr1 + chr2 + chr3)
-                for chr4 in ['H', 'J', 'L', 'N']:
-                    build_desc(chr1 + chr2 + chr3 + chr4)
-                    for chr5 in ['I', 'K', 'M', 'O']:
-                        build_desc(chr1 + chr2 + chr3 + chr4 + chr5)
-                        for chr6 in ['W', 'X', 'Y', 'Z']:
-                            build_desc(chr1 + chr2 + chr3 + chr4 + chr5 + chr6)
+        # diag_msg('built contract descriptors:', self.contract_descriptions)
+    def build_contract_descriptions(self):
+        contract_descs_path = self.test_cat.get_path('mock_contract_descs')
+        logger.info('mock_contract_descs path: %s', contract_descs_path)
 
-    return contract_descriptions
+        # if contract_descs_path.exists():
+        #     self.contract_descriptions = pd.read_csv(contract_descs_path,
+        #                                              header=0,
+        #                                              index_col=0)
+        # else:
+        self.contract_descriptions = pd.DataFrame()
+
+        # for chr1 in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
+        #              'L', 'M', 'N', 'O']:
+        for chr1 in string.ascii_uppercase[0:3]:
+            self.build_desc(chr1)
+            for chr2 in string.ascii_uppercase[1:4]:  # ['C', 'D', 'F']:
+                self.build_desc(chr1 + chr2)
+                for chr3 in string.ascii_uppercase[2:5]:  # ['D', 'F', 'G']:
+                    self.build_desc(chr1 + chr2 + chr3)
+                    # for chr4 in string.ascii_uppercase[3:6]:  # ['H', 'J', 'L']:
+                    #     self.build_desc(chr1 + chr2 + chr3 + chr4)
+                    #     for chr5 in string.ascii_uppercase[4:7]:  # ['S', 'B', 'T']:
+                    #         self.build_desc(chr1 + chr2 + chr3 + chr4 +
+                    #                         chr5)
+                    #         for chr6 in string.ascii_uppercase[5:8]:  # ['X', 'Y', 'Z']:
+                    #             self.build_desc(chr1 + chr2 + chr3 + chr4
+                    #                             + chr5 + chr6)
+        logger.info('built mock_con_descs DataFrame with %d entries',
+                    len(self.contract_descriptions))
+        logger.info('saving mock_contract_descs DataFrame to csv')
+        self.contract_descriptions.to_csv(contract_descs_path)
+
+    # def get_non_existent_symbols(self,
+    #                              num_to_get: int,
+    #                              secType: str,
+    #                              currency: str) -> List[str]:
+    #     # symbols that does not exist
+    #     for i in range(num_to_get):
+
+        # symbols that exists but not for secType
+        # symbols that exists but not for currency
 
 
-nonexistent_symbol_arg_list = ['E',
-                               'EF',
-                               'EFG',
-                               'FA',
-                               'FB',
-                               'FAB',
-                               'FBA'
+    @staticmethod
+    def get_combos(symbol: str) -> List[List[str]]:
+        combos = (('CASH', 'ISLAND', 'EUR'),
+                  ('STK', 'CBOE', 'USD'),
+                  ('IND', 'NYSE', 'GBP'),
+                  ('OPT', 'BOX', 'YEN'),
+                  ('STK', 'ISLAND', 'USD'),
+                  ('OPT', 'NYSE', 'USD'),
+                  ('IND', 'BOX', 'YEN'),
+                  ('STK', 'BOX', 'GBP')
+                  )
+        allow_first_char = {'A': {0, 1, 2, 3, 4, 5, 6, 7},
+                            'B': {0, 1, 2, 3},
+                            'C': {4, 5, 6, 7},
+                            'D': {0, 1},
+                            'E': {2, 3},
+                            'F': {4, 5},
+                            'G': {6, 7},
+                            'H': {0},
+                            'I': {1},
+                            'J': {2},
+                            'K': {3},
+                            'L': {4},
+                            'M': {5},
+                            'N': {6},
+                            'O': {7}}
+        allow_mid_char = {'F': {0, 1, 2, 3, 4, 5, 6, 7},
+                          'D': {1},
+                          'G': {3}
+                          }
+        allow_last_char = {'Y': {0, 1, 2, 3, 4, 5, 6, 7},
+                           'X': {4},
+                           'Z': {7}
+                           }
+        allow_combo = allow_first_char[symbol[0]]
+        if len(symbol) == 5 and symbol[2] in allow_mid_char:
+            allow_combo = allow_combo | allow_mid_char[symbol[2]]
+        if len(symbol) == 6 and symbol[5] in allow_last_char:
+            allow_combo = allow_combo | allow_last_char[symbol[5]]
+        ret_combo = []
+        for i in range(8):
+            if i in allow_combo:
+                ret_combo.append(list(combos[i]))
+
+        return ret_combo
+
+@pytest.fixture(scope='session')
+def mock_ib() -> "MockIB":
+    """Provide data and methods for testing with ib.
+
+    Returns:
+        An instance of MockIB
+    """
+
+    return MockIB(test_cat)
+
+# nonexistent_symbol_arg_list = ['AA',
+#                                'AB',
+#                                'BB',
+#                                'BA',
+#                                'EA',
+#                                'EFA',
+#                                'EFGB',
+#                                'FA',
+#                                'FB',
+#                                'FAB',
+#                                'FBA',
+#                                'P'
+#                                ]
+nonexistent_symbol_arg_list = ['AA',
+                               'DA'
                                ]
-
 
 @pytest.fixture(params=nonexistent_symbol_arg_list)  # type: ignore
 def nonexistent_symbol_arg(request: Any) -> str:
     """Provide symbol patterns that are not in the mock contract descriptions.
+
+    Args:
+        request: pytest fixture that returns the fixture params
+
+    Returns:
+        The params values are returned one at a time
+    """
+    return cast(str, request.param)
+
+symbol_pattern_arg_list = ['A',
+                           'B'
+                           ]
+                           # 'C',
+                           # 'AC',
+                           # 'ACD',
+                           # 'ACDH',
+                           # 'ACDHS',
+                           # 'ACDHSX',
+                           # 'D',
+                           # 'DD',
+                           # 'DDF',
+                           # 'DDFJ',
+                           # 'DDFJB',
+                           # 'DDFJBY'
+                           # 'G',
+                           # 'GF',
+                           # 'GFG',
+                           # 'GFGL',
+                           # 'GFGLT',
+                           # 'GFGLTZ',
+                           # 'AF',
+                           # 'AFD',
+                           # 'AFDJ',
+                           # 'AFDJB',
+                           # 'AFDJBY'
+                           # ]
+
+
+@pytest.fixture(params=symbol_pattern_arg_list)  # type: ignore
+def symbol_pattern_arg(request: Any) -> str:
+    """Provide symbol patterns that are in the mock contract descriptions.
 
     Args:
         request: pytest fixture that returns the fixture params
