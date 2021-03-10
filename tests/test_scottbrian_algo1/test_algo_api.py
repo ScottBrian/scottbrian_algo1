@@ -5,6 +5,8 @@
 # import sys
 from pathlib import Path
 
+import time
+
 import pandas as pd
 from typing import Any  # Callable, cast, Tuple, Union
 # from typing_extensions import Final
@@ -16,9 +18,6 @@ from scottbrian_utils.diag_msg import diag_msg
 from scottbrian_utils.file_catalog import FileCatalog
 # from datetime import datetime
 import logging
-
-from test_scottbrian_algo1.const import MAX_CONTRACT_DESCS_RETURNED, \
-    PORT_FOR_REQID_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +85,13 @@ class TestAlgoApp:
 
     def test_mock_connect_to_IB_with_timeout(self,
                                              algo_app: "AlgoApp",
+                                             mock_ib: "MockIB"
                                              ) -> None:
         """Test connecting to IB.
 
         Args:
             algo_app: pytest fixture instance of AlgoApp (see conftest.py)
+            mock_ib: pytest fixture of contract_descriptions
 
         """
         verify_algo_app_initialized(algo_app)
@@ -98,7 +99,7 @@ class TestAlgoApp:
         # we are testing connect_to_ib with a simulated timeout
         logger.debug("about to connect")
         assert not algo_app.connect_to_ib("127.0.0.1",
-                                          PORT_FOR_REQID_TIMEOUT,
+                                          mock_ib.PORT_FOR_REQID_TIMEOUT,
                                           client_id=0)
         # verify that algo_app is not connected
         verify_algo_app_disconnected(algo_app)
@@ -235,12 +236,11 @@ class TestAlgoApp:
         #         comp_df2 = match_entry1.compare(match_entry2)
         #         assert comp_df2.empty
 
-        match_descs = match_descs.drop(columns=['secType', 'currency'])
-        comp_df = algo_app.stock_symbols.compare(match_descs)
-        assert comp_df.empty
+        # match_descs = match_descs.drop(columns=['secType', 'currency'])
+        # comp_df = algo_app.stock_symbols.compare(match_descs)
+        # assert comp_df.empty
 
+        logger.debug('disconnecting')
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
-
-
-
+        logger.debug('disconnected - test case returning')

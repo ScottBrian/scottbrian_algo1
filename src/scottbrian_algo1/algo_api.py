@@ -11,14 +11,14 @@ trades.
 
 import pandas as pd  # type: ignore
 from threading import Thread, Event
-from pathlib import Path
-from scottbrian_utils.file_catalog import FileCatalog
+# from pathlib import Path
+
 import time
 
 from ibapi.wrapper import EWrapper  # type: ignore
 # from ibapi import utils
 from ibapi.client import EClient  # type: ignore
-from ibapi.utils import current_fn_name
+from ibapi.utils import current_fn_name  # type: ignore
 
 # types
 from ibapi.common import ListOfContractDescription  # type: ignore
@@ -55,11 +55,17 @@ logging.basicConfig(filename='AlgoApp.log',
 
 logger = logging.getLogger(__name__)
 
+
 class AlgoApp(EWrapper, EClient):  # type: ignore
     """AlgoApp class."""
 
     def __init__(self, ds_catalog: FileCatalog) -> None:
-        """Instantiate the AlgoApp."""
+        """Instantiate the AlgoApp.
+
+        Args:
+            ds_catalog: contain the paths for data sets
+
+        """
         EWrapper.__init__(self)
         EClient.__init__(self, wrapper=self)
         self.ds_catalog = ds_catalog
@@ -123,6 +129,8 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             port: port to connect to
             client_id: client id to use for connection
 
+        Returns:
+            True if connect was successful, False if not
         """
         self.connect(ip_addr, port, client_id)
 
@@ -138,13 +146,31 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         logger.info('connect complete')
         return True
 
-    def disconnect_from_ib(self):
+    def disconnect_from_ib(self) -> None:
+        """Disconnect from ib."""
         logger.info('calling EClient disconnect')
-        EClient.disconnect(self)
-        logger.info('join thread to wait for all threads to come home')
-        self.run_thread.join()
-        logger.info('disconnect complete')
 
+        # would like to call EClient.disconnect, but we need to wait for
+        # the reader thread to come home. the following code is from client.py
+        # with the addition of the thread join
+
+        # EClient.disconnect(self)
+
+        # start of code from client.py disconnect (with added join)
+        self.setConnState(EClient.DISCONNECTED)
+        if self.conn is not None:
+            logger.info("disconnecting")
+            self.conn.disconnect()
+            self.wrapper.connectionClosed()
+            logger.info('join reader thread to wait for it to come home')
+            self.reader.join()
+            self.reset()
+        # end of code from client.py disconnect (with added join)
+
+        logger.info('join run_thread to wait for it to come home')
+        self.run_thread.join()
+
+        logger.info('disconnect complete')
 
     def symbolSamples(self, request_id: int,
                       contract_descriptions: ListOfContractDescription
@@ -251,7 +277,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             search_string: string to start with
 
         """
-
         for add_char in string.ascii_uppercase:
             longer_search_string = search_string + add_char
             self.request_symbols(longer_search_string)
@@ -291,35 +316,35 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 #                            )
 
 # @time_box
-def main():
-    ds_catalog = FileCatalog()
-
-    try:
-        algo_app = AlgoApp(ds_catalog)
-
-        algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
-
-        print("serverVersion:%s connectionTime:%s" %
-        (algo_app.serverVersion(),
-        algo_app.twsConnectionTime()))
-    except:
-        raise
-
-    print('get_stock_symbols:main about to sleep 2 seconds')
-    time.sleep(2)
-    print('SBT get_stock_symbols:main about to wait on nextValidId_event')
-    algo_app.nextValidId_event.wait()
-    print('SBT get_stock_symbols:main about to call get_symbols')
-    # algo_app.get_symbols(start_char='A', end_char='A')
-    # algo_app.get_symbols(start_char='B', end_char='B')
-
-    algo_app.request_symbols('ABBNA')
-
-    algo_app.disconnect()
-    print('get_stock_symbols: main About to sleep for 2  seconds before exit')
-    time.sleep(2)
-    print('get_stock_symbols: main exiting')
-
-
-if __name__ == "__main__":
-    main()
+# def main():
+#     ds_catalog = FileCatalog()
+#
+#     try:
+#         algo_app = AlgoApp(ds_catalog)
+#
+#         algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+#
+#         print("serverVersion:%s connectionTime:%s" %
+#         (algo_app.serverVersion(),
+#         algo_app.twsConnectionTime()))
+#     except:
+#         raise
+#
+#     print('get_stock_symbols:main about to sleep 2 seconds')
+#     time.sleep(2)
+#     print('SBT get_stock_symbols:main about to wait on nextValidId_event')
+#     algo_app.nextValidId_event.wait()
+#     print('SBT get_stock_symbols:main about to call get_symbols')
+#     # algo_app.get_symbols(start_char='A', end_char='A')
+#     # algo_app.get_symbols(start_char='B', end_char='B')
+#
+#     algo_app.request_symbols('ABBNA')
+#
+#     algo_app.disconnect()
+#     print('get_stock_symbols: main About to sleep for 2 seconds before exit')
+#     time.sleep(2)
+#     print('get_stock_symbols: main exiting')
+#
+#
+# if __name__ == "__main__":
+#     main()

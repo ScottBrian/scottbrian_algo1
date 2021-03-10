@@ -18,9 +18,6 @@ from scottbrian_utils.diag_msg import diag_msg
 import queue
 from pathlib import Path
 
-from test_scottbrian_algo1.const import MAX_CONTRACT_DESCS_RETURNED, \
-    PORT_FOR_REQID_TIMEOUT
-
 proj_dir = Path.cwd().resolve().parents[1]  # back two directories
 
 test_cat = \
@@ -32,14 +29,15 @@ test_cat = \
 
 @pytest.fixture(scope='function')
 def algo_app(monkeypatch,
-             mock_send_recv) -> "AlgoApp":
+             mock_ib) -> "AlgoApp":
     """Instantiate and return an AlgoApp for testing.
 
     Returns:
         An instance of AlgoApp
     """
     def mock_connection_connect(self):
-        # diag_msg('entered')
+        logger.debug('entered')
+        logger.debug('mock_ib.msg_rcv_q.empty() %s', mock_ib.msg_rcv_q.empty())
         try:
             self.socket = socket.socket()
         # TO DO list the exceptions you want to catch
@@ -49,8 +47,8 @@ def algo_app(monkeypatch,
                 self.wrapper.error(NO_VALID_ID, FAIL_CREATE_SOCK.code(), FAIL_CREATE_SOCK.msg())
 
         try:
-            if self.port == PORT_FOR_REQID_TIMEOUT:
-                mock_send_recv.reqId_timeout = True
+            if self.port == mock_ib.PORT_FOR_REQID_TIMEOUT:
+                mock_ib.reqId_timeout = True
             # self.socket.connect((self.host, self.port))  # <--- real
         except socket.error:
             # diag_msg('socket error')
@@ -94,7 +92,7 @@ def algo_app(monkeypatch,
         try:
             # nSent = self.socket.send(msg)  # <-- real
             nSent = len(msg)  # <-- mock
-            mock_send_recv.send_msg(msg)  # <-- mock
+            mock_ib.send_msg(msg)  # <-- mock
         # except socket.error:  # <-- real
         except queue.Full:  # <-- mock
             logger.debug("exception from sendMsg %s", sys.exc_info())
@@ -115,7 +113,7 @@ def algo_app(monkeypatch,
             logger.debug("recvMsg attempted while not connected, releasing lock")
             return b""
         try:
-            buf = mock_send_recv.recv_msg()  # <-- mock
+            buf = mock_ib.recv_msg()  # <-- mock
             # buf = self._recvAllMsg()  # <-- real
             # receiving 0 bytes outside a timeout means the connection is either
             # closed or broken
@@ -138,11 +136,133 @@ def algo_app(monkeypatch,
     return a_algo_app
 
 
-class MockSendRecv:
-    def __init__(self, mock_ib):
+# class MockSendRecv:
+#     def __init__(self, mock_ib):
+#         self.msg_rcv_q = queue.Queue()
+#         self.reqId_timeout = False
+#         self.mock_ib = mock_ib
+#
+#     def send_msg(self, msg):
+#         diag_msg('entered', msg)
+#         (size, msg2, buf) = read_msg(msg)
+#         diag_msg('msg size:', size)
+#         diag_msg('msg2:', msg2)
+#         diag_msg('buf:', buf)
+#
+#         fields = read_fields(msg2)
+#         diag_msg('fields:', fields)
+#
+#         recv_msg = b''
+#         #######################################################################
+#         # get version and connect time (special case - not decode able)
+#         #######################################################################
+#         if msg == b'API\x00\x00\x00\x00\tv100..157':
+#             current_dt = datetime.now(
+#                 tz=timezone(offset=timedelta(hours=5))).strftime('%Y%m%d %H:%M:%S')
+#
+#             # recv_msg = b'\x00\x00\x00\x1a157\x0020210301 23:43:23 EST\x00'
+#             recv_msg = b'\x00\x00\x00\x1a157\x00' \
+#                        + current_dt.encode('utf-8') + b' EST\x00'
+#
+#         #######################################################################
+#         # reqId (get next valid requestID)
+#         # b'\x00\x00\x00\x0871\x002\x000\x00\x00'
+#         #######################################################################
+#         elif int(fields[0]) == OUT.START_API:
+#             diag_msg('startAPI detected')
+#             # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
+#             if self.reqId_timeout:
+#                 recv_msg = make_msg('0')
+#             else:
+#                 msg3 = make_field(IN.NEXT_VALID_ID) \
+#                         + make_field('1') \
+#                         + make_field('1')
+#                 diag_msg('msg3:', msg3)
+#                 msg4 = make_msg(msg3)
+#                 diag_msg('msg4:', msg4)
+#                 recv_msg = make_msg(make_field(IN.NEXT_VALID_ID)
+#                                 + make_field('1')
+#                                 + make_field('1'))
+#             diag_msg('recv_msg:', recv_msg)
+#         #######################################################################
+#         # reqMatchingSymbols
+#         #######################################################################
+#         elif int(fields[0]) == OUT.REQ_MATCHING_SYMBOLS:
+#             diag_msg('reqMatchingSymbols detected')
+#             reqId = int(fields[1])
+#             pattern = fields[2].decode(errors='backslashreplace')
+#             diag_msg('pattern:', pattern)
+#             diag_msg('type(pattern):', type(pattern))
+#             build_msg = make_field(IN.SYMBOL_SAMPLES) \
+#                 + make_field(reqId)
+#
+#             # scan each record to see if pattern matches
+#             diag_msg('contract descriptions:',
+#                      self.mock_ib.contract_descriptions)
+#             match_descs = self.mock_ib.contract_descriptions.loc[
+#                 self.mock_ib.contract_descriptions['symbol'].str.
+#                     startswith(pattern)]
+#             diag_msg('match_descs:', match_descs)
+#             num_found = min(MAX_CONTRACT_DESCS_RETURNED, match_descs.shape[0])
+#             build_msg = build_msg + make_field(num_found)
+#             for i in range(num_found):
+#                 conId = match_descs.iloc[i].conId
+#                 symbol = match_descs.iloc[i].symbol
+#                 secType = match_descs.iloc[i].secType
+#                 primaryExchange = match_descs.iloc[i].primaryExchange
+#                 currency = match_descs.iloc[i].currency
+#                 build_msg = build_msg + make_field(conId) \
+#                             + make_field(symbol) \
+#                             + make_field(secType) \
+#                             + make_field(primaryExchange) \
+#                             + make_field(currency) \
+#                             + make_field(0)  # zero derivativeSecTypes for now
+#             recv_msg = make_msg(build_msg)
+#             diag_msg('recv_msg:', recv_msg)
+#         #######################################################################
+#         # queue the message to be received
+#         #######################################################################
+#         self.msg_rcv_q.put(recv_msg, timeout=5)
+#
+#
+#     def recv_msg(self) -> bytes:
+#         # diag_msg('entered')
+#         msg = self.msg_rcv_q.get(timeout=1)  # wait for 1 second if empty
+#         # diag_msg('exit with msg:', msg)
+#         return msg
+#
+#
+# @pytest.fixture(scope='function')
+# def mock_send_recv(mock_ib) -> "MockSendRecv":
+#     """Provide a list of symbols for testing.
+#
+#     Returns:
+#         An instance of MockSendRecv
+#     """
+#     return MockSendRecv(mock_ib)
+
+
+
+class MockIB:
+    """Class provides simulation data and methods for testing with ibapi."""
+
+    def __init__(self, test_cat):
+        self.test_cat = test_cat
         self.msg_rcv_q = queue.Queue()
         self.reqId_timeout = False
-        self.mock_ib = mock_ib
+        self.next_con_id = 7000
+        self.MAX_CONTRACT_DESCS_RETURNED = 16
+        self.PORT_FOR_REQID_TIMEOUT = 9001
+        self.valid_first_chars = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+                                 'J', 'K', 'L', 'M', 'N', 'O')
+        self.valid_second_chars = ('C', 'D', 'F')
+        self.valid_third_chars = ('D', 'F', 'G')
+        self.valid_fourth_chars = ('H', 'J', 'L')
+        self.valid_fifth_chars = ('S', 'B', 'T')
+        self.valid_sixth_chars = ('X', 'Y', 'Z')
+        self.contract_descriptions = pd.DataFrame()
+
+        self.build_contract_descriptions()
 
     def send_msg(self, msg):
         diag_msg('entered', msg)
@@ -200,12 +320,13 @@ class MockSendRecv:
 
             # scan each record to see if pattern matches
             diag_msg('contract descriptions:',
-                     self.mock_ib.contract_descriptions)
-            match_descs = self.mock_ib.contract_descriptions.loc[
-                self.mock_ib.contract_descriptions['symbol'].str.
+                     self.contract_descriptions)
+            match_descs = self.contract_descriptions.loc[
+                self.contract_descriptions['symbol'].str.
                     startswith(pattern)]
             diag_msg('match_descs:', match_descs)
-            num_found = min(MAX_CONTRACT_DESCS_RETURNED, match_descs.shape[0])
+            num_found = min(self.MAX_CONTRACT_DESCS_RETURNED,
+                            match_descs.shape[0])
             build_msg = build_msg + make_field(num_found)
             for i in range(num_found):
                 conId = match_descs.iloc[i].conId
@@ -229,38 +350,11 @@ class MockSendRecv:
 
     def recv_msg(self) -> bytes:
         # diag_msg('entered')
+        # if the queue is empty, the get will wait up to 1 second for an item
+        # to be queued - if no item shows up, an Empty exception is raised
         msg = self.msg_rcv_q.get(timeout=1)  # wait for 1 second if empty
         # diag_msg('exit with msg:', msg)
         return msg
-
-
-@pytest.fixture(scope='function')
-def mock_send_recv(mock_ib) -> "MockSendRecv":
-    """Provide a list of symbols for testing.
-
-    Returns:
-        An instance of MockSendRecv
-    """
-    return MockSendRecv(mock_ib)
-
-
-
-class MockIB:
-    """Class provides simulation data and methods for testing with ibapi."""
-
-    def __init__(self, test_cat):
-        self.test_cat = test_cat
-        self.next_con_id = 7000
-        self.valid_first_chars = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
-                                 'J', 'K', 'L', 'M', 'N', 'O')
-        self.valid_second_chars = ('C', 'D', 'F')
-        self.valid_third_chars = ('D', 'F', 'G')
-        self.valid_fourth_chars = ('H', 'J', 'L')
-        self.valid_fifth_chars = ('S', 'B', 'T')
-        self.valid_sixth_chars = ('X', 'Y', 'Z')
-        self.contract_descriptions = pd.DataFrame()
-
-        self.build_contract_descriptions()
     ###########################################################################
     # since ib will return only 16 symbols per request, we need to
     # create a table with earlier entries being the single character symbols
@@ -325,7 +419,7 @@ class MockIB:
         logger.info('built mock_con_descs DataFrame with %d entries',
                     len(self.contract_descriptions))
         logger.info('saving mock_contract_descs DataFrame to csv')
-        self.contract_descriptions.to_csv(contract_descs_path)
+        # self.contract_descriptions.to_csv(contract_descs_path)
 
     # def get_non_existent_symbols(self,
     #                              num_to_get: int,
@@ -337,9 +431,14 @@ class MockIB:
         # symbols that exists but not for secType
         # symbols that exists but not for currency
 
-
     @staticmethod
     def get_combos(symbol: str) -> List[List[str]]:
+        """Get combos.
+
+        Args:
+            symbol: get combos for this symbol
+
+        """
         combos = (('CASH', 'ISLAND', 'EUR'),
                   ('STK', 'CBOE', 'USD'),
                   ('IND', 'NYSE', 'GBP'),
@@ -384,6 +483,7 @@ class MockIB:
 
         return ret_combo
 
+
 @pytest.fixture(scope='session')
 def mock_ib() -> "MockIB":
     """Provide data and methods for testing with ib.
@@ -391,22 +491,9 @@ def mock_ib() -> "MockIB":
     Returns:
         An instance of MockIB
     """
-
     return MockIB(test_cat)
 
-# nonexistent_symbol_arg_list = ['AA',
-#                                'AB',
-#                                'BB',
-#                                'BA',
-#                                'EA',
-#                                'EFA',
-#                                'EFGB',
-#                                'FA',
-#                                'FB',
-#                                'FAB',
-#                                'FBA',
-#                                'P'
-#                                ]
+
 nonexistent_symbol_arg_list = ['AA',
                                'DA'
                                ]
@@ -426,30 +513,6 @@ def nonexistent_symbol_arg(request: Any) -> str:
 symbol_pattern_arg_list = ['A',
                            'B'
                            ]
-                           # 'C',
-                           # 'AC',
-                           # 'ACD',
-                           # 'ACDH',
-                           # 'ACDHS',
-                           # 'ACDHSX',
-                           # 'D',
-                           # 'DD',
-                           # 'DDF',
-                           # 'DDFJ',
-                           # 'DDFJB',
-                           # 'DDFJBY'
-                           # 'G',
-                           # 'GF',
-                           # 'GFG',
-                           # 'GFGL',
-                           # 'GFGLT',
-                           # 'GFGLTZ',
-                           # 'AF',
-                           # 'AFD',
-                           # 'AFDJ',
-                           # 'AFDJB',
-                           # 'AFDJBY'
-                           # ]
 
 
 @pytest.fixture(params=symbol_pattern_arg_list)  # type: ignore
