@@ -85,15 +85,18 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         :Example: instantiate AlgoApp and print it
 
         >>> from scottbrian_algo1.algo_api import AlgoApp
-        >>> algo_app = AlgoApp()
+        >>> from scottbrian_utils.file_catalog import FileCatalog
+        >>> from pathlib import Path
+        >>> test_cat = FileCatalog({'symbols': Path('t_datasets/symbols.csv')})
+        >>> algo_app = AlgoApp(test_cat)
         >>> print(algo_app)
-        AlgoApp()
+        AlgoApp(ds_catalog)
 
         """
         if TYPE_CHECKING:
             __class__: Type[AlgoApp]
         classname = self.__class__.__name__
-        parms = ''
+        parms = 'ds_catalog'
 
         return f'{classname}({parms})'
 
@@ -196,15 +199,17 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         for desc in contract_descriptions:
             print('Symbol: {}'.format(desc.contract.symbol))
-            # print('desc.contract:')
-            # print(desc.contract)
-            # print('    conId              :', desc.contract.conId)
-            # print('    secType            :', desc.contract.secType)
-            # print('    primaryExchange    :', desc.contract.primaryExchange)
-            # print('    currency           :', desc.contract.currency)
-            # print('    derivativeSecTypes :', desc.derivativeSecTypes)
+            print('desc.contract:')
+            print(desc.contract)
+            print('    conId              :', desc.contract.conId)
+            print('    secType            :', desc.contract.secType)
+            print('    primaryExchange    :', desc.contract.primaryExchange)
+            print('    currency           :', desc.contract.currency)
+            print('    derivativeSecTypes :', desc.derivativeSecTypes)
             if desc.contract.secType == 'STK' and \
-                    desc.contract.currency == 'USD':
+                    desc.contract.currency == 'USD' and \
+                    'OPT' in desc.derivativeSecTypes:
+                print('    conId OK            :', desc.contract.conId)
                 self.stock_symbols = self.stock_symbols.append(
                     pd.DataFrame([[desc.contract.conId,
                                    desc.contract.symbol,
@@ -316,35 +321,35 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 #                            )
 
 # @time_box
-# def main():
-#     ds_catalog = FileCatalog()
-#
-#     try:
-#         algo_app = AlgoApp(ds_catalog)
-#
-#         algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
-#
-#         print("serverVersion:%s connectionTime:%s" %
-#         (algo_app.serverVersion(),
-#         algo_app.twsConnectionTime()))
-#     except:
-#         raise
-#
-#     print('get_stock_symbols:main about to sleep 2 seconds')
-#     time.sleep(2)
-#     print('SBT get_stock_symbols:main about to wait on nextValidId_event')
-#     algo_app.nextValidId_event.wait()
-#     print('SBT get_stock_symbols:main about to call get_symbols')
-#     # algo_app.get_symbols(start_char='A', end_char='A')
-#     # algo_app.get_symbols(start_char='B', end_char='B')
-#
-#     algo_app.request_symbols('ABBNA')
-#
-#     algo_app.disconnect()
-#     print('get_stock_symbols: main About to sleep for 2 seconds before exit')
-#     time.sleep(2)
-#     print('get_stock_symbols: main exiting')
-#
-#
-# if __name__ == "__main__":
-#     main()
+def main():
+    ds_catalog = FileCatalog()
+
+    try:
+        algo_app = AlgoApp(ds_catalog)
+
+        algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+
+        print("serverVersion:%s connectionTime:%s" %
+        (algo_app.serverVersion(),
+        algo_app.twsConnectionTime()))
+    except:
+        raise
+
+    print('get_stock_symbols:main about to sleep 2 seconds')
+    time.sleep(2)
+    print('SBT get_stock_symbols:main about to wait on nextValidId_event')
+    algo_app.nextValidId_event.wait()
+    print('SBT get_stock_symbols:main about to call get_symbols')
+    # algo_app.get_symbols(start_char='A', end_char='A')
+    # algo_app.get_symbols(start_char='B', end_char='B')
+
+    algo_app.request_symbols('SWKS')
+
+    algo_app.disconnect()
+    print('get_stock_symbols: main About to sleep for 2 seconds before exit')
+    time.sleep(2)
+    print('get_stock_symbols: main exiting')
+
+
+if __name__ == "__main__":
+    main()

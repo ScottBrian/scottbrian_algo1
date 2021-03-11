@@ -5,18 +5,23 @@ import string
 
 import pytest
 import pandas as pd  # type: ignore
-from typing import Any, cast, List
+from typing import Any, cast, Tuple
+import socket
 
-#from ibapi.client import EClient  # type: ignore
-from ibapi.connection import Connection  # type: ignore
+from ibapi.connection import Connection
 from ibapi.message import IN, OUT
-from ibapi.connection import *
 from ibapi.comm import (make_field, make_msg, read_msg, read_fields)
+from ibapi.common import NO_VALID_ID
+from ibapi.errors import FAIL_CREATE_SOCK
+
 from scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import diag_msg
 import queue
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 proj_dir = Path.cwd().resolve().parents[1]  # back two directories
 
@@ -28,243 +33,164 @@ test_cat = \
 
 
 @pytest.fixture(scope='function')
-def algo_app(monkeypatch,
-             mock_ib) -> "AlgoApp":
+def algo_app(monkeypatch: Any,
+             tmp_path: Any,
+             mock_ib: "MockIB") -> "AlgoApp":
     """Instantiate and return an AlgoApp for testing.
+
+    Args:
+        monkeypatch: pytest fixture used to modify code for testing
+        mock_ib: mock of some section of ibapi used for testing
 
     Returns:
         An instance of AlgoApp
     """
-    def mock_connection_connect(self):
+    def mock_connection_connect(self) -> None:
+        """Mock connect routine.
+
+        Args:
+            self: instance of ib Connection class
+
+        """
         logger.debug('entered')
-        logger.debug('mock_ib.msg_rcv_q.empty() %s', mock_ib.msg_rcv_q.empty())
         try:
             self.socket = socket.socket()
         # TO DO list the exceptions you want to catch
         except socket.error:
-            # diag_msg('socket instantiation failed')
+            logger.debug('socket.error exception')
             if self.wrapper:
-                self.wrapper.error(NO_VALID_ID, FAIL_CREATE_SOCK.code(), FAIL_CREATE_SOCK.msg())
+                self.wrapper.error(NO_VALID_ID,
+                                   FAIL_CREATE_SOCK.code(),
+                                   FAIL_CREATE_SOCK.msg())
 
-        try:
-            if self.port == mock_ib.PORT_FOR_REQID_TIMEOUT:
-                mock_ib.reqId_timeout = True
-            # self.socket.connect((self.host, self.port))  # <--- real
-        except socket.error:
-            # diag_msg('socket error')
-            if self.wrapper:
-                self.wrapper.error(NO_VALID_ID, CONNECT_FAIL.code(), CONNECT_FAIL.msg())
-
+        if self.port == mock_ib.PORT_FOR_REQID_TIMEOUT:
+            mock_ib.reqId_timeout = True  # simulate timeout
+        else:
+            mock_ib.reqId_timeout = False
         self.socket.settimeout(1)  # non-blocking
-
-        # diag_msg('exiting')
 
     monkeypatch.setattr(Connection, "connect", mock_connection_connect)
 
-    def mock_connection_disconnect(self):
-        # diag_msg('entered')
+    def mock_connection_disconnect(self) -> None:
+        """Mock disconnect routine.
+
+        Args:
+            self: instance of ib Connection class
+
+        """
         self.lock.acquire()
         try:
             if self.socket is not None:
                 logger.debug("disconnecting")
-                # self.socket.close()  # <-- real
                 self.socket = None
                 logger.debug("disconnected")
                 if self.wrapper:
                     self.wrapper.connectionClosed()
         finally:
-            # diag_msg('about to release conn lock')
             self.lock.release()
-            # diag_msg('conn lock released')
-        # diag_msg('exiting')
 
     monkeypatch.setattr(Connection, "disconnect", mock_connection_disconnect)
 
-    def mock_connection_sendMsg(self, msg):
-        # diag_msg('entered with msg:', msg)
+    def mock_connection_send_msg(self, msg: bytes) -> int:
+        """Mock sendMsg routine.
+
+        Args:
+            self: instance of ib Connection class
+            msg: message to be sent
+
+        Returns:
+              number of bytes sent
+
+        Raises:
+              queue.Full: message can not be added because queue is at limit
+
+        """
+        logger.debug('entered with msg: %s', msg)
         logger.debug("acquiring lock")
         self.lock.acquire()
         logger.debug("acquired lock")
         if not self.isConnected():
-            logger.debug("sendMsg attempted while not connected, releasing lock")
+            logger.debug("sendMsg attempt while not connected, releasing lock")
             self.lock.release()
             return 0
         try:
-            # nSent = self.socket.send(msg)  # <-- real
-            nSent = len(msg)  # <-- mock
-            mock_ib.send_msg(msg)  # <-- mock
-        # except socket.error:  # <-- real
-        except queue.Full:  # <-- mock
-            logger.debug("exception from sendMsg %s", sys.exc_info())
+            nSent = len(msg)
+            mock_ib.send_msg(msg)
+        except queue.Full:
+            logger.debug("queue full exception on sendMsg attempt")
             raise
         finally:
             logger.debug("releasing lock")
             self.lock.release()
-            logger.debug("release lock")
+            logger.debug("released lock")
 
-        logger.debug("sendMsg: sent: %d", nSent)
-        # diag_msg('exiting')
+        logger.debug("sendMsg: number bytes sent: %d", nSent)
         return nSent
 
-    monkeypatch.setattr(Connection, "sendMsg", mock_connection_sendMsg)
+    monkeypatch.setattr(Connection, "sendMsg", mock_connection_send_msg)
 
-    def mock_connection_recvMsg(self):
+    def mock_connection_recv_msg(self) -> bytes:
+        """Mock recvMsg routine.
+
+        Args:
+            self: instance of ib Connection class
+
+        Returns:
+            message that was received
+
+        """
         if not self.isConnected():
-            logger.debug("recvMsg attempted while not connected, releasing lock")
+            logger.debug("recvMsg attempted while not connected")
             return b""
         try:
             buf = mock_ib.recv_msg()  # <-- mock
-            # buf = self._recvAllMsg()  # <-- real
-            # receiving 0 bytes outside a timeout means the connection is either
-            # closed or broken
+            # receiving 0 bytes outside a timeout means the connection is
+            # either closed or broken
             if len(buf) == 0:
                 logger.debug("socket either closed or broken, disconnecting")
                 self.disconnect()
-        # except socket.timeout:  # <-- real
-        except queue.Empty:  # <-- mock
-            logger.debug("socket timeout from recvMsg %s", sys.exc_info())
+        except queue.Empty:
+            logger.debug("timeout from recvMsg")
             buf = b""
-        # except socket.error:  # <<- real
-        #     logger.debug("socket broken, disconnecting")  # <<- real
-        #     self.disconnect()  # <<- real
-        #     buf = b""  # <<- real
-
         return buf
-    monkeypatch.setattr(Connection, "recvMsg", mock_connection_recvMsg)
 
-    a_algo_app = AlgoApp(test_cat)
+    monkeypatch.setattr(Connection, "recvMsg", mock_connection_recv_msg)
+
+    d = tmp_path / "t_files"
+    d.mkdir()
+    p = d / "symbols.csv"
+    catalog = FileCatalog({'symbols': p})
+
+    a_algo_app = AlgoApp(catalog)
     return a_algo_app
-
-
-# class MockSendRecv:
-#     def __init__(self, mock_ib):
-#         self.msg_rcv_q = queue.Queue()
-#         self.reqId_timeout = False
-#         self.mock_ib = mock_ib
-#
-#     def send_msg(self, msg):
-#         diag_msg('entered', msg)
-#         (size, msg2, buf) = read_msg(msg)
-#         diag_msg('msg size:', size)
-#         diag_msg('msg2:', msg2)
-#         diag_msg('buf:', buf)
-#
-#         fields = read_fields(msg2)
-#         diag_msg('fields:', fields)
-#
-#         recv_msg = b''
-#         #######################################################################
-#         # get version and connect time (special case - not decode able)
-#         #######################################################################
-#         if msg == b'API\x00\x00\x00\x00\tv100..157':
-#             current_dt = datetime.now(
-#                 tz=timezone(offset=timedelta(hours=5))).strftime('%Y%m%d %H:%M:%S')
-#
-#             # recv_msg = b'\x00\x00\x00\x1a157\x0020210301 23:43:23 EST\x00'
-#             recv_msg = b'\x00\x00\x00\x1a157\x00' \
-#                        + current_dt.encode('utf-8') + b' EST\x00'
-#
-#         #######################################################################
-#         # reqId (get next valid requestID)
-#         # b'\x00\x00\x00\x0871\x002\x000\x00\x00'
-#         #######################################################################
-#         elif int(fields[0]) == OUT.START_API:
-#             diag_msg('startAPI detected')
-#             # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
-#             if self.reqId_timeout:
-#                 recv_msg = make_msg('0')
-#             else:
-#                 msg3 = make_field(IN.NEXT_VALID_ID) \
-#                         + make_field('1') \
-#                         + make_field('1')
-#                 diag_msg('msg3:', msg3)
-#                 msg4 = make_msg(msg3)
-#                 diag_msg('msg4:', msg4)
-#                 recv_msg = make_msg(make_field(IN.NEXT_VALID_ID)
-#                                 + make_field('1')
-#                                 + make_field('1'))
-#             diag_msg('recv_msg:', recv_msg)
-#         #######################################################################
-#         # reqMatchingSymbols
-#         #######################################################################
-#         elif int(fields[0]) == OUT.REQ_MATCHING_SYMBOLS:
-#             diag_msg('reqMatchingSymbols detected')
-#             reqId = int(fields[1])
-#             pattern = fields[2].decode(errors='backslashreplace')
-#             diag_msg('pattern:', pattern)
-#             diag_msg('type(pattern):', type(pattern))
-#             build_msg = make_field(IN.SYMBOL_SAMPLES) \
-#                 + make_field(reqId)
-#
-#             # scan each record to see if pattern matches
-#             diag_msg('contract descriptions:',
-#                      self.mock_ib.contract_descriptions)
-#             match_descs = self.mock_ib.contract_descriptions.loc[
-#                 self.mock_ib.contract_descriptions['symbol'].str.
-#                     startswith(pattern)]
-#             diag_msg('match_descs:', match_descs)
-#             num_found = min(MAX_CONTRACT_DESCS_RETURNED, match_descs.shape[0])
-#             build_msg = build_msg + make_field(num_found)
-#             for i in range(num_found):
-#                 conId = match_descs.iloc[i].conId
-#                 symbol = match_descs.iloc[i].symbol
-#                 secType = match_descs.iloc[i].secType
-#                 primaryExchange = match_descs.iloc[i].primaryExchange
-#                 currency = match_descs.iloc[i].currency
-#                 build_msg = build_msg + make_field(conId) \
-#                             + make_field(symbol) \
-#                             + make_field(secType) \
-#                             + make_field(primaryExchange) \
-#                             + make_field(currency) \
-#                             + make_field(0)  # zero derivativeSecTypes for now
-#             recv_msg = make_msg(build_msg)
-#             diag_msg('recv_msg:', recv_msg)
-#         #######################################################################
-#         # queue the message to be received
-#         #######################################################################
-#         self.msg_rcv_q.put(recv_msg, timeout=5)
-#
-#
-#     def recv_msg(self) -> bytes:
-#         # diag_msg('entered')
-#         msg = self.msg_rcv_q.get(timeout=1)  # wait for 1 second if empty
-#         # diag_msg('exit with msg:', msg)
-#         return msg
-#
-#
-# @pytest.fixture(scope='function')
-# def mock_send_recv(mock_ib) -> "MockSendRecv":
-#     """Provide a list of symbols for testing.
-#
-#     Returns:
-#         An instance of MockSendRecv
-#     """
-#     return MockSendRecv(mock_ib)
-
 
 
 class MockIB:
     """Class provides simulation data and methods for testing with ibapi."""
 
     def __init__(self, test_cat):
+        """Initialize the MockIB instance.
+
+        Args:
+            test_cat: catalog of data sets used for testing
+        """
         self.test_cat = test_cat
         self.msg_rcv_q = queue.Queue()
         self.reqId_timeout = False
         self.next_con_id = 7000
         self.MAX_CONTRACT_DESCS_RETURNED = 16
         self.PORT_FOR_REQID_TIMEOUT = 9001
-        self.valid_first_chars = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
-                                 'J', 'K', 'L', 'M', 'N', 'O')
-        self.valid_second_chars = ('C', 'D', 'F')
-        self.valid_third_chars = ('D', 'F', 'G')
-        self.valid_fourth_chars = ('H', 'J', 'L')
-        self.valid_fifth_chars = ('S', 'B', 'T')
-        self.valid_sixth_chars = ('X', 'Y', 'Z')
         self.contract_descriptions = pd.DataFrame()
 
         self.build_contract_descriptions()
 
     def send_msg(self, msg):
+        """Mock send to ib by interpresting and placing on receive queue.
+
+        Args:
+            msg: message to be sent (i.e., interpreted and queued)
+
+        """
         diag_msg('entered', msg)
         (size, msg2, buf) = read_msg(msg)
         diag_msg('msg size:', size)
@@ -280,7 +206,8 @@ class MockIB:
         #######################################################################
         if msg == b'API\x00\x00\x00\x00\tv100..157':
             current_dt = datetime.now(
-                tz=timezone(offset=timedelta(hours=5))).strftime('%Y%m%d %H:%M:%S')
+                tz=timezone(offset=timedelta(hours=5))).\
+                strftime('%Y%m%d %H:%M:%S')
 
             # recv_msg = b'\x00\x00\x00\x1a157\x0020210301 23:43:23 EST\x00'
             recv_msg = b'\x00\x00\x00\x1a157\x00' \
@@ -303,8 +230,8 @@ class MockIB:
                 msg4 = make_msg(msg3)
                 diag_msg('msg4:', msg4)
                 recv_msg = make_msg(make_field(IN.NEXT_VALID_ID)
-                                + make_field('1')
-                                + make_field('1'))
+                                    + make_field('1')
+                                    + make_field('1'))
             diag_msg('recv_msg:', recv_msg)
         #######################################################################
         # reqMatchingSymbols
@@ -323,7 +250,7 @@ class MockIB:
                      self.contract_descriptions)
             match_descs = self.contract_descriptions.loc[
                 self.contract_descriptions['symbol'].str.
-                    startswith(pattern)]
+                startswith(pattern)]
             diag_msg('match_descs:', match_descs)
             num_found = min(self.MAX_CONTRACT_DESCS_RETURNED,
                             match_descs.shape[0])
@@ -335,11 +262,11 @@ class MockIB:
                 primaryExchange = match_descs.iloc[i].primaryExchange
                 currency = match_descs.iloc[i].currency
                 build_msg = build_msg + make_field(conId) \
-                            + make_field(symbol) \
-                            + make_field(secType) \
-                            + make_field(primaryExchange) \
-                            + make_field(currency) \
-                            + make_field(0)  # zero derivativeSecTypes for now
+                    + make_field(symbol) \
+                    + make_field(secType) \
+                    + make_field(primaryExchange) \
+                    + make_field(currency) \
+                    + make_field(0)  # zero derivativeSecTypes for now
             recv_msg = make_msg(build_msg)
             diag_msg('recv_msg:', recv_msg)
         #######################################################################
@@ -347,8 +274,13 @@ class MockIB:
         #######################################################################
         self.msg_rcv_q.put(recv_msg, timeout=5)
 
-
     def recv_msg(self) -> bytes:
+        """Mock receive message from ib by getting it from the receive queue.
+
+        Returns:
+            Received message from ib for request sent earlier to ib
+
+        """
         # diag_msg('entered')
         # if the queue is empty, the get will wait up to 1 second for an item
         # to be queued - if no item shows up, an Empty exception is raised
@@ -365,14 +297,14 @@ class MockIB:
     #  4) symbols starting with one char and going up to 6 chars, and
     #     enough of each to drive the recursion code to 6 char exact names
     ###########################################################################
+
     def build_desc(self, symbol):
         """Build the mock contract_descriptions.
 
         Args:
             symbol: symbol to be built
         """
-        # combos = self.get_combos(symbol)
-        combos = (('STK', 'CBOE', 'USD'),)
+        combos = self.get_combos(symbol)
         for combo in combos:
             self.next_con_id += 1
             self.contract_descriptions = self.contract_descriptions.append(
@@ -380,16 +312,26 @@ class MockIB:
                                            symbol,
                                            combo[0],
                                            combo[1],
-                                           combo[2]
+                                           combo[2],
+                                           combo[3][0],
+                                           combo[3][1],
+                                           combo[3][2],
+                                           combo[3][3],
                                            ]],
                                          columns=['conId',
                                                   'symbol',
                                                   'secType',
                                                   'primaryExchange',
-                                                  'currency']))
+                                                  'currency',
+                                                  'deriv_0'
+                                                  'deriv_1',
+                                                  'deriv_2',
+                                                  'deriv_3',
+                                                  ]))
 
         # diag_msg('built contract descriptors:', self.contract_descriptions)
     def build_contract_descriptions(self):
+        """Build the set of contract descriptions to use for testing."""
         contract_descs_path = self.test_cat.get_path('mock_contract_descs')
         logger.info('mock_contract_descs path: %s', contract_descs_path)
 
@@ -400,25 +342,23 @@ class MockIB:
         # else:
         self.contract_descriptions = pd.DataFrame()
 
-        # for chr1 in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
-        #              'L', 'M', 'N', 'O']:
-        for chr1 in string.ascii_uppercase[0:3]:
+        for chr1 in string.ascii_uppercase[0:6]:  # A-F
             self.build_desc(chr1)
-            for chr2 in string.ascii_uppercase[1:4]:  # ['C', 'D', 'F']:
+            for chr2 in string.ascii_uppercase[1:4]:  # B-D
                 self.build_desc(chr1 + chr2)
-                for chr3 in string.ascii_uppercase[2:5]:  # ['D', 'F', 'G']:
+                for chr3 in string.ascii_uppercase[2:5]:  # C-E
                     self.build_desc(chr1 + chr2 + chr3)
-                    # for chr4 in string.ascii_uppercase[3:6]:  # ['H', 'J', 'L']:
-                    #     self.build_desc(chr1 + chr2 + chr3 + chr4)
-                    #     for chr5 in string.ascii_uppercase[4:7]:  # ['S', 'B', 'T']:
-                    #         self.build_desc(chr1 + chr2 + chr3 + chr4 +
-                    #                         chr5)
-                    #         for chr6 in string.ascii_uppercase[5:8]:  # ['X', 'Y', 'Z']:
-                    #             self.build_desc(chr1 + chr2 + chr3 + chr4
-                    #                             + chr5 + chr6)
+                    for chr4 in string.ascii_uppercase[3:6]:  # D-F
+                        self.build_desc(chr1 + chr2 + chr3 + chr4)
+                        for chr5 in string.ascii_uppercase[4:7]:  # E-G
+                            self.build_desc(chr1 + chr2 + chr3 + chr4 +
+                                            chr5)
+                            for chr6 in string.ascii_uppercase[5:8]:  # F-H
+                                self.build_desc(chr1 + chr2 + chr3 + chr4
+                                                + chr5 + chr6)
         logger.info('built mock_con_descs DataFrame with %d entries',
                     len(self.contract_descriptions))
-        logger.info('saving mock_contract_descs DataFrame to csv')
+        # logger.info('saving mock_contract_descs DataFrame to csv')
         # self.contract_descriptions.to_csv(contract_descs_path)
 
     # def get_non_existent_symbols(self,
@@ -432,56 +372,38 @@ class MockIB:
         # symbols that exists but not for currency
 
     @staticmethod
-    def get_combos(symbol: str) -> List[List[str]]:
+    def get_combos(symbol: str
+                   ) -> Tuple[Tuple[str, str, str, Tuple[str, ...]]]:
         """Get combos.
 
         Args:
             symbol: get combos for this symbol
 
+        Returns:
+            List of lists of combos
         """
-        combos = (('CASH', 'ISLAND', 'EUR'),
-                  ('STK', 'CBOE', 'USD'),
-                  ('IND', 'NYSE', 'GBP'),
-                  ('OPT', 'BOX', 'YEN'),
-                  ('STK', 'ISLAND', 'USD'),
-                  ('OPT', 'NYSE', 'USD'),
-                  ('IND', 'BOX', 'YEN'),
-                  ('STK', 'BOX', 'GBP')
-                  )
-        allow_first_char = {'A': {0, 1, 2, 3, 4, 5, 6, 7},
-                            'B': {0, 1, 2, 3},
-                            'C': {4, 5, 6, 7},
-                            'D': {0, 1},
-                            'E': {2, 3},
-                            'F': {4, 5},
-                            'G': {6, 7},
-                            'H': {0},
-                            'I': {1},
-                            'J': {2},
-                            'K': {3},
-                            'L': {4},
-                            'M': {5},
-                            'N': {6},
-                            'O': {7}}
-        allow_mid_char = {'F': {0, 1, 2, 3, 4, 5, 6, 7},
-                          'D': {1},
-                          'G': {3}
-                          }
-        allow_last_char = {'Y': {0, 1, 2, 3, 4, 5, 6, 7},
-                           'X': {4},
-                           'Z': {7}
-                           }
-        allow_combo = allow_first_char[symbol[0]]
-        if len(symbol) == 5 and symbol[2] in allow_mid_char:
-            allow_combo = allow_combo | allow_mid_char[symbol[2]]
-        if len(symbol) == 6 and symbol[5] in allow_last_char:
-            allow_combo = allow_combo | allow_last_char[symbol[5]]
-        ret_combo = []
-        for i in range(8):
-            if i in allow_combo:
-                ret_combo.append(list(combos[i]))
+        first_char = symbol[0]
+        combos = {'A': (('STK', 'CBOE', 'EUR', ('0', '0', '0', '0')),),
+                  'B': (('IND', 'CBOE', 'USD', ('0', '0', '0', 'BAG')),),
+                  'C': (('STK', 'CBOE', 'USD', ('0', '0', 'WAR', '0')),),
+                  'D': (('STK', 'CBOE', 'USD', ('0', '0', 'WAR', 'BAG')),
+                        ('IND', 'CBOE', 'USD', ('0', 'CFD', '0', '0'))),
+                  'E': (('STK', 'CBOE', 'USD', ('0', 'CFD', '0', 'BAG')),
+                        ('STK', 'NYSE', 'EUR', ('0', 'CFD', 'WAR', '0'))),
+                  'F': (('STK', 'CBOE', 'USD', ('0', 'CFD', 'WAR', 'BAG')),
+                        ('STK', 'NYSE', 'USD', ('0', '0', '0', '0'))),
+                  'G': (('STK', 'CBOE', 'EUR', ('OPT', '0', '0', '0')),),
+                  'H': (('IND', 'CBOE', 'USD', ('OPT', '0', '0', 'BAG')),),
+                  'I': (('STK', 'CBOE', 'USD', ('OPT', '0', 'WAR', '0')),),
+                  'J': (('STK', 'CBOE', 'USD', ('OPT', '0', 'WAR', 'BAG')),
+                        ('IND', 'CBOE', 'USD', ('OPT', 'CFD', '0', '0'))),
+                  'K': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', '0', 'BAG')),
+                        ('STK', 'NYSE', 'EUR', ('OPT', 'CFD', 'WAR', '0'))),
+                  'L': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
+                        ('STK', 'NYSE', 'USD', ('OPT', '0', '0', '0')))
+                  }
 
-        return ret_combo
+        return combos[first_char]
 
 
 @pytest.fixture(scope='session')
@@ -494,9 +416,20 @@ def mock_ib() -> "MockIB":
     return MockIB(test_cat)
 
 
-nonexistent_symbol_arg_list = ['AA',
-                               'DA'
+nonexistent_symbol_arg_list = ['A',
+                               'AB',
+                               'ABC',
+                               'ABCD',
+                               'ABCDE',
+                               'ABCDEF',
+                               'B',
+                               'BB',
+                               'BBC',
+                               'BBCD',
+                               'BBCDE',
+                               'BBCDEF',
                                ]
+
 
 @pytest.fixture(params=nonexistent_symbol_arg_list)  # type: ignore
 def nonexistent_symbol_arg(request: Any) -> str:
@@ -510,13 +443,18 @@ def nonexistent_symbol_arg(request: Any) -> str:
     """
     return cast(str, request.param)
 
-symbol_pattern_arg_list = ['A',
-                           'B'
-                           ]
+
+symbol_pattern_match_1_arg_list = ['CBCDEF',
+                                   'CCDEFG',
+                                   'CDEFGH',
+                                   'DBCDEF',
+                                   'DDDDGH',
+                                   'ECCFFF'
+                                   ]
 
 
-@pytest.fixture(params=symbol_pattern_arg_list)  # type: ignore
-def symbol_pattern_arg(request: Any) -> str:
+@pytest.fixture(params=symbol_pattern_match_1_arg_list)  # type: ignore
+def symbol_pattern_match_1_arg(request: Any) -> str:
     """Provide symbol patterns that are in the mock contract descriptions.
 
     Args:
