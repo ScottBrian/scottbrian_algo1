@@ -336,7 +336,7 @@ class MockIB:
         # else:
         self.contract_descriptions = pd.DataFrame()
 
-        for chr1 in string.ascii_uppercase[0:12]:  # A-L
+        for chr1 in string.ascii_uppercase[0:17]:  # A-Q
             self.build_desc(chr1)
             for chr2 in string.ascii_uppercase[1:4]:  # B-D
                 self.build_desc(chr1 + chr2)
@@ -395,7 +395,24 @@ class MockIB:
                   'K': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'BAG')),
                         ('STK', 'NYSE', 'EUR', ('OPT', 'CFD', 'WAR'))),
                   'L': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
-                        ('STK', 'NYSE', 'USD', ('OPT', )))
+                        ('STK', 'NYSE', 'USD', ('WAR', ))),
+                  'M': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
+                        ('STK', 'NYSE', 'USD', ('OPT',))),
+                  'N': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
+                        ('STK', 'NYSE', 'USD', ('OPT',)),
+                        ('STK', 'BATS', 'USD', ('WAR', ))),
+                  'O': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
+                        ('STK', 'NYSE', 'USD', ('OPT',)),
+                        ('STK', 'BATS', 'USD', ('OPT',))),
+                  'P': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
+                        ('STK', 'NYSE', 'USD', ('OPT',)),
+                        ('STK', 'BATS', 'USD', ('OPT',)),
+                        ('STK', 'AMSE', 'USD', ('OPT',))),
+                  'Q': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
+                        ('STK', 'NYSE', 'USD', ('OPT',)),
+                        ('STK', 'BATS', 'USD', ('OPT',)),
+                        ('STK', 'BOSE', 'USD', ('OPT',)),
+                        ('STK', 'AMSE', 'USD', ('OPT',)))
                   }
 
         return combos[first_char]
@@ -450,12 +467,177 @@ symbol_pattern_match_1_arg_list = ['IBCDEF',
                                    'IDEFGH',
                                    'JBCDEF',
                                    'JDDDGH',
-                                   'KCCFFF'
+                                   'KCCFFF',
+                                   'LDDDGH',
+                                   'LCCFFF'
                                    ]
 
 
 @pytest.fixture(params=symbol_pattern_match_1_arg_list)  # type: ignore
 def symbol_pattern_match_1_arg(request: Any) -> str:
+    """Provide symbol patterns that are in the mock contract descriptions.
+
+    Args:
+        request: pytest fixture that returns the fixture params
+
+    Returns:
+        The params values are returned one at a time
+    """
+    return cast(str, request.param)
+
+symbol_pattern_match_2_arg_list = ['MBCDEF',
+                                   'MCDEFG',
+                                   'MDEFGH',
+                                   'MBCDEF',
+                                   'MDDDGH',
+                                   'NCCFFF',
+                                   'NBCDEF',
+                                   'NDDDGH',
+                                   'NCCFFF'
+                                   ]
+
+
+@pytest.fixture(params=symbol_pattern_match_2_arg_list)  # type: ignore
+def symbol_pattern_match_2_arg(request: Any) -> str:
+    """Provide symbol patterns that are in the mock contract descriptions.
+
+    Args:
+        request: pytest fixture that returns the fixture params
+
+    Returns:
+        The params values are returned one at a time
+    """
+    return cast(str, request.param)
+
+
+symbol_pattern_match_3_arg_list = ['OBCDEF',
+                                   'OCDEFG',
+                                   'ODEFGH',
+                                   'OBCDEF',
+                                   'ODDDGH',
+                                   'OCCFFF'
+                                   ]
+
+
+@pytest.fixture(params=symbol_pattern_match_3_arg_list)  # type: ignore
+def symbol_pattern_match_3_arg(request: Any) -> str:
+    """Provide symbol patterns that are in the mock contract descriptions.
+
+    Args:
+        request: pytest fixture that returns the fixture params
+
+    Returns:
+        The params values are returned one at a time
+    """
+    return cast(str, request.param)
+
+
+symbol_pattern_match_4_arg_list = ['IBCDE',
+                                   'ICDEF',
+                                   'IDEFG',
+                                   'ICCFF',
+                                   'JBCDE',
+                                   'JCDEF',
+                                   'JDEFG',
+                                   'JCCFF',
+                                   'KBCDE',
+                                   'KCDEF',
+                                   'KDEFG',
+                                   'KCCFF',
+                                   'LCDEF',
+                                   'LDEFG',
+                                   'LCCFF'
+                                   ]
+
+
+@pytest.fixture(params=symbol_pattern_match_4_arg_list)  # type: ignore
+def symbol_pattern_match_4_arg(request: Any) -> str:
+    """Provide symbol patterns that are in the mock contract descriptions.
+
+    Args:
+        request: pytest fixture that returns the fixture params
+
+    Returns:
+        The params values are returned one at a time
+    """
+    return cast(str, request.param)
+
+
+symbol_pattern_match_8_arg_list = ['MBCDE',
+                                   'MCDEF',
+                                   'MDEFG',
+                                   'MDDDG',
+                                   'NBCDE',
+                                   'NDDDG',
+                                   'NCCFF'
+                                   ]
+
+
+@pytest.fixture(params=symbol_pattern_match_8_arg_list)  # type: ignore
+def symbol_pattern_match_8_arg(request: Any) -> str:
+    """Provide symbol patterns that are in the mock contract descriptions.
+
+    Args:
+        request: pytest fixture that returns the fixture params
+
+    Returns:
+        The params values are returned one at a time
+    """
+    return cast(str, request.param)
+
+
+symbol_pattern_match_12_arg_list = ['OBCDE',
+                                    'OCDEF',
+                                    'ODEFG',
+                                    'ODDDG',
+                                    'OCCFF'
+                                   ]
+
+
+@pytest.fixture(params=symbol_pattern_match_12_arg_list)  # type: ignore
+def symbol_pattern_match_12_arg(request: Any) -> str:
+    """Provide symbol patterns that are in the mock contract descriptions.
+
+    Args:
+        request: pytest fixture that returns the fixture params
+
+    Returns:
+        The params values are returned one at a time
+    """
+    return cast(str, request.param)
+
+
+symbol_pattern_match_16_arg_list = ['PBCDE',
+                                    'PCDEF',
+                                    'PDEFG',
+                                    'PCCFF',
+                                    'PDDDG',
+                                    ]
+
+
+@pytest.fixture(params=symbol_pattern_match_16_arg_list)  # type: ignore
+def symbol_pattern_match_16_arg(request: Any) -> str:
+    """Provide symbol patterns that are in the mock contract descriptions.
+
+    Args:
+        request: pytest fixture that returns the fixture params
+
+    Returns:
+        The params values are returned one at a time
+    """
+    return cast(str, request.param)
+
+
+symbol_pattern_match_20_arg_list = ['QBCDE',
+                                    'QCDEF',
+                                    'QDEFG',
+                                    'QCCFF',
+                                    'QDDDG',
+                                    ]
+
+
+@pytest.fixture(params=symbol_pattern_match_20_arg_list)  # type: ignore
+def symbol_pattern_match_20_arg(request: Any) -> str:
     """Provide symbol patterns that are in the mock contract descriptions.
 
     Args:
