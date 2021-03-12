@@ -10,7 +10,7 @@ trades.
 """
 
 import pandas as pd  # type: ignore
-from threading import Thread, Event
+from threading import Thread, Event, get_ident, get_native_id
 # from pathlib import Path
 
 import time
@@ -120,8 +120,13 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             request_id: next id to use for a request to IB
 
         """
+        my_id = get_ident()
+        my_native_id = get_native_id()
+        logger.debug('nextValidId entered on thread %d - %d', my_id,
+                     my_native_id)
         logger.info('next valid ID is %i', request_id)
         self.next_request_id = request_id
+        logger.debug('id of nextValidId_event %d', id(self.nextValidId_event))
         self.nextValidId_event.set()
 
     def connect_to_ib(self, ip_addr: str, port: int, client_id: int) -> bool:
@@ -141,6 +146,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.run_thread.start()
 
         # we will wait on the first requestID here for 10 seconds
+        logger.debug('id of nextValidId_event %d', id(self.nextValidId_event))
         if not self.nextValidId_event.wait(timeout=10):  # if we timed out
             logger.debug("timed out waiting for next valid request ID")
             self.disconnect_from_ib()
@@ -159,21 +165,48 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         # EClient.disconnect(self)
 
+        self.disconnect()  # call our overridden disconnect
+
         # start of code from client.py disconnect (with added join)
-        self.setConnState(EClient.DISCONNECTED)
-        if self.conn is not None:
-            logger.info("disconnecting")
-            self.conn.disconnect()
-            self.wrapper.connectionClosed()
-            logger.info('join reader thread to wait for it to come home')
-            self.reader.join()
-            self.reset()
+        # self.setConnState(EClient.DISCONNECTED)
+        # if self.conn is not None:
+        #     logger.info("disconnecting")
+        #     self.conn.disconnect()
+        #     self.wrapper.connectionClosed()
+        #     reader_id = id(self.reader)
+        #     logger.info('about to join reader id %d for self id %d to wait for it to come home',
+        #                 reader_id, id(self))
+        #     self.reader.join()
+        #     logger.debug('reader id %d came home for id(self) %d',
+        #                  reader_id,
+        #                  id(self))
+        #     self.reset()
         # end of code from client.py disconnect (with added join)
 
         logger.info('join run_thread to wait for it to come home')
         self.run_thread.join()
 
         logger.info('disconnect complete')
+
+    # override client.py disconnect to add the join thread for reader
+    def disconnect(self):
+        """Call this function to terminate the connections with TWS.
+        Calling this function does not cancel orders that have already been
+        sent."""
+
+        self.setConnState(EClient.DISCONNECTED)
+        if self.conn is not None:
+            logger.info("disconnecting")
+            self.conn.disconnect()
+            self.wrapper.connectionClosed()
+            reader_id = id(self.reader)
+            logger.info('about to join reader id %d for self id %d to wait for it to come home',
+                        reader_id, id(self))
+            self.reader.join()
+            logger.debug('reader id %d came home for id(self) %d',
+                         reader_id,
+                         id(self))
+            self.reset()
 
     def symbolSamples(self, request_id: int,
                       contract_descriptions: ListOfContractDescription
@@ -198,18 +231,18 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                     self.num_stock_symbols_received)
 
         for desc in contract_descriptions:
-            print('Symbol: {}'.format(desc.contract.symbol))
-            print('desc.contract:')
-            print(desc.contract)
-            print('    conId              :', desc.contract.conId)
-            print('    secType            :', desc.contract.secType)
-            print('    primaryExchange    :', desc.contract.primaryExchange)
-            print('    currency           :', desc.contract.currency)
-            print('    derivativeSecTypes :', desc.derivativeSecTypes)
+            logger.debug('Symbol: {}'.format(desc.contract.symbol))
+            # print('desc.contract:')
+            # print(desc.contract)
+            # print('    conId              :', desc.contract.conId)
+            # print('    secType            :', desc.contract.secType)
+            # print('    primaryExchange    :', desc.contract.primaryExchange)
+            # print('    currency           :', desc.contract.currency)
+            # print('    derivativeSecTypes :', desc.derivativeSecTypes)
             if desc.contract.secType == 'STK' and \
                     desc.contract.currency == 'USD' and \
                     'OPT' in desc.derivativeSecTypes:
-                print('    conId OK            :', desc.contract.conId)
+                # print('    conId OK            :', desc.contract.conId)
                 self.stock_symbols = self.stock_symbols.append(
                     pd.DataFrame([[desc.contract.conId,
                                    desc.contract.symbol,

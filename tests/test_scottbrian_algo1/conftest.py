@@ -191,14 +191,11 @@ class MockIB:
             msg: message to be sent (i.e., interpreted and queued)
 
         """
-        diag_msg('entered', msg)
+        logger.debug('entered with message %s', msg)
         (size, msg2, buf) = read_msg(msg)
-        diag_msg('msg size:', size)
-        diag_msg('msg2:', msg2)
-        diag_msg('buf:', buf)
-
+        logger.debug('size, msg, buf: %d, %s, %s ', size, msg2, buf)
         fields = read_fields(msg2)
-        diag_msg('fields:', fields)
+        logger.debug('fields: %s', fields)
 
         recv_msg = b''
         #######################################################################
@@ -218,57 +215,60 @@ class MockIB:
         # b'\x00\x00\x00\x0871\x002\x000\x00\x00'
         #######################################################################
         elif int(fields[0]) == OUT.START_API:
-            diag_msg('startAPI detected')
+            logger.info('startAPI detected')
             # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
-            if self.reqId_timeout:
-                recv_msg = make_msg('0')
-            else:
-                msg3 = make_field(IN.NEXT_VALID_ID) \
-                        + make_field('1') \
-                        + make_field('1')
-                diag_msg('msg3:', msg3)
-                msg4 = make_msg(msg3)
-                diag_msg('msg4:', msg4)
+            if self.reqId_timeout:  # if testing timeout case
+                recv_msg = make_msg('0')  # simulate timeout
+            else:  # build the normal next valid id message
                 recv_msg = make_msg(make_field(IN.NEXT_VALID_ID)
                                     + make_field('1')
                                     + make_field('1'))
-            diag_msg('recv_msg:', recv_msg)
+            logger.debug('recv_msg: %s', recv_msg)
         #######################################################################
         # reqMatchingSymbols
         #######################################################################
         elif int(fields[0]) == OUT.REQ_MATCHING_SYMBOLS:
-            diag_msg('reqMatchingSymbols detected')
+            logger.info('reqMatchingSymbols detected')
             reqId = int(fields[1])
             pattern = fields[2].decode(errors='backslashreplace')
-            diag_msg('pattern:', pattern)
-            diag_msg('type(pattern):', type(pattern))
-            build_msg = make_field(IN.SYMBOL_SAMPLES) \
-                + make_field(reqId)
+            logger.debug('pattern: %s', pattern)
 
-            # scan each record to see if pattern matches
-            diag_msg('contract descriptions:',
-                     self.contract_descriptions)
+            # construct start of receive message for wrapper
+            build_msg = make_field(IN.SYMBOL_SAMPLES) + make_field(reqId)
+
+            # find pattern matches in mock contract descriptions
             match_descs = self.contract_descriptions.loc[
                 self.contract_descriptions['symbol'].str.
                 startswith(pattern)]
-            diag_msg('match_descs:', match_descs)
+
+            # limit the number found as ib does
             num_found = min(self.MAX_CONTRACT_DESCS_RETURNED,
                             match_descs.shape[0])
+
+            # add the number of descriptions to the receive message
             build_msg = build_msg + make_field(num_found)
+
             for i in range(num_found):
                 conId = match_descs.iloc[i].conId
                 symbol = match_descs.iloc[i].symbol
                 secType = match_descs.iloc[i].secType
                 primaryExchange = match_descs.iloc[i].primaryExchange
                 currency = match_descs.iloc[i].currency
+                # derivative_types = []
+                # if match_descs.iloc[i].deriv_0 != '0':
+                #     derivative_types.append(match_descs.iloc[i].deriv_0)
                 build_msg = build_msg + make_field(conId) \
                     + make_field(symbol) \
                     + make_field(secType) \
                     + make_field(primaryExchange) \
                     + make_field(currency) \
-                    + make_field(0)  # zero derivativeSecTypes for now
+                    + make_field(len(match_descs.iloc[i].derivative_types))
+
+                for dvt in match_descs.iloc[i].derivative_types:
+                    build_msg = build_msg + make_field(dvt)
+
             recv_msg = make_msg(build_msg)
-            diag_msg('recv_msg:', recv_msg)
+            # diag_msg('recv_msg:', recv_msg)
         #######################################################################
         # queue the message to be received
         #######################################################################
@@ -313,20 +313,14 @@ class MockIB:
                                            combo[0],
                                            combo[1],
                                            combo[2],
-                                           combo[3][0],
-                                           combo[3][1],
-                                           combo[3][2],
-                                           combo[3][3],
+                                           combo[3],
                                            ]],
                                          columns=['conId',
                                                   'symbol',
                                                   'secType',
                                                   'primaryExchange',
                                                   'currency',
-                                                  'deriv_0'
-                                                  'deriv_1',
-                                                  'deriv_2',
-                                                  'deriv_3',
+                                                  'derivative_types'
                                                   ]))
 
         # diag_msg('built contract descriptors:', self.contract_descriptions)
@@ -342,7 +336,7 @@ class MockIB:
         # else:
         self.contract_descriptions = pd.DataFrame()
 
-        for chr1 in string.ascii_uppercase[0:6]:  # A-F
+        for chr1 in string.ascii_uppercase[0:12]:  # A-L
             self.build_desc(chr1)
             for chr2 in string.ascii_uppercase[1:4]:  # B-D
                 self.build_desc(chr1 + chr2)
@@ -358,6 +352,7 @@ class MockIB:
                                                 + chr5 + chr6)
         logger.info('built mock_con_descs DataFrame with %d entries',
                     len(self.contract_descriptions))
+        # diag_msg('built contract descriptors:', self.contract_descriptions)
         # logger.info('saving mock_contract_descs DataFrame to csv')
         # self.contract_descriptions.to_csv(contract_descs_path)
 
@@ -383,24 +378,24 @@ class MockIB:
             List of lists of combos
         """
         first_char = symbol[0]
-        combos = {'A': (('STK', 'CBOE', 'EUR', ('0', '0', '0', '0')),),
-                  'B': (('IND', 'CBOE', 'USD', ('0', '0', '0', 'BAG')),),
-                  'C': (('STK', 'CBOE', 'USD', ('0', '0', 'WAR', '0')),),
-                  'D': (('STK', 'CBOE', 'USD', ('0', '0', 'WAR', 'BAG')),
-                        ('IND', 'CBOE', 'USD', ('0', 'CFD', '0', '0'))),
-                  'E': (('STK', 'CBOE', 'USD', ('0', 'CFD', '0', 'BAG')),
-                        ('STK', 'NYSE', 'EUR', ('0', 'CFD', 'WAR', '0'))),
-                  'F': (('STK', 'CBOE', 'USD', ('0', 'CFD', 'WAR', 'BAG')),
-                        ('STK', 'NYSE', 'USD', ('0', '0', '0', '0'))),
-                  'G': (('STK', 'CBOE', 'EUR', ('OPT', '0', '0', '0')),),
-                  'H': (('IND', 'CBOE', 'USD', ('OPT', '0', '0', 'BAG')),),
-                  'I': (('STK', 'CBOE', 'USD', ('OPT', '0', 'WAR', '0')),),
-                  'J': (('STK', 'CBOE', 'USD', ('OPT', '0', 'WAR', 'BAG')),
-                        ('IND', 'CBOE', 'USD', ('OPT', 'CFD', '0', '0'))),
-                  'K': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', '0', 'BAG')),
-                        ('STK', 'NYSE', 'EUR', ('OPT', 'CFD', 'WAR', '0'))),
+        combos = {'A': (('STK', 'CBOE', 'EUR', ()),),
+                  'B': (('IND', 'CBOE', 'USD', ('BAG', )),),
+                  'C': (('STK', 'CBOE', 'USD', ('WAR',)),),
+                  'D': (('STK', 'CBOE', 'USD', ('WAR', 'BAG')),
+                        ('IND', 'CBOE', 'USD', ('CFD', ))),
+                  'E': (('STK', 'CBOE', 'USD', ('CFD', 'BAG')),
+                        ('STK', 'NYSE', 'EUR', ('CFD', 'WAR'))),
+                  'F': (('STK', 'CBOE', 'USD', ('CFD', 'WAR', 'BAG')),
+                        ('STK', 'NYSE', 'USD', ())),
+                  'G': (('STK', 'CBOE', 'EUR', ('OPT', )),),
+                  'H': (('IND', 'CBOE', 'USD', ('OPT', 'BAG')),),
+                  'I': (('STK', 'CBOE', 'USD', ('OPT', 'WAR')),),
+                  'J': (('STK', 'CBOE', 'USD', ('OPT', 'WAR', 'BAG')),
+                        ('IND', 'CBOE', 'USD', ('OPT', 'CFD'))),
+                  'K': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'BAG')),
+                        ('STK', 'NYSE', 'EUR', ('OPT', 'CFD', 'WAR'))),
                   'L': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
-                        ('STK', 'NYSE', 'USD', ('OPT', '0', '0', '0')))
+                        ('STK', 'NYSE', 'USD', ('OPT', )))
                   }
 
         return combos[first_char]
@@ -428,6 +423,12 @@ nonexistent_symbol_arg_list = ['A',
                                'BBCD',
                                'BBCDE',
                                'BBCDEF',
+                               'C',
+                               'D',
+                               'E',
+                               'F',
+                               'G',
+                               'H'
                                ]
 
 
@@ -444,12 +445,12 @@ def nonexistent_symbol_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_1_arg_list = ['CBCDEF',
-                                   'CCDEFG',
-                                   'CDEFGH',
-                                   'DBCDEF',
-                                   'DDDDGH',
-                                   'ECCFFF'
+symbol_pattern_match_1_arg_list = ['IBCDEF',
+                                   'ICDEFG',
+                                   'IDEFGH',
+                                   'JBCDEF',
+                                   'JDDDGH',
+                                   'KCCFFF'
                                    ]
 
 

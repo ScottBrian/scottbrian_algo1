@@ -162,23 +162,25 @@ class TestAlgoApp:
         """
         verify_algo_app_initialized(algo_app)
 
-        logger.debug("about to connect")
-        assert algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
-        verify_algo_app_connected(algo_app)
+        try:
+            logger.debug("about to connect")
+            assert algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+            verify_algo_app_connected(algo_app)
 
-        # delete the stock_symbol csv file if it exists
-        stock_symbols_path = algo_app.ds_catalog.get_path('symbols')
-        logger.info('path: %s', stock_symbols_path)
-        stock_symbols_path.unlink(missing_ok=True)
+            # delete the stock_symbol csv file if it exists
+            stock_symbols_path = algo_app.ds_catalog.get_path('symbols')
+            logger.info('path: %s', stock_symbols_path)
+            stock_symbols_path.unlink(missing_ok=True)
 
-        # make request to get symbol that is not in the mock data set
-        algo_app.request_symbols(nonexistent_symbol_arg)
+            # make request to get symbol that is not in the mock data set
+            algo_app.request_symbols(nonexistent_symbol_arg)
 
-        # verify that the symbol table is empty
-        assert algo_app.stock_symbols.empty
+            # verify that the symbol table is empty
+            assert algo_app.stock_symbols.empty
 
-        algo_app.disconnect_from_ib()
-        verify_algo_app_disconnected(algo_app)
+        finally:
+            algo_app.disconnect_from_ib()
+            verify_algo_app_disconnected(algo_app)
 
     def test_request_symbols_one_result(self,
                                         algo_app: "AlgoApp",
@@ -200,61 +202,63 @@ class TestAlgoApp:
         """
         verify_algo_app_initialized(algo_app)
 
-        logger.debug("about to connect")
-        assert algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
-        verify_algo_app_connected(algo_app)
+        try:
+            logger.debug("about to connect")
+            assert algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+            verify_algo_app_connected(algo_app)
 
-        # # delete the stock_symbol csv file if it exists
-        # stock_symbols_path = algo_app.ds_catalog.get_path('symbols')
-        # logger.info('path: %s', stock_symbols_path)
-        # stock_symbols_path.unlink(missing_ok=True)
+            # # delete the stock_symbol csv file if it exists
+            # stock_symbols_path = algo_app.ds_catalog.get_path('symbols')
+            # logger.info('path: %s', stock_symbols_path)
+            # stock_symbols_path.unlink(missing_ok=True)
 
-        # make request for symbol that will be returned
+            # make request for symbol that will be returned
 
-        algo_app.request_symbols(symbol_pattern_match_1_arg)
+            algo_app.request_symbols(symbol_pattern_match_1_arg)
 
-        # verify symbol table has one entry for the symbol
-        # match_descs = mock_ib.contract_descriptions.loc[
-        #     (mock_ib.contract_descriptions['symbol'].str.
-        #      startswith(symbol_pattern_match_1_arg))]
-        # # & (mock_ib.contract_descriptions['secType'].str == 'STK') &
-        # # (mock_ib.contract_descriptions['currency'].str == 'USD')]
-        # diag_msg('len(match_descs):', len(match_descs))
-        # diag_msg('len(algo_app.stock_symbols):', len(algo_app.stock_symbols))
-        # diag_msg('match_descs:', match_descs)
-        # diag_msg('algo_app.stock_symbols:', algo_app.stock_symbols)
-        assert len(algo_app.stock_symbols) == 1  # len(match_descs)
+            # verify symbol table has one entry for the symbol
+            match_descs = mock_ib.contract_descriptions.loc[
+                (mock_ib.contract_descriptions['symbol'].str.
+                 startswith(symbol_pattern_match_1_arg))
+                & (mock_ib.contract_descriptions['secType'] == 'STK')
+                & (mock_ib.contract_descriptions['currency'] == 'USD')]
+            # diag_msg('len(match_descs):', len(match_descs))
+            # diag_msg('len(algo_app.stock_symbols):', len(algo_app.stock_symbols))
+            # diag_msg('match_descs:', match_descs)
+            # diag_msg('algo_app.stock_symbols:', algo_app.stock_symbols)
+            assert len(algo_app.stock_symbols) == 1  # len(match_descs)
+            assert len(algo_app.stock_symbols) == len(match_descs)
+            # valid_combos = mock_ib.get_combos(symbol_pattern_arg)
+            # for combo in valid_combos:
+            #     if combo[0] == 'STK' and combo[2] == 'USD':
+            #         match_entry1 = mock_ib.contract_descriptions.loc[
+            #             mock_ib.contract_descriptions['symbol'].str
+            #             == symbol_pattern_arg and
+            #             mock_ib.contract_descriptions['secType'].str == 'STK' and
+            #             mock_ib.contract_descriptions['currency'].str == 'USD'
+            #             and
+            #             mock_ib.contract_descriptions['primaryExchange'].str
+            #             == combo[1]]
+            #         assert len(match_entry1) == 1
+            #
+            #         match_entry2 = algo_app.stock_symbols.loc[
+            #             algo_app.stock_symbols['conId']
+            #             == match_entry1.iloc[0].conId]
+            #
+            #         match_entry2.drop(columns=['secType', 'currency'],
+            #                           inplace=True)
+            #         comp_df2 = match_entry1.compare(match_entry2)
+            #         assert comp_df2.empty
 
-        # valid_combos = mock_ib.get_combos(symbol_pattern_arg)
-        # for combo in valid_combos:
-        #     if combo[0] == 'STK' and combo[2] == 'USD':
-        #         match_entry1 = mock_ib.contract_descriptions.loc[
-        #             mock_ib.contract_descriptions['symbol'].str
-        #             == symbol_pattern_arg and
-        #             mock_ib.contract_descriptions['secType'].str == 'STK' and
-        #             mock_ib.contract_descriptions['currency'].str == 'USD'
-        #             and
-        #             mock_ib.contract_descriptions['primaryExchange'].str
-        #             == combo[1]]
-        #         assert len(match_entry1) == 1
-        #
-        #         match_entry2 = algo_app.stock_symbols.loc[
-        #             algo_app.stock_symbols['conId']
-        #             == match_entry1.iloc[0].conId]
-        #
-        #         match_entry2.drop(columns=['secType', 'currency'],
-        #                           inplace=True)
-        #         comp_df2 = match_entry1.compare(match_entry2)
-        #         assert comp_df2.empty
+            # match_descs = match_descs.drop(columns=['secType', 'currency'])
+            # comp_df = algo_app.stock_symbols.compare(match_descs)
+            # assert comp_df.empty
 
-        # match_descs = match_descs.drop(columns=['secType', 'currency'])
-        # comp_df = algo_app.stock_symbols.compare(match_descs)
-        # assert comp_df.empty
-
-        logger.debug('disconnecting')
-        algo_app.disconnect_from_ib()
-        verify_algo_app_disconnected(algo_app)
-        logger.debug('disconnected - test case returning')
+        finally:
+            logger.debug('disconnecting')
+            algo_app.disconnect_from_ib()
+            verify_algo_app_disconnected(algo_app)
+            logger.debug('disconnected - test case returning')
 
     def test_get_symbols_recursive(self,
                                    algo_app: "AlgoApp",
