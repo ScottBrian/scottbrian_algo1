@@ -647,3 +647,46 @@ def symbol_pattern_match_20_arg(request: Any) -> str:
         The params values are returned one at a time
     """
     return cast(str, request.param)
+
+
+symbol_pattern_match_0_arg_list = ['IBCDEFA',
+                                   'ICDEFGB',
+                                   'IDEFGHC',
+                                   'JBCDEFD',
+                                   'JDDDGHE',
+                                   'KCCFFFF',
+                                   'LDDDGHG',
+                                   'LCCFFFH'
+                                   ]
+
+
+@pytest.fixture(params=symbol_pattern_match_0_arg_list)  # type: ignore
+def symbol_pattern_match_0_arg(request: Any) -> str:
+    """Provide symbol patterns that are in the mock contract descriptions.
+
+    Args:
+        request: pytest fixture that returns the fixture params
+
+    Returns:
+        The params values are returned one at a time
+    """
+    return cast(str, request.param)
+
+
+get_symbols_search_char_list = ['A',
+                                'B',
+                                'J',
+                                'L']
+
+
+@pytest.fixture(params=get_symbols_search_char_list)  # type: ignore
+def get_symbols_search_char_arg(request: Any) -> str:
+    """Provide single char to use for get_symbols test.
+
+    Args:
+        request: pytest fixture that returns the fixture params
+
+    Returns:
+        The params values are returned one at a time
+    """
+    return cast(str, request.param)

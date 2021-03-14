@@ -10,7 +10,7 @@ trades.
 """
 
 import pandas as pd  # type: ignore
-from threading import Thread, Event, get_ident, get_native_id
+from threading import Event, get_ident, get_native_id, Thread, Lock
 # from pathlib import Path
 
 import time
@@ -38,11 +38,12 @@ from typing import Type, TYPE_CHECKING
 import string
 
 from scottbrian_utils.file_catalog import FileCatalog
+from scottbrian_utils.diag_msg import get_formatted_call_sequence
 
 # from datetime import datetime
 import logging
 
-# set looging for debug for now until things ar working
+# set logging for debug for now until things ar working
 logging.basicConfig(filename='AlgoApp.log',
                     filemode='w',
                     level=logging.DEBUG,
@@ -56,9 +57,30 @@ logging.basicConfig(filename='AlgoApp.log',
 logger = logging.getLogger(__name__)
 
 
+class AlgoAppError(Exception):
+    """Base class for exception in this module."""
+    pass
+
+
+class AlreadyConnected(AlgoAppError):
+    """AlgoApp exception for an attempt to connect when already connected."""
+    pass
+
+
+class DisconnectLockHeld(AlgoAppError):
+    """Attempted to connect while the disconnect lock is held."""
+
+
+class MissingCatalog(AlgoAppError):
+    """Attempted to connect without the ds_catalog."""
+
+
 class AlgoApp(EWrapper, EClient):  # type: ignore
     """AlgoApp class."""
 
+    ###########################################################################
+    # __init__
+    ###########################################################################
     def __init__(self, ds_catalog: FileCatalog) -> None:
         """Instantiate the AlgoApp.
 
@@ -68,14 +90,20 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         """
         EWrapper.__init__(self)
         EClient.__init__(self, wrapper=self)
+        self.disconnect_lock = Lock()
         self.ds_catalog = ds_catalog
-        self.next_request_id: int = 0
+        self.request_id: int = 0
         self.num_stock_symbols_received = 0
-        self.stock_symbols = pd.DataFrame()
+        self.stock_symbols = pd.DataFrame(columns=['conId',
+                                                   'symbol',
+                                                   'primaryExchange'])
         self.response_complete_event = Event()
         self.nextValidId_event = Event()
-        self.run_thread = Thread(target=self.run)
+        self.run_thread = None
 
+    ###########################################################################
+    # __repr__
+    ###########################################################################
     def __repr__(self) -> str:
         """Return a representation of the class.
 
@@ -100,7 +128,11 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         return f'{classname}({parms})'
 
+    ###########################################################################
+    # error
+    ###########################################################################
     def error(self, reqId: int, errorCode: int, errorString: str) -> None:
+
         """Receive error from IB and print it.
 
         Args:
@@ -113,6 +145,9 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         logger.error("ERROR %s %s %s", reqId, errorCode, errorString)
         print("Error: ", reqId, " ", errorCode, " ", errorString)
 
+    ###########################################################################
+    # nextValidId
+    ###########################################################################
     def nextValidId(self, request_id: int) -> None:
         """Receive next valid ID from IB and save it.
 
@@ -120,15 +155,58 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             request_id: next id to use for a request to IB
 
         """
-        my_id = get_ident()
-        my_native_id = get_native_id()
-        logger.debug('nextValidId entered on thread %d - %d', my_id,
-                     my_native_id)
         logger.info('next valid ID is %i', request_id)
-        self.next_request_id = request_id
-        logger.debug('id of nextValidId_event %d', id(self.nextValidId_event))
+        self.request_id = request_id
         self.nextValidId_event.set()
 
+    ###########################################################################
+    # get_req_id
+    ###########################################################################
+    def get_req_id(self) -> int:
+        """Obtain a request id to use for the current request.
+
+        The request id is bumped and then returned
+
+        Returns:
+            request id to use on the current request
+
+        """
+        self.request_id += 1
+        return self.request_id
+
+    ###########################################################################
+    # prepare_to_connect
+    ###########################################################################
+    def prepare_to_connect(self) -> None:
+        """Reset the AlgoApp in preparation for connect processing.
+
+        Raises:
+            AlreadyConnected: Attempt to connect when already connected
+            DisconnectLockHeld: Attempted to connect while the disconnect lock
+                                  is held
+            MissingCatalog: Attempted to connect without the ds_catalog
+
+        """
+        if self.isConnected():
+            raise AlreadyConnected('Attempted to connect, but already '
+                                   'connected')
+
+        if self.disconnect_lock.locked():
+            raise DisconnectLockHeld('Attempted to connect while the '
+                                     'disconnect lock is held')
+        if not self.ds_catalog:
+            raise MissingCatalog('Attempted to connect without the ds_catalog')
+
+        self.request_id = 0
+        self.num_stock_symbols_received = 0
+        self.stock_symbols = pd.DataFrame()
+        self.response_complete_event.clear()
+        self.nextValidId_event.clear()
+        self.run_thread = Thread(target=self.run)
+
+    ###########################################################################
+    # connect_to_ib
+    ###########################################################################
     def connect_to_ib(self, ip_addr: str, port: int, client_id: int) -> bool:
         """Connect to IB on the given addr and port and client id.
 
@@ -140,60 +218,89 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         Returns:
             True if connect was successful, False if not
         """
+        ret_code = False  # init
+
+        self.prepare_to_connect()  # verification and initialization
+
         self.connect(ip_addr, port, client_id)
 
         logger.info('starting run thread')
-        self.run_thread.start()
+        # the following try will succeed for the first connect only
+        try:
+            self.run_thread.start()
+        except RuntimeError:  # must be a reconnect - we need a new thread
+            self.run_thread = Thread(target=self.run)
+            self.run_thread.start()
 
         # we will wait on the first requestID here for 10 seconds
-        logger.debug('id of nextValidId_event %d', id(self.nextValidId_event))
+        logger.debug('id of nextValidId_event %d',
+                     id(self.nextValidId_event))
         if not self.nextValidId_event.wait(timeout=10):  # if we timed out
             logger.debug("timed out waiting for next valid request ID")
             self.disconnect_from_ib()
-            return False
+            # ret_code = False
+            logger.info('connect failed')
+        else:
+            ret_code = True
+            logger.info('connect success')
 
-        logger.info('connect complete')
-        return True
+        return ret_code
 
+    ###########################################################################
+    # disconnect_from_ib
+    ###########################################################################
     def disconnect_from_ib(self) -> None:
         """Disconnect from ib."""
         logger.info('calling EClient disconnect')
 
-        # would like to call EClient.disconnect, but we need to wait for
-        # the reader thread to come home. the following code is from client.py
-        # with the addition of the thread join
-
-        # EClient.disconnect(self)
-
-        self.disconnect()  # call our overridden disconnect
+        self.disconnect()  # call our disconnect (overrides EClient)
 
         logger.info('join run_thread to wait for it to come home')
         self.run_thread.join()
 
         logger.info('disconnect complete')
 
-    # override client.py disconnect to add the join thread for reader
+    ###########################################################################
+    # disconnect
+    ###########################################################################
     def disconnect(self) -> None:
-        """Call this function to terminate the connections with TWS.
+        """Call this function to terminate the connections with TWS."""
+        # We would like to call EClient.disconnect, but it does not wait for
+        # the reader thread to come home which leads to problems if a connect
+        # is done immediately after the disconnect. The still running reader
+        # thread snatches the early handshaking messages and leaves the
+        # connect hanging. The following code is from client.py and is
+        # modified here to add the thread join to ensure the reader comes
+        # home before the disconnect returns.
+        # Note also the use of the disconnect lock to serialize the two known
+        # cases of disconnect being called from different threads (one from
+        # mainline through disconnect_from_ib in AlgoApp, and one from the
+        # EClient run method in the run thread.
+        call_seq = get_formatted_call_sequence()
+        logger.debug("%s entered disconnect", call_seq)
+        with self.disconnect_lock:
+            logger.debug("%s setting conn state", call_seq)
+            self.setConnState(EClient.DISCONNECTED)
+            if self.conn is not None:
+                logger.info("%s disconnecting", call_seq)
+                self.conn.disconnect()
+                self.wrapper.connectionClosed()
+                reader_id = id(self.reader)
+                my_id = get_ident()
+                my_native_id = get_native_id()
+                logger.debug('about to join reader id %d for self id %d to'
+                             ' wait for it to come home on thread %d %d',
+                             reader_id, id(self), my_id, my_native_id)
+                self.reader.join()
+                logger.debug('reader id %d came home for id(self) %d '
+                             'thread id %d %d',
+                             reader_id,
+                             id(self), my_id, my_native_id)
+                self.reset()
 
-        Calling this function does not cancel orders that have already been
-        sent.
-        """
-        self.setConnState(EClient.DISCONNECTED)
-        if self.conn is not None:
-            logger.info("disconnecting")
-            self.conn.disconnect()
-            self.wrapper.connectionClosed()
-            reader_id = id(self.reader)
-            logger.info('about to join reader id %d for self id %d to wait'
-                        ' for it to come home',
-                        reader_id, id(self))
-            self.reader.join()
-            logger.debug('reader id %d came home for id(self) %d',
-                         reader_id,
-                         id(self))
-            self.reset()
-
+    ###########################################################################
+    # symbolSamples
+    ###########################################################################
     def symbolSamples(self, request_id: int,
                       contract_descriptions: ListOfContractDescription
                       ) -> None:
@@ -229,6 +336,14 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                     desc.contract.currency == 'USD' and \
                     'OPT' in desc.derivativeSecTypes:
                 # print('    conId OK            :', desc.contract.conId)
+                # add_it = False
+                # if self.stock_symbols.empty:
+                #     add_it = True
+                # else:
+                #     if self.stock_symbols.loc[self.stock_symbols['conId']
+                #                               == desc.contract.conId].empty:
+                #         add_it = True
+                # if add_it:
                 self.stock_symbols = self.stock_symbols.append(
                     pd.DataFrame([[desc.contract.conId,
                                    desc.contract.symbol,
@@ -239,12 +354,14 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                                           'primaryExchange']))
         self.response_complete_event.set()
 
-    def get_symbols(self, start_char: str, end_char: str) -> None:
+    ###########################################################################
+    # get_symbols
+    ###########################################################################
+    def get_symbols(self, search_char: str) -> None:
         """Gets symbols and place them in the stock_symbols list.
 
         Args:
-            start_char: char to start with
-            end_char: char to end with
+            search_char: char to start with
 
         """
         # if symbols data set exists, load it and reset the index
@@ -255,26 +372,26 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             self.stock_symbols = pd.read_csv(stock_symbols_path,
                                              header=0,
                                              index_col=0)
-        for first_char in string.ascii_uppercase:
-            # The reqMatchingSymbols request looks for matching
-            # symbols based on the input string which acts as a simple pattern
-            # match similar to "string*". So, in order to get single
-            # character symbols we need to make the request with the single
-            # char, and for two char names we need to request with a two char
-            # string. We will pass in a three char string for three and more
-            # character names. Unfortunately, IB only returns about 16 symbols
-            # per request. So, we can only hope that the one char request
-            # will return all of the one char names (there may be duplicate
-            # names but for different contracts), and the same for the two
-            # and three char names. We will deal with any duplicates later
-            # after the collection is completed.
-            if first_char < start_char:
-                continue  # skip chars until we reach the start char
+        # for first_char in string.ascii_uppercase:
+        #     # The reqMatchingSymbols request looks for matching
+        #     # symbols based on the input string which acts as a simple pattern
+        #     # match similar to "string*". So, in order to get single
+        #     # character symbols we need to make the request with the single
+        #     # char, and for two char names we need to request with a two char
+        #     # string. We will pass in a three char string for three and more
+        #     # character names. Unfortunately, IB only returns about 16 symbols
+        #     # per request. So, we can only hope that the one char request
+        #     # will return all of the one char names (there may be duplicate
+        #     # names but for different contracts), and the same for the two
+        #     # and three char names. We will deal with any duplicates later
+        #     # after the collection is completed.
+        #     if first_char < start_char:
+        #         continue  # skip chars until we reach the start char
+        #
+        #     if end_char < first_char:
+        #         break  # we are done for the requested range of chars
 
-            if end_char < first_char:
-                break  # we are done for the requested range of chars
-
-            self.get_symbols_recursive(first_char)
+        self.get_symbols_recursive(search_char)
 
         #######################################################################
         # Save stock_symbols DataFrame to csv
@@ -294,6 +411,8 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.stock_symbols.to_csv(stock_symbols_path)
 
     ###########################################################################
+    # get_symbols_recursive
+    ###########################################################################
     def get_symbols_recursive(self, search_string: str) -> None:
         """Gets symbols and place them in the stock_symbols list.
 
@@ -301,13 +420,15 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             search_string: string to start with
 
         """
-        for add_char in string.ascii_uppercase:
-            longer_search_string = search_string + add_char
-            self.request_symbols(longer_search_string)
-            if self.num_stock_symbols_received > 0:  # productive obtain
-                # call recursively to get more symbols for this char sequence
+        self.request_symbols(search_string)
+        if self.num_stock_symbols_received > 0:  # productive obtain
+            # call recursively to get more symbols for this char sequence
+            for add_char in string.ascii_uppercase:
+                longer_search_string = search_string + add_char
                 self.get_symbols_recursive(longer_search_string)
 
+    ###########################################################################
+    # request_symbols
     ###########################################################################
     def request_symbols(self, symbol_to_get: str) -> None:
         """Request contract info from IB for given symbol.
@@ -318,11 +439,11 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         """
         self.response_complete_event.clear()
         logger.info('getting symbols that start with %s', symbol_to_get)
-        self.next_request_id += 1
+
         #######################################################################
         # send request to IB
         #######################################################################
-        self.reqMatchingSymbols(self.next_request_id, symbol_to_get)
+        self.reqMatchingSymbols(self.get_req_id(), symbol_to_get)
         # the following sleep for 1 second is required to avoid
         # overloading IB with requests (they ask for 1 second). Note that we
         # are doing the sleep after the request is made and before we wait
