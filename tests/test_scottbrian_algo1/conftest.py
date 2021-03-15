@@ -338,18 +338,16 @@ class MockIB:
 
         for chr1 in string.ascii_uppercase[0:17]:  # A-Q
             self.build_desc(chr1)
-            for chr2 in string.ascii_uppercase[1:4]:  # B-D
+            for chr2 in string.ascii_uppercase[1:3] + '.':  # B-C
                 self.build_desc(chr1 + chr2)
                 for chr3 in string.ascii_uppercase[2:5]:  # C-E
                     self.build_desc(chr1 + chr2 + chr3)
-                    for chr4 in string.ascii_uppercase[3:6]:  # D-F
+                    for chr4 in string.ascii_uppercase[3:5] + '.':  # D-E
                         self.build_desc(chr1 + chr2 + chr3 + chr4)
                         for chr5 in string.ascii_uppercase[4:7]:  # E-G
                             self.build_desc(chr1 + chr2 + chr3 + chr4 +
                                             chr5)
-                            for chr6 in string.ascii_uppercase[5:8]:  # F-H
-                                self.build_desc(chr1 + chr2 + chr3 + chr4
-                                                + chr5 + chr6)
+
         logger.info('built mock_con_descs DataFrame with %d entries',
                     len(self.contract_descriptions))
         # diag_msg('built contract descriptors:', self.contract_descriptions)
@@ -462,14 +460,14 @@ def nonexistent_symbol_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_1_arg_list = ['IBCDEF',
-                                   'ICDEFG',
-                                   'IDEFGH',
-                                   'JBCDEF',
-                                   'JDDDGH',
-                                   'KCCFFF',
-                                   'LDDDGH',
-                                   'LCCFFF'
+symbol_pattern_match_1_arg_list = ['IBCDE',
+                                   'ICDEF',
+                                   'I.E.G',
+                                   'JBCDE',
+                                   'J.DDG',
+                                   'KCCEF',
+                                   'L.DDG',
+                                   'LCC.F'
                                    ]
 
 
@@ -485,15 +483,15 @@ def symbol_pattern_match_1_arg(request: Any) -> str:
     """
     return cast(str, request.param)
 
-symbol_pattern_match_2_arg_list = ['MBCDEF',
-                                   'MCDEFG',
-                                   'MDEFGH',
-                                   'MBCDEF',
-                                   'MDDDGH',
-                                   'NCCFFF',
-                                   'NBCDEF',
-                                   'NDDDGH',
-                                   'NCCFFF'
+symbol_pattern_match_2_arg_list = ['MBCDE',
+                                   'MCDEF',
+                                   'MDE.G',
+                                   'MBCDE',
+                                   'M.DDG',
+                                   'NCC.F',
+                                   'NBCDE',
+                                   'N.DDG',
+                                   'NCCEF'
                                    ]
 
 
@@ -510,12 +508,12 @@ def symbol_pattern_match_2_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_3_arg_list = ['OBCDEF',
-                                   'OCDEFG',
-                                   'ODEFGH',
-                                   'OBCDEF',
-                                   'ODDDGH',
-                                   'OCCFFF'
+symbol_pattern_match_3_arg_list = ['OBCDE',
+                                   'OCDEF',
+                                   'O.EEG',
+                                   'OBCDE',
+                                   'O.DDG',
+                                   'OCC.F'
                                    ]
 
 
@@ -532,21 +530,21 @@ def symbol_pattern_match_3_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_4_arg_list = ['IBCDE',
-                                   'ICDEF',
-                                   'IDEFG',
-                                   'ICCFF',
-                                   'JBCDE',
-                                   'JCDEF',
-                                   'JDEFG',
-                                   'JCCFF',
-                                   'KBCDE',
-                                   'KCDEF',
-                                   'KDEFG',
-                                   'KCCFF',
-                                   'LCDEF',
-                                   'LDEFG',
-                                   'LCCFF'
+symbol_pattern_match_4_arg_list = ['IBCD',
+                                   'ICDE',
+                                   'I.EE',
+                                   'ICCE',
+                                   'JBCD',
+                                   'JCDE',
+                                   'J.EE',
+                                   'JCCE',
+                                   'KBCD',
+                                   'KCDE',
+                                   'K.EE',
+                                   'KCCE',
+                                   'LCDE',
+                                   'L.EE',
+                                   'LCCE'
                                    ]
 
 
@@ -563,13 +561,13 @@ def symbol_pattern_match_4_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_8_arg_list = ['MBCDE',
-                                   'MCDEF',
-                                   'MDEFG',
-                                   'MDDDG',
-                                   'NBCDE',
-                                   'NDDDG',
-                                   'NCCFF'
+symbol_pattern_match_8_arg_list = ['MBCD',
+                                   'MCDE',
+                                   'M.E.',
+                                   'M.DD',
+                                   'NBCD',
+                                   'N.DD',
+                                   'NCCE'
                                    ]
 
 
@@ -586,11 +584,11 @@ def symbol_pattern_match_8_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_12_arg_list = ['OBCDE',
-                                    'OCDEF',
-                                    'ODEFG',
-                                    'ODDDG',
-                                    'OCCFF'
+symbol_pattern_match_12_arg_list = ['OBCD',
+                                    'OCDE',
+                                    'O.EE',
+                                    'O.DD',
+                                    'OCCE'
                                    ]
 
 
@@ -607,11 +605,11 @@ def symbol_pattern_match_12_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_16_arg_list = ['PBCDE',
-                                    'PCDEF',
-                                    'PDEFG',
-                                    'PCCFF',
-                                    'PDDDG',
+symbol_pattern_match_16_arg_list = ['PBCD',
+                                    'PCDE',
+                                    'P.EE',
+                                    'PCC.',
+                                    'P.DD',
                                     ]
 
 
@@ -628,11 +626,11 @@ def symbol_pattern_match_16_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_20_arg_list = ['QBCDE',
-                                    'QCDEF',
-                                    'QDEFG',
-                                    'QCCFF',
-                                    'QDDDG',
+symbol_pattern_match_20_arg_list = ['QBCD',
+                                    'QCDE',
+                                    'Q.EE',
+                                    'QCCE',
+                                    'Q.DD',
                                     ]
 
 
@@ -649,14 +647,14 @@ def symbol_pattern_match_20_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_0_arg_list = ['IBCDEFA',
-                                   'ICDEFGB',
-                                   'IDEFGHC',
-                                   'JBCDEFD',
-                                   'JDDDGHE',
-                                   'KCCFFFF',
-                                   'LDDDGHG',
-                                   'LCCFFFH'
+symbol_pattern_match_0_arg_list = ['IBCDEF',
+                                   'ICDEFG',
+                                   'IDEFGH',
+                                   'JBCDEF',
+                                   'JDDDGH',
+                                   'KCCFFF',
+                                   'LDDDGH',
+                                   'LCCFFF'
                                    ]
 
 
@@ -676,9 +674,15 @@ def symbol_pattern_match_0_arg(request: Any) -> str:
 get_symbols_search_char_list = ['A',
                                 'B',
                                 'J',
-                                'L']
+                                'K',
+                                'L',
+                                'M',
+                                'N',
+                                'O',
+                                'P'
+                                ]
 
-
+# get_symbols_search_char_list = ['J']
 @pytest.fixture(params=get_symbols_search_char_list)  # type: ignore
 def get_symbols_search_char_arg(request: Any) -> str:
     """Provide single char to use for get_symbols test.

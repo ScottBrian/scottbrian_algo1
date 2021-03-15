@@ -5,9 +5,11 @@
 # import sys
 # from pathlib import Path
 import numpy as np
+import pandas as pd
 import string
+import math
 
-from typing import Any  # Callable, cast, Tuple, Union
+from typing import Any, Tuple  # Callable, cast, Tuple, Union
 # from typing_extensions import Final
 
 # from ibapi.contract import ContractDescription
@@ -70,7 +72,8 @@ def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
 def verify_match_symbols(algo_app: "AlgoApp",
                          mock_ib: Any,
                          pattern: str,
-                         exp_num_matches: int,
+                         exp_num_recursive_matches: int,
+                         exp_num_non_recursive_matches: int,
                          req_type: int = 1) -> None:
     """Verify that we find symbols correctly
 
@@ -78,7 +81,8 @@ def verify_match_symbols(algo_app: "AlgoApp",
         algo_app: instance of AlgoApp from conftest pytest fixture
         mock_ib: pytest fixture of contract_descriptions
         pattern: symbols to use for searching
-        exp_num_matches: number of matches expected
+        exp_num_recursive_matches: number of matches expected
+        exp_num_non_recursive_matches: num expected for req_type 1
         req_type: indicates which request to do
 
     """
@@ -113,26 +117,65 @@ def verify_match_symbols(algo_app: "AlgoApp",
             ]
 
         logger.debug("verifying results counts")
-        if exp_num_matches <= 16:
-            diag_msg(algo_app.stock_symbols)
-            diag_msg(match_descs)
-            assert (len(algo_app.stock_symbols)
-                    == len(match_descs)
-                    == exp_num_matches)
+        # if (exp_num_matches <= 16) or (req_type == 3):
+        #     # diag_msg('len(algo_app.stock_symbols):',
+        #     #          len(algo_app.stock_symbols))
+        #     # diag_msg(algo_app.stock_symbols)
+        #     # diag_msg('len(match_descs):',
+        #     #          len(match_descs))
+        #     # diag_msg(match_descs)
+        #     assert (len(algo_app.stock_symbols)
+        #             == len(match_descs)
+        #             == exp_num_matches)
+        # else:
+        #     # diag_msg('len(algo_app.stock_symbols):',
+        #     #          len(algo_app.stock_symbols))
+        #     # diag_msg(algo_app.stock_symbols)
+        #     # diag_msg('len(match_descs):',
+        #     #          len(match_descs))
+        #     # diag_msg(match_descs)
+        diag_msg('len(algo_app.stock_symbols):', len(algo_app.stock_symbols))
+        diag_msg(algo_app.stock_symbols)
+        diag_msg('len(match_descs):', len(match_descs))
+        diag_msg(match_descs)
+        if req_type == 1:
+            assert len(algo_app.stock_symbols) == exp_num_non_recursive_matches
+            assert len(match_descs) == exp_num_recursive_matches
         else:
-            assert len(algo_app.stock_symbols) == 16
-            assert len(match_descs) == exp_num_matches
+            assert len(algo_app.stock_symbols) == exp_num_recursive_matches
+            assert len(match_descs) == exp_num_recursive_matches
 
         logger.debug("verifying results match DataFrame")
-        if exp_num_matches > 0:
+        if exp_num_recursive_matches > 0:
             match_descs = match_descs.drop(columns=['secType',
                                                     'currency',
                                                     'derivative_types'])
 
-            if req_type < 3:
-                match_descs = match_descs.iloc[0:16]
+            if req_type == 1:
+                match_descs = match_descs.iloc[0:exp_num_non_recursive_matches]
+            match_descs = match_descs.set_index(
+                ['conId']).sort_index()
+            diag_msg('len(match_descs) 2:', len(match_descs))
+            diag_msg(match_descs)
+
+            if req_type != 3:
+                # algo_app.stock_symbols.drop_duplicates(inplace=True)
+                algo_app.stock_symbols = algo_app.stock_symbols.set_index(
+                        ['conId']).sort_index()
             comp_df = algo_app.stock_symbols.compare(match_descs)
             assert comp_df.empty
+
+            # check the data set for req_type 3
+            if req_type == 3:
+                stock_symbols_path = algo_app.ds_catalog.get_path('symbols')
+                logger.info('path: %s', stock_symbols_path)
+
+                stock_symbols_ds = pd.read_csv(stock_symbols_path,
+                                               header=0,
+                                               index_col=0)
+                comp_df = algo_app.stock_symbols.compare(stock_symbols_ds)
+                assert comp_df.empty
+
         logger.debug("all results verified for req_type %d", req_type)
 
     finally:
@@ -160,7 +203,7 @@ def if_opt_in_derivative_types(df: Any) -> Any:
     return ret_array
 
 
-def get_exp_number(search_char: str, mock_ib: Any) -> int:
+def get_exp_number(search_char: str, mock_ib: Any) -> Tuple[int, int]:
     """Helper function to get number of expected symbols.
 
     Args:
@@ -169,13 +212,18 @@ def get_exp_number(search_char: str, mock_ib: Any) -> int:
 
     """
     if search_char in string.ascii_uppercase[0:8]:  # A-H
-        return 0
+        return 0, 0
     count = 0
-    combo = mock_ib.get_combo(search_char)
+    combo = mock_ib.get_combos(search_char)
+
     for item in combo:
         if item[0] == 'STK' and item[2] == 'USD' and 'OPT' in item[3]:
             count += 1
-    return count * (1 + 3**5)
+    num_expected_for_recursive = count * (1 + 3 + 3**2 + 3**3 + 3**4)
+    num_expected_for_non_recursive = \
+        math.ceil(min(16, num_expected_for_recursive) * (count/len(combo)))
+
+    return num_expected_for_recursive, num_expected_for_non_recursive
 
 
 class TestAlgoApp:
@@ -275,11 +323,17 @@ class TestAlgoApp:
 
         """
         verify_algo_app_initialized(algo_app)
+        num_expected_for_recursive = 0
+        num_expected_for_non_recursive = 0
         # verify symbol table has zero entries for the symbol
         verify_match_symbols(algo_app,
                              mock_ib,
                              nonexistent_symbol_arg,
-                             exp_num_matches=0)
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
+                             req_type=1)
 
     def test_request_symbols_zero_result(self,
                                         algo_app: "AlgoApp",
@@ -300,19 +354,27 @@ class TestAlgoApp:
 
         """
         verify_algo_app_initialized(algo_app)
-
+        num_expected_for_recursive = 0
+        num_expected_for_non_recursive = 0
         # verify symbol table has zero entries for the symbol
         logger.debug("calling verify_match_symbols req_type 1")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_0_arg,
-                             exp_num_matches=0)
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
+                             req_type=1)
 
         logger.debug("calling verify_match_symbols req_type 2")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_0_arg,
-                             exp_num_matches=0,
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
                              req_type=2)
 
     def test_request_symbols_one_result(self,
@@ -334,18 +396,27 @@ class TestAlgoApp:
 
         """
         verify_algo_app_initialized(algo_app)
+        num_expected_for_recursive = 1
+        num_expected_for_non_recursive = 1
         # verify symbol table has one entry for the symbol
         logger.debug("calling verify_match_symbols req_type 1")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_1_arg,
-                             exp_num_matches=1)
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
+                             req_type=1)
 
         logger.debug("calling verify_match_symbols req_type 2")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_1_arg,
-                             exp_num_matches=1,
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
                              req_type=2)
 
     def test_request_symbols_two_result(self,
@@ -362,18 +433,27 @@ class TestAlgoApp:
 
         """
         verify_algo_app_initialized(algo_app)
+        num_expected_for_recursive = 2
+        num_expected_for_non_recursive = 2
         # verify symbol table has 2 entries for the symbol
         logger.debug("calling verify_match_symbols req_type 1")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_2_arg,
-                             exp_num_matches=2)
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
+                             req_type=1)
 
         logger.debug("calling verify_match_symbols req_type 2")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_2_arg,
-                             exp_num_matches=2,
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
                              req_type=2)
 
     def test_request_symbols_three_result(self,
@@ -390,19 +470,27 @@ class TestAlgoApp:
 
         """
         verify_algo_app_initialized(algo_app)
-
+        num_expected_for_recursive = 3
+        num_expected_for_non_recursive = 3
         # verify symbol table has 3 entries for the symbol
         logger.debug("calling verify_match_symbols req_type 1")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_3_arg,
-                             exp_num_matches=3)
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
+                             req_type=1)
 
         logger.debug("calling verify_match_symbols req_type 2")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_3_arg,
-                             exp_num_matches=3,
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
                              req_type=2)
 
     def test_request_symbols_four_result(self,
@@ -419,19 +507,27 @@ class TestAlgoApp:
 
         """
         verify_algo_app_initialized(algo_app)
-
+        num_expected_for_recursive = 4
+        num_expected_for_non_recursive = 4
         # verify symbol table has 4 entries for the symbol
         logger.debug("calling verify_match_symbols req_type 1")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_4_arg,
-                             exp_num_matches=4)
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
+                             req_type=1)
 
         logger.debug("calling verify_match_symbols req_type 2")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_4_arg,
-                             exp_num_matches=4,
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
                              req_type=2)
 
     def test_request_symbols_eight_result(self,
@@ -448,19 +544,27 @@ class TestAlgoApp:
 
         """
         verify_algo_app_initialized(algo_app)
-
+        num_expected_for_recursive = 8
+        num_expected_for_non_recursive = 8
         # verify symbol table has 8 entries for the symbol
         logger.debug("calling verify_match_symbols req_type 1")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_8_arg,
-                             exp_num_matches=8)
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
+                             req_type=1)
 
         logger.debug("calling verify_match_symbols req_type 2")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_8_arg,
-                             exp_num_matches=8,
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
                              req_type=2)
 
     def test_request_symbols_twelve_result(self,
@@ -477,19 +581,27 @@ class TestAlgoApp:
 
         """
         verify_algo_app_initialized(algo_app)
-
+        num_expected_for_recursive = 12
+        num_expected_for_non_recursive = 12
         # verify symbol table has 12 entries for the symbol
         logger.debug("calling verify_match_symbols req_type 1")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_12_arg,
-                             exp_num_matches=12)
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
+                             req_type=1)
 
         logger.debug("calling verify_match_symbols req_type 2")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_12_arg,
-                             exp_num_matches=12,
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
                              req_type=2)
 
     def test_request_symbols_sixteen_result(self,
@@ -506,19 +618,27 @@ class TestAlgoApp:
 
         """
         verify_algo_app_initialized(algo_app)
-
+        num_expected_for_recursive = 16
+        num_expected_for_non_recursive = 16
         # verify symbol table has 16 entries for the symbol
         logger.debug("calling verify_match_symbols req_type 1")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_16_arg,
-                             exp_num_matches=16)
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
+                             req_type=1)
 
         logger.debug("calling verify_match_symbols req_type 2")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_16_arg,
-                             exp_num_matches=16,
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
                              req_type=2)
 
     def test_request_symbols_twenty_result(self,
@@ -535,19 +655,27 @@ class TestAlgoApp:
 
         """
         verify_algo_app_initialized(algo_app)
-
+        num_expected_for_recursive = 20
+        num_expected_for_non_recursive = 16
         # verify symbol table has 16/20 entries for the symbol
         logger.debug("calling verify_match_symbols req_type 1")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_20_arg,
-                             exp_num_matches=20)
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
+                             req_type=1)
 
         logger.debug("calling verify_match_symbols req_type 2")
         verify_match_symbols(algo_app,
                              mock_ib,
                              symbol_pattern_match_20_arg,
-                             exp_num_matches=20,
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
                              req_type=2)
 
     def test_get_symbols(self,
@@ -563,25 +691,36 @@ class TestAlgoApp:
 
         """
         verify_algo_app_initialized(algo_app)
-        exp_count = get_exp_number(get_symbols_search_char_arg, mock_ib)
+        num_expected_for_recursive, num_expected_for_non_recursive = \
+            get_exp_number(get_symbols_search_char_arg, mock_ib)
 
-        # verify symbol table has 16/20 entries for the symbol
+        # verify symbol table has correct entries for the symbol
         logger.debug("calling verify_match_symbols req_type 1")
         verify_match_symbols(algo_app,
                              mock_ib,
                              get_symbols_search_char_arg,
-                             exp_num_matches=exp_count)
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
+                             req_type=1)
 
         logger.debug("calling verify_match_symbols req_type 2")
         verify_match_symbols(algo_app,
                              mock_ib,
                              get_symbols_search_char_arg,
-                             exp_num_matches=exp_count,
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
                              req_type=2)
 
         logger.debug("calling verify_match_symbols req_type 3")
         verify_match_symbols(algo_app,
                              mock_ib,
                              get_symbols_search_char_arg,
-                             exp_num_matches=exp_count,
+                             exp_num_recursive_matches=
+                             num_expected_for_recursive,
+                             exp_num_non_recursive_matches=
+                             num_expected_for_non_recursive,
                              req_type=3)

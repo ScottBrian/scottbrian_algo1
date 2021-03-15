@@ -398,14 +398,15 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         #######################################################################
         logger.info('Symbols obtained')
         logger.info('Number of entries before drop dups, index and sort: %d',
-                    self.stock_symbols.shape)
+                    len(self.stock_symbols))
 
-        self.stock_symbols.drop_duplicates(inplace=True)
-        self.stock_symbols = self.stock_symbols.set_index(
-            ['conId']).sort_index()
+        if not self.stock_symbols.empty:
+            self.stock_symbols.drop_duplicates(inplace=True)
+            self.stock_symbols = self.stock_symbols.set_index(
+                ['conId']).sort_index()
 
         logger.info('Number of entries after drop dups, index, and sort: %d',
-                    self.stock_symbols.shape)
+                    len(self.stock_symbols))
 
         logger.info('saving stock_symbols DataFrame to csv')
         self.stock_symbols.to_csv(stock_symbols_path)
@@ -421,9 +422,9 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         """
         self.request_symbols(search_string)
-        if self.num_stock_symbols_received > 0:  # productive obtain
+        if self.num_stock_symbols_received > 15:  # possibly more to find
             # call recursively to get more symbols for this char sequence
-            for add_char in string.ascii_uppercase:
+            for add_char in string.ascii_uppercase + '.':
                 longer_search_string = search_string + add_char
                 self.get_symbols_recursive(longer_search_string)
 
