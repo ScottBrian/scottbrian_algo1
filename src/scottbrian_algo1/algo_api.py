@@ -93,13 +93,15 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.disconnect_lock = Lock()
         self.ds_catalog = ds_catalog
         self.request_id: int = 0
+
+        # stock symbols
+        self.symbols_status = pd.DataFrame()
         self.num_stock_symbols_received = 0
-        self.stock_symbols = pd.DataFrame(columns=['conId',
-                                                   'symbol',
-                                                   'primaryExchange'])
+        self.stock_symbols = pd.DataFrame()
+
         self.response_complete_event = Event()
         self.nextValidId_event = Event()
-        self.run_thread = None
+        self.run_thread = Thread(target=self.run)
 
     ###########################################################################
     # __repr__
@@ -132,7 +134,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     # error
     ###########################################################################
     def error(self, reqId: int, errorCode: int, errorString: str) -> None:
-
         """Receive error from IB and print it.
 
         Args:
@@ -202,7 +203,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.stock_symbols = pd.DataFrame()
         self.response_complete_event.clear()
         self.nextValidId_event.clear()
-        self.run_thread = Thread(target=self.run)
 
     ###########################################################################
     # connect_to_ib
@@ -357,40 +357,63 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     ###########################################################################
     # get_symbols
     ###########################################################################
-    def get_symbols(self, search_char: str) -> None:
-        """Gets symbols and place them in the stock_symbols list.
+    def get_symbols(self) -> None:
+        """Gets symbols and place them in the stock_symbols list."""
+        # get_symbols is the starting point to the reqMatchingSymbols request
+        # to ib. Input to reqMatchingSymbols is a pattern which is used to
+        # find symbols. The pattern acts similar to a "string*" where the
+        # asterisk acts as a wild card. So, a pattern such as "A" will return
+        # any symbols that start with "A", such as "A" and "AB". There are
+        # symbols that have the same name but are for different securities.
+        # IB documentation says that at most 16 symbols will be returned that
+        # are found with the pattern. So, in order to get all symbols that
+        # start with "A", we need to try asking for symbols that start with
+        # "A", "AB", "AC", "ABC", etc.., to ensure we find as many as we can
+        # given the 16 symbols limit per request.
+        # Another point is that we need to limit each reqMatchingSymbols to
+        # no more than one request per second. Given the possibility of over
+        # 500,000 existing symbols, and getting those at 16 per second, trying
+        # to get everything will take almost 9 hours. So, we only attempt to
+        # get all symbols that start with one character at a time which should
+        # take about 20 minutes.We will start by loading a csv file that
+        # contains each letter of the alphabet and a date of when the symbols
+        # that start with that letter have last been obtained. The idea is
+        # that we can call this method once per day and it will go after the
+        # the symbols that were least recently loaded, thus maintaining a
+        # fairly up-to-date list.
 
-        Args:
-            search_char: char to start with
-
-        """
-        # if symbols data set exists, load it and reset the index
-        stock_symbols_path = self.ds_catalog.get_path('symbols')
+        #######################################################################
+        # if stock_symbols data set exists, load it and reset the index
+        #######################################################################
+        stock_symbols_path = self.ds_catalog.get_path('stock_symbols')
         logger.info('path: %s', stock_symbols_path)
 
         if stock_symbols_path.exists():
             self.stock_symbols = pd.read_csv(stock_symbols_path,
                                              header=0,
                                              index_col=0)
-        # for first_char in string.ascii_uppercase:
-        #     # The reqMatchingSymbols request looks for matching
-        #     # symbols based on the input string which acts as a simple pattern
-        #     # match similar to "string*". So, in order to get single
-        #     # character symbols we need to make the request with the single
-        #     # char, and for two char names we need to request with a two char
-        #     # string. We will pass in a three char string for three and more
-        #     # character names. Unfortunately, IB only returns about 16 symbols
-        #     # per request. So, we can only hope that the one char request
-        #     # will return all of the one char names (there may be duplicate
-        #     # names but for different contracts), and the same for the two
-        #     # and three char names. We will deal with any duplicates later
-        #     # after the collection is completed.
-        #     if first_char < start_char:
-        #         continue  # skip chars until we reach the start char
-        #
-        #     if end_char < first_char:
-        #         break  # we are done for the requested range of chars
 
+        #######################################################################
+        # load or create the symbols_status ds
+        #######################################################################
+        symbols_status_path = self.ds_catalog.get_path('symbols_status')
+        logger.info('symbols_status_path: %s', symbols_status_path)
+
+        if symbols_status_path.exists():
+            self.symbols_status = pd.read_csv(symbols_status_path,
+                                              header=0,
+                                              index_col=0)
+        else:
+            self.symbols_status = pd.DataFrame(list(string.ascii_uppercase),
+                                               columns=['AlphaChar'],
+                                               index=pd.date_range("20000101",
+                                                                   periods=26,
+                                                                   freq="S"))
+        #######################################################################
+        # Get the next single uppercase letter and do the search.
+        # The response from ib is handled by symbolSamples wrapper method
+        #######################################################################
+        search_char = self.symbols_status.iloc[0, 0]  # fix this
         self.get_symbols_recursive(search_char)
 
         #######################################################################
@@ -410,6 +433,18 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         logger.info('saving stock_symbols DataFrame to csv')
         self.stock_symbols.to_csv(stock_symbols_path)
+
+        #######################################################################
+        # Update and save symbols_status DataFrame to csv. The timestamp
+        # is updated to 'now' for the letter we just searched and then the ds
+        # is sorted to put that entry last and move the next letter to
+        # processed into the first slot for next time we call this method.
+        #######################################################################
+        self.symbols_status.index = [pd.Timestamp.now()] \
+            + self.symbols_status.index.to_list()[1:]
+        self.symbols_status.sort_index(inplace=True)
+        logger.info('saving symbols_status DataFrame to csv')
+        self.symbols_status.to_csv(symbols_status_path)
 
     ###########################################################################
     # get_symbols_recursive
@@ -462,35 +497,35 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 #                            )
 
 # @time_box
-# def main():
-#     ds_catalog = FileCatalog()
-#
-#     try:
-#         algo_app = AlgoApp(ds_catalog)
-#
-#         algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
-#
-#         print("serverVersion:%s connectionTime:%s" %
-#         (algo_app.serverVersion(),
-#         algo_app.twsConnectionTime()))
-#     except:
-#         raise
-#
-#     print('get_stock_symbols:main about to sleep 2 seconds')
-#     time.sleep(2)
-#     print('SBT get_stock_symbols:main about to wait on nextValidId_event')
-#     algo_app.nextValidId_event.wait()
-#     print('SBT get_stock_symbols:main about to call get_symbols')
-#     # algo_app.get_symbols(start_char='A', end_char='A')
-#     # algo_app.get_symbols(start_char='B', end_char='B')
-#
-#     algo_app.request_symbols('SWKS')
-#
-#     algo_app.disconnect()
-#     print('get_stock_symbols: main About to sleep for 2 seconds before exit')
-#     time.sleep(2)
-#     print('get_stock_symbols: main exiting')
-#
-#
-# if __name__ == "__main__":
-#     main()
+def main():
+    ds_catalog = FileCatalog()
+
+    try:
+        algo_app = AlgoApp(ds_catalog)
+        algo_app.create_symbol_status_ds()
+        # algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+        #
+        # print("serverVersion:%s connectionTime:%s" %
+        # (algo_app.serverVersion(),
+        # algo_app.twsConnectionTime()))
+    except:
+        raise
+
+    # print('get_stock_symbols:main about to sleep 2 seconds')
+    # time.sleep(2)
+    # print('SBT get_stock_symbols:main about to wait on nextValidId_event')
+    # algo_app.nextValidId_event.wait()
+    # print('SBT get_stock_symbols:main about to call get_symbols')
+    # # algo_app.get_symbols(start_char='A', end_char='A')
+    # # algo_app.get_symbols(start_char='B', end_char='B')
+    #
+    # algo_app.request_symbols('SWKS')
+    #
+    # algo_app.disconnect()
+    # print('get_stock_symbols: main About to sleep for 2 seconds before exit')
+    # time.sleep(2)
+    # print('get_stock_symbols: main exiting')
+
+
+if __name__ == "__main__":
+    main()

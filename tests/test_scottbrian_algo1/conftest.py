@@ -16,7 +16,7 @@ from ibapi.errors import FAIL_CREATE_SOCK
 
 from scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_utils.file_catalog import FileCatalog
-from scottbrian_utils.diag_msg import diag_msg
+# from scottbrian_utils.diag_msg import diag_msg
 import queue
 from pathlib import Path
 import logging
@@ -40,6 +40,7 @@ def algo_app(monkeypatch: Any,
 
     Args:
         monkeypatch: pytest fixture used to modify code for testing
+        tmp_path: pytest fixture for providing a temporary path
         mock_ib: mock of some section of ibapi used for testing
 
     Returns:
@@ -158,8 +159,10 @@ def algo_app(monkeypatch: Any,
 
     d = tmp_path / "t_files"
     d.mkdir()
-    p = d / "symbols.csv"
-    catalog = FileCatalog({'symbols': p})
+    stock_symbols_path = d / "stock_symbols.csv"
+    symbol_status_path = d / "symbol_status.csv"
+    catalog = FileCatalog({'stock_symbols': stock_symbols_path,
+                           'symbols_status': symbol_status_path})
 
     a_algo_app = AlgoApp(catalog)
     return a_algo_app
@@ -483,9 +486,10 @@ def symbol_pattern_match_1_arg(request: Any) -> str:
     """
     return cast(str, request.param)
 
+
 symbol_pattern_match_2_arg_list = ['MBCDE',
                                    'MCDEF',
-                                   'MDE.G',
+                                   'M.E.G',
                                    'MBCDE',
                                    'M.DDG',
                                    'NCC.F',
@@ -589,7 +593,7 @@ symbol_pattern_match_12_arg_list = ['OBCD',
                                     'O.EE',
                                     'O.DD',
                                     'OCCE'
-                                   ]
+                                    ]
 
 
 @pytest.fixture(params=symbol_pattern_match_12_arg_list)  # type: ignore
@@ -679,10 +683,11 @@ get_symbols_search_char_list = ['A',
                                 'M',
                                 'N',
                                 'O',
-                                'P'
+                                'P',
+                                'Q'
                                 ]
 
-# get_symbols_search_char_list = ['J']
+
 @pytest.fixture(params=get_symbols_search_char_list)  # type: ignore
 def get_symbols_search_char_arg(request: Any) -> str:
     """Provide single char to use for get_symbols test.
