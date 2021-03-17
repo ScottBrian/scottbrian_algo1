@@ -1,7 +1,7 @@
 """test_algo_api.py module."""
 
 # from datetime import datetime, timedelta
-# import pytest
+import pytest
 # import sys
 # from pathlib import Path
 import numpy as np
@@ -14,8 +14,10 @@ from typing import Any, Tuple  # Callable, cast, Tuple, Union
 
 # from ibapi.contract import ContractDescription
 
-from scottbrian_algo1.algo_api import AlgoApp
-from scottbrian_utils.diag_msg import diag_msg
+from scottbrian_algo1.algo_api import AlgoApp, AlreadyConnected, \
+    DisconnectLockHeld, ConnectTimeout
+
+# from scottbrian_utils.diag_msg import diag_msg
 # from scottbrian_utils.file_catalog import FileCatalog
 # from datetime import datetime
 import logging
@@ -89,7 +91,9 @@ def verify_match_symbols(algo_app: "AlgoApp",
     """
     try:
         logger.debug("about to connect")
-        assert algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+        algo_app.connect_to_ib("127.0.0.1",
+                               algo_app.PORT_FOR_LIVE_TRADING,
+                               client_id=0)
         verify_algo_app_connected(algo_app)
 
         # make request for symbol that will be returned
@@ -140,8 +144,7 @@ def verify_match_symbols(algo_app: "AlgoApp",
             # diag_msg('len(match_descs) 2:', len(match_descs))
             # diag_msg(match_descs)
 
-            algo_app.stock_symbols = algo_app.stock_symbols.set_index(
-                        ['conId']).sort_index()
+            algo_app.stock_symbols.sort_index(inplace=True)
             comp_df = algo_app.stock_symbols.compare(match_descs)
             assert comp_df.empty
 
@@ -182,7 +185,7 @@ def get_exp_number(search_char: str, mock_ib: Any) -> Tuple[int, int]:
     Returns:
         number of expected matches for recursive and non-recursive requests
     """
-    if search_char in string.ascii_uppercase[0:8]:  # A-H
+    if search_char not in string.ascii_uppercase[8:17]:  # I to Q, inclusive
         return 0, 0
     count = 0
     combo = mock_ib.get_combos(search_char)
@@ -190,17 +193,94 @@ def get_exp_number(search_char: str, mock_ib: Any) -> Tuple[int, int]:
     for item in combo:
         if item[0] == 'STK' and item[2] == 'USD' and 'OPT' in item[3]:
             count += 1
-    num_exp_recursive = count * (1 + 3 + 3**2 + 3**3 + 3**4)
+    num_exp_recursive = count * (1 + 3 + 3**2 + 3**3)
     num_exp_non_recursive = \
         math.ceil(min(16, num_exp_recursive) * (count/len(combo)))
 
     return num_exp_recursive, num_exp_non_recursive
 
 
+def verify_get_symbols(letter: str,
+                       algo_app: "AlgoApp",
+                       mock_ib: Any,
+                       full_match_descs: Any,
+                       stock_symbols_ds: Any) -> Tuple[Any, Any]:
+    """Verify get_symbols.
+
+    Args:
+        letter: the single letter we are collecting symbols for
+        algo_app: instance of AlgoApp from conftest pytest fixture
+        mock_ib: pytest fixture of contract_descriptions
+        full_match_descs: DataFrame of cumulative symbols
+        stock_symbols_ds: DataFrame of last copy of stock_symbols
+
+    Returns:
+        updated full_match_descs and stock_symbols_ds DataFrames
+
+    """
+    if letter != 'A':
+        # verify the symbol_status ds
+        symbols_status_path = \
+            algo_app.ds_catalog.get_path('symbols_status')
+        logger.info('symbols_status_path: %s', symbols_status_path)
+
+        assert symbols_status_path.exists()
+        symbols_status = pd.read_csv(symbols_status_path,
+                                     header=0,
+                                     index_col=0)
+        test_letter = symbols_status.iloc[0, 0]
+        assert test_letter == letter
+
+    num_exp_recursive, num_exp_non_recursive = \
+        get_exp_number(letter, mock_ib)
+    logger.debug("about to get_symbols for %s", letter)
+    algo_app.get_symbols()
+    assert algo_app.request_id >= 2
+
+    logger.debug("getting match_descs for %s", letter)
+    match_descs = mock_ib.contract_descriptions.loc[
+        (mock_ib.contract_descriptions['symbol'].str.
+         startswith(letter))
+        & (mock_ib.contract_descriptions['secType'] == 'STK')
+        & (mock_ib.contract_descriptions['currency'] == 'USD')
+        & (if_opt_in_derivative_types(
+            mock_ib.contract_descriptions))
+        ]
+    # we expect the stock_symbols to accumulate and grow, so the
+    # number should now be what was there from the previous
+    # iteration of this loop and what we just now added
+    assert len(match_descs) == num_exp_recursive
+    assert len(algo_app.stock_symbols) == num_exp_recursive \
+           + len(stock_symbols_ds)
+
+    if num_exp_recursive > 0:
+        match_descs = \
+            match_descs.drop(columns=['secType',
+                                      'currency',
+                                      'derivative_types'])
+        match_descs = match_descs.set_index(
+            ['conId']).sort_index()
+        full_match_descs = full_match_descs.append(match_descs)
+        full_match_descs.sort_index(inplace=True)
+
+        # check the data set
+        stock_symbols_path = \
+            algo_app.ds_catalog.get_path('stock_symbols')
+        logger.info('stock_symbols_path: %s', stock_symbols_path)
+
+        stock_symbols_ds = pd.read_csv(stock_symbols_path,
+                                       header=0,
+                                       index_col=0)
+        comp_df = algo_app.stock_symbols.compare(stock_symbols_ds)
+        assert comp_df.empty
+
+    return full_match_descs, stock_symbols_ds
+
+
 class TestAlgoApp:
     """TestAlgoApp class."""
 
-    def test_mock_connect_to_IB(self,
+    def test_mock_connect_to_ib(self,
                                 algo_app: "AlgoApp"
                                 ) -> None:
         """Test connecting to IB.
@@ -215,7 +295,9 @@ class TestAlgoApp:
         # control as a result, such as getting the first requestID and then
         # starting a separate thread for the run loop.
         logger.debug("about to connect")
-        assert algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+        algo_app.connect_to_ib("127.0.0.1",
+                               algo_app.PORT_FOR_LIVE_TRADING,
+                               client_id=0)
 
         # verify that algo_app is connected and alive with a valid reqId
         verify_algo_app_connected(algo_app)
@@ -238,12 +320,73 @@ class TestAlgoApp:
 
         # we are testing connect_to_ib with a simulated timeout
         logger.debug("about to connect")
-        assert not algo_app.connect_to_ib("127.0.0.1",
-                                          mock_ib.PORT_FOR_REQID_TIMEOUT,
-                                          client_id=0)
+        with pytest.raises(ConnectTimeout):
+            algo_app.connect_to_ib("127.0.0.1",
+                                   mock_ib.PORT_FOR_REQID_TIMEOUT,
+                                   client_id=0)
+
         # verify that algo_app is not connected
         verify_algo_app_disconnected(algo_app)
         assert algo_app.request_id == 0
+
+    def test_connect_to_ib_already_connected(self,
+                                             algo_app: "AlgoApp",
+                                             mock_ib: Any
+                                             ) -> None:
+        """Test connecting to IB.
+
+        Args:
+            algo_app: pytest fixture instance of AlgoApp (see conftest.py)
+            mock_ib: pytest fixture of contract_descriptions
+
+        """
+        verify_algo_app_initialized(algo_app)
+
+        # first, connect normally to mock_ib
+        logger.debug("about to connect")
+        algo_app.connect_to_ib("127.0.0.1",
+                               algo_app.PORT_FOR_PAPER_TRADING,
+                               client_id=0)
+        # verify that algo_app is connected
+        verify_algo_app_connected(algo_app)
+
+        # try to connect again - should get error
+        with pytest.raises(AlreadyConnected):
+            algo_app.connect_to_ib("127.0.0.1",
+                                   algo_app.PORT_FOR_PAPER_TRADING,
+                                   client_id=0)
+
+        # verify that algo_app is still connected and alive with a valid reqId
+        verify_algo_app_connected(algo_app)
+
+        algo_app.disconnect_from_ib()
+        verify_algo_app_disconnected(algo_app)
+
+    def test_connect_to_ib_with_lock_held(self,
+                                          algo_app: "AlgoApp",
+                                          mock_ib: Any
+                                          ) -> None:
+        """Test connecting to IB with disconnect lock held.
+
+        Args:
+            algo_app: pytest fixture instance of AlgoApp (see conftest.py)
+            mock_ib: pytest fixture of contract_descriptions
+
+        """
+        verify_algo_app_initialized(algo_app)
+
+        # obtain the disconnect lock
+        logger.debug("about to obtain disconnect lock")
+        algo_app.disconnect_lock.acquire()
+
+        # try to connect - should get error
+        with pytest.raises(DisconnectLockHeld):
+            algo_app.connect_to_ib("127.0.0.1",
+                                   algo_app.PORT_FOR_LIVE_TRADING,
+                                   client_id=0)
+
+        # verify that algo_app is still simply initialized
+        verify_algo_app_initialized(algo_app)
 
     # def test_real_connect_to_IB(self) -> None:
     #     """Test connecting to IB.
@@ -644,14 +787,6 @@ class TestAlgoApp:
                              exp_non_recursive_matches=num_exp_non_recursive,
                              req_type=2)
 
-        logger.debug("calling verify_match_symbols req_type 3")
-        verify_match_symbols(algo_app,
-                             mock_ib,
-                             get_symbols_search_char_arg,
-                             exp_recursive_matches=num_exp_recursive,
-                             exp_non_recursive_matches=num_exp_non_recursive,
-                             req_type=3)
-
     def test_get_symbols(self,
                          algo_app: "AlgoApp",
                          mock_ib: Any) -> None:
@@ -660,69 +795,25 @@ class TestAlgoApp:
         Args:
             algo_app: instance of AlgoApp from conftest pytest fixture
             mock_ib: pytest fixture of contract_descriptions
-            get_symbols_search_char_arg: single character to use for searching
 
         """
         verify_algo_app_initialized(algo_app)
         try:
             logger.debug("about to connect")
-            assert algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+            algo_app.connect_to_ib("127.0.0.1",
+                                   algo_app.PORT_FOR_LIVE_TRADING,
+                                   client_id=0)
             verify_algo_app_connected(algo_app)
             full_match_descs = pd.DataFrame()
+            stock_symbols_ds = pd.DataFrame()
             # we need to loop from A to Z
             for letter in string.ascii_uppercase:
-                if letter != 'A':
-                    # verify the symbol_status ds
-                    symbols_status_path = \
-                        algo_app.ds_catalog.get_path('symbols_status')
-                    logger.info('symbols_status_path: %s', symbols_status_path)
-
-                    assert symbols_status_path.exists()
-                    symbols_status = pd.read_csv(symbols_status_path,
-                                                 header=0,
-                                                 index_col=0)
-                    test_letter = symbols_status.iloc[0, 0]
-                    assert test_letter == letter
-
-                num_exp_recursive, num_exp_non_recursive = \
-                    get_exp_number(letter, mock_ib)
-                logger.debug("about to get_symbols for %s", letter)
-                algo_app.get_symbols()
-                assert algo_app.request_id >= 2
-
-                logger.debug("getting match_descs for %s", letter)
-                match_descs = mock_ib.contract_descriptions.loc[
-                    (mock_ib.contract_descriptions['symbol'].str.
-                     startswith(letter))
-                    & (mock_ib.contract_descriptions['secType'] == 'STK')
-                    & (mock_ib.contract_descriptions['currency'] == 'USD')
-                    & (if_opt_in_derivative_types(
-                        mock_ib.contract_descriptions))
-                    ]
-
-                assert len(algo_app.stock_symbols) == num_exp_recursive
-                assert len(match_descs) == num_exp_recursive
-
-                if num_exp_recursive > 0:
-                    match_descs = \
-                        match_descs.drop(columns=['secType',
-                                                  'currency',
-                                                  'derivative_types'])
-                    match_descs = match_descs.set_index(
-                        ['conId']).sort_index()
-                    full_match_descs = full_match_descs.append(match_descs)
-                    full_match_descs.sort_index(inplace=True)
-
-                    # check the data set
-                    stock_symbols_path = \
-                        algo_app.ds_catalog.get_path('stock_symbols')
-                    logger.info('stock_symbols_path: %s', stock_symbols_path)
-
-                    stock_symbols_ds = pd.read_csv(stock_symbols_path,
-                                                   header=0,
-                                                   index_col=0)
-                    comp_df = algo_app.stock_symbols.compare(stock_symbols_ds)
-                    assert comp_df.empty
+                full_match_descs, stock_symbols_ds = \
+                    verify_get_symbols(letter,
+                                       algo_app,
+                                       mock_ib,
+                                       full_match_descs,
+                                       stock_symbols_ds)
 
         finally:
             logger.debug('disconnecting')
@@ -730,3 +821,40 @@ class TestAlgoApp:
             logger.debug('verifying disconnected')
             verify_algo_app_disconnected(algo_app)
             logger.debug('disconnected - test case returning')
+
+    def test_get_symbols_with_connect_disconnect(self,
+                                                 algo_app: "AlgoApp",
+                                                 mock_ib: Any) -> None:
+        """Test get_symbols with pattern that finds no symbols.
+
+        Args:
+            algo_app: instance of AlgoApp from conftest pytest fixture
+            mock_ib: pytest fixture of contract_descriptions
+
+        """
+        verify_algo_app_initialized(algo_app)
+
+        full_match_descs = pd.DataFrame()
+        stock_symbols_ds = pd.DataFrame()
+        # we need to loop from A to Z
+        for letter in string.ascii_uppercase:
+            try:
+                logger.debug("about to connect")
+                algo_app.connect_to_ib("127.0.0.1",
+                                       algo_app.PORT_FOR_LIVE_TRADING,
+                                       client_id=0)
+                verify_algo_app_connected(algo_app)
+                logger.debug("about to verify_get_symbols for letter %s",
+                             letter)
+                full_match_descs, stock_symbols_ds = \
+                    verify_get_symbols(letter,
+                                       algo_app,
+                                       mock_ib,
+                                       full_match_descs,
+                                       stock_symbols_ds)
+
+            finally:
+                logger.debug('disconnecting')
+                algo_app.disconnect_from_ib()
+                logger.debug('verifying disconnected')
+                verify_algo_app_disconnected(algo_app)

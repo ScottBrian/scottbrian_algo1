@@ -71,12 +71,15 @@ class DisconnectLockHeld(AlgoAppError):
     """Attempted to connect while the disconnect lock is held."""
 
 
-class MissingCatalog(AlgoAppError):
-    """Attempted to connect without the ds_catalog."""
+class ConnectTimeout(AlgoAppError):
+    """Connect timeout waiting for nextValid_ID event."""
 
 
 class AlgoApp(EWrapper, EClient):  # type: ignore
     """AlgoApp class."""
+
+    PORT_FOR_LIVE_TRADING = 7496
+    PORT_FOR_PAPER_TRADING = 7497
 
     ###########################################################################
     # __init__
@@ -86,6 +89,16 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         Args:
             ds_catalog: contain the paths for data sets
+
+        :Example: instantiate AlgoApp and print it
+
+        >>> from scottbrian_algo1.algo_api import AlgoApp
+        >>> from scottbrian_utils.file_catalog import FileCatalog
+        >>> from pathlib import Path
+        >>> test_cat = FileCatalog({'symbols': Path('t_datasets/symbols.csv')})
+        >>> algo_app = AlgoApp(test_cat)
+        >>> print(algo_app)
+        AlgoApp(ds_catalog)
 
         """
         EWrapper.__init__(self)
@@ -185,7 +198,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             AlreadyConnected: Attempt to connect when already connected
             DisconnectLockHeld: Attempted to connect while the disconnect lock
                                   is held
-            MissingCatalog: Attempted to connect without the ds_catalog
 
         """
         if self.isConnected():
@@ -195,8 +207,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         if self.disconnect_lock.locked():
             raise DisconnectLockHeld('Attempted to connect while the '
                                      'disconnect lock is held')
-        if not self.ds_catalog:
-            raise MissingCatalog('Attempted to connect without the ds_catalog')
 
         self.request_id = 0
         self.num_stock_symbols_received = 0
@@ -207,7 +217,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     ###########################################################################
     # connect_to_ib
     ###########################################################################
-    def connect_to_ib(self, ip_addr: str, port: int, client_id: int) -> bool:
+    def connect_to_ib(self, ip_addr: str, port: int, client_id: int) -> None:
         """Connect to IB on the given addr and port and client id.
 
         Args:
@@ -215,11 +225,10 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             port: port to connect to
             client_id: client id to use for connection
 
-        Returns:
-            True if connect was successful, False if not
-        """
-        ret_code = False  # init
+        Raises:
+            ConnectTimeout: timed out waiting for next valid request ID
 
+        """
         self.prepare_to_connect()  # verification and initialization
 
         self.connect(ip_addr, port, client_id)
@@ -238,13 +247,10 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         if not self.nextValidId_event.wait(timeout=10):  # if we timed out
             logger.debug("timed out waiting for next valid request ID")
             self.disconnect_from_ib()
-            # ret_code = False
-            logger.info('connect failed')
-        else:
-            ret_code = True
-            logger.info('connect success')
+            raise ConnectTimeout(
+                'connect_to_ib failed to receive nextValid_ID')
 
-        return ret_code
+        logger.info('connect success')
 
     ###########################################################################
     # disconnect_from_ib
@@ -325,33 +331,16 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         for desc in contract_descriptions:
             logger.debug('Symbol: {}'.format(desc.contract.symbol))
-            # print('desc.contract:')
-            # print(desc.contract)
-            # print('    conId              :', desc.contract.conId)
-            # print('    secType            :', desc.contract.secType)
-            # print('    primaryExchange    :', desc.contract.primaryExchange)
-            # print('    currency           :', desc.contract.currency)
-            # print('    derivativeSecTypes :', desc.derivativeSecTypes)
             if desc.contract.secType == 'STK' and \
                     desc.contract.currency == 'USD' and \
                     'OPT' in desc.derivativeSecTypes:
-                # print('    conId OK            :', desc.contract.conId)
-                # add_it = False
-                # if self.stock_symbols.empty:
-                #     add_it = True
-                # else:
-                #     if self.stock_symbols.loc[self.stock_symbols['conId']
-                #                               == desc.contract.conId].empty:
-                #         add_it = True
-                # if add_it:
                 self.stock_symbols = self.stock_symbols.append(
-                    pd.DataFrame([[desc.contract.conId,
-                                   desc.contract.symbol,
+                    pd.DataFrame([[desc.contract.symbol,
                                    desc.contract.primaryExchange,
                                    ]],
-                                 columns=['conId',
-                                          'symbol',
-                                          'primaryExchange']))
+                                 columns=['symbol',
+                                          'primaryExchange'],
+                                 index=[desc.contract.conId]))
         self.response_complete_event.set()
 
     ###########################################################################
@@ -402,7 +391,8 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         if symbols_status_path.exists():
             self.symbols_status = pd.read_csv(symbols_status_path,
                                               header=0,
-                                              index_col=0)
+                                              index_col=0,
+                                              parse_dates=True)
         else:
             self.symbols_status = pd.DataFrame(list(string.ascii_uppercase),
                                                columns=['AlphaChar'],
@@ -413,22 +403,21 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # Get the next single uppercase letter and do the search.
         # The response from ib is handled by symbolSamples wrapper method
         #######################################################################
-        search_char = self.symbols_status.iloc[0, 0]  # fix this
+        search_char = self.symbols_status.iloc[0].AlphaChar
         self.get_symbols_recursive(search_char)
 
         #######################################################################
         # Save stock_symbols DataFrame to csv
         #######################################################################
         logger.info('Symbols obtained')
-        logger.info('Number of entries before drop dups, index and sort: %d',
+        logger.info('Number of entries before drop dups and sort: %d',
                     len(self.stock_symbols))
 
         if not self.stock_symbols.empty:
             self.stock_symbols.drop_duplicates(inplace=True)
-            self.stock_symbols = self.stock_symbols.set_index(
-                ['conId']).sort_index()
+            self.stock_symbols.sort_index(inplace=True)
 
-        logger.info('Number of entries after drop dups, index, and sort: %d',
+        logger.info('Number of entries after drop dups and sort: %d',
                     len(self.stock_symbols))
 
         logger.info('saving stock_symbols DataFrame to csv')
@@ -497,19 +486,19 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 #                            )
 
 # @time_box
-def main():
-    ds_catalog = FileCatalog()
-
-    try:
-        algo_app = AlgoApp(ds_catalog)
-        algo_app.create_symbol_status_ds()
-        # algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
-        #
-        # print("serverVersion:%s connectionTime:%s" %
-        # (algo_app.serverVersion(),
-        # algo_app.twsConnectionTime()))
-    except:
-        raise
+# def main():
+#     ds_catalog = FileCatalog()
+#
+#     try:
+#         algo_app = AlgoApp(ds_catalog)
+#
+#         algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+#
+#         print("serverVersion:%s connectionTime:%s" %
+#         (algo_app.serverVersion(),
+#         algo_app.twsConnectionTime()))
+#     except:
+#         raise
 
     # print('get_stock_symbols:main about to sleep 2 seconds')
     # time.sleep(2)
@@ -527,5 +516,5 @@ def main():
     # print('get_stock_symbols: main exiting')
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

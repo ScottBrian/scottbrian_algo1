@@ -16,7 +16,7 @@ from ibapi.errors import FAIL_CREATE_SOCK
 
 from scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_utils.file_catalog import FileCatalog
-# from scottbrian_utils.diag_msg import diag_msg
+
 import queue
 from pathlib import Path
 import logging
@@ -171,6 +171,8 @@ def algo_app(monkeypatch: Any,
 class MockIB:
     """Class provides simulation data and methods for testing with ibapi."""
 
+    PORT_FOR_REQID_TIMEOUT = 9001
+
     def __init__(self, test_cat):
         """Initialize the MockIB instance.
 
@@ -182,13 +184,12 @@ class MockIB:
         self.reqId_timeout = False
         self.next_con_id = 7000
         self.MAX_CONTRACT_DESCS_RETURNED = 16
-        self.PORT_FOR_REQID_TIMEOUT = 9001
         self.contract_descriptions = pd.DataFrame()
 
         self.build_contract_descriptions()
 
     def send_msg(self, msg):
-        """Mock send to ib by interpresting and placing on receive queue.
+        """Mock send to ib by interpreting and placing on receive queue.
 
         Args:
             msg: message to be sent (i.e., interpreted and queued)
@@ -252,26 +253,18 @@ class MockIB:
             build_msg = build_msg + make_field(num_found)
 
             for i in range(num_found):
-                conId = match_descs.iloc[i].conId
-                symbol = match_descs.iloc[i].symbol
-                secType = match_descs.iloc[i].secType
-                primaryExchange = match_descs.iloc[i].primaryExchange
-                currency = match_descs.iloc[i].currency
-                # derivative_types = []
-                # if match_descs.iloc[i].deriv_0 != '0':
-                #     derivative_types.append(match_descs.iloc[i].deriv_0)
-                build_msg = build_msg + make_field(conId) \
-                    + make_field(symbol) \
-                    + make_field(secType) \
-                    + make_field(primaryExchange) \
-                    + make_field(currency) \
+                build_msg = build_msg + make_field(match_descs.iloc[i].conId) \
+                    + make_field(match_descs.iloc[i].symbol) \
+                    + make_field(match_descs.iloc[i].secType) \
+                    + make_field(match_descs.iloc[i].primaryExchange) \
+                    + make_field(match_descs.iloc[i].currency) \
                     + make_field(len(match_descs.iloc[i].derivative_types))
 
                 for dvt in match_descs.iloc[i].derivative_types:
                     build_msg = build_msg + make_field(dvt)
 
             recv_msg = make_msg(build_msg)
-            # diag_msg('recv_msg:', recv_msg)
+
         #######################################################################
         # queue the message to be received
         #######################################################################
@@ -284,11 +277,10 @@ class MockIB:
             Received message from ib for request sent earlier to ib
 
         """
-        # diag_msg('entered')
         # if the queue is empty, the get will wait up to 1 second for an item
         # to be queued - if no item shows up, an Empty exception is raised
         msg = self.msg_rcv_q.get(timeout=1)  # wait for 1 second if empty
-        # diag_msg('exit with msg:', msg)
+
         return msg
     ###########################################################################
     # since ib will return only 16 symbols per request, we need to
@@ -326,17 +318,11 @@ class MockIB:
                                                   'derivative_types'
                                                   ]))
 
-        # diag_msg('built contract descriptors:', self.contract_descriptions)
     def build_contract_descriptions(self):
         """Build the set of contract descriptions to use for testing."""
         contract_descs_path = self.test_cat.get_path('mock_contract_descs')
         logger.info('mock_contract_descs path: %s', contract_descs_path)
 
-        # if contract_descs_path.exists():
-        #     self.contract_descriptions = pd.read_csv(contract_descs_path,
-        #                                              header=0,
-        #                                              index_col=0)
-        # else:
         self.contract_descriptions = pd.DataFrame()
 
         for chr1 in string.ascii_uppercase[0:17]:  # A-Q
@@ -347,25 +333,9 @@ class MockIB:
                     self.build_desc(chr1 + chr2 + chr3)
                     for chr4 in string.ascii_uppercase[3:5] + '.':  # D-E
                         self.build_desc(chr1 + chr2 + chr3 + chr4)
-                        for chr5 in string.ascii_uppercase[4:7]:  # E-G
-                            self.build_desc(chr1 + chr2 + chr3 + chr4 +
-                                            chr5)
 
         logger.info('built mock_con_descs DataFrame with %d entries',
                     len(self.contract_descriptions))
-        # diag_msg('built contract descriptors:', self.contract_descriptions)
-        # logger.info('saving mock_contract_descs DataFrame to csv')
-        # self.contract_descriptions.to_csv(contract_descs_path)
-
-    # def get_non_existent_symbols(self,
-    #                              num_to_get: int,
-    #                              secType: str,
-    #                              currency: str) -> List[str]:
-    #     # symbols that does not exist
-    #     for i in range(num_to_get):
-
-        # symbols that exists but not for secType
-        # symbols that exists but not for currency
 
     @staticmethod
     def get_combos(symbol: str
@@ -463,14 +433,14 @@ def nonexistent_symbol_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_1_arg_list = ['IBCDE',
-                                   'ICDEF',
-                                   'I.E.G',
-                                   'JBCDE',
-                                   'J.DDG',
-                                   'KCCEF',
-                                   'L.DDG',
-                                   'LCC.F'
+symbol_pattern_match_1_arg_list = ['IBCD',
+                                   'ICDE',
+                                   'I.E.',
+                                   'JBCD',
+                                   'J.DD',
+                                   'KCCE',
+                                   'L.DD',
+                                   'LCC.'
                                    ]
 
 
@@ -487,15 +457,14 @@ def symbol_pattern_match_1_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_2_arg_list = ['MBCDE',
-                                   'MCDEF',
-                                   'M.E.G',
-                                   'MBCDE',
-                                   'M.DDG',
-                                   'NCC.F',
-                                   'NBCDE',
-                                   'N.DDG',
-                                   'NCCEF'
+symbol_pattern_match_2_arg_list = ['MBCD',
+                                   'MCDE',
+                                   'M.E.',
+                                   'M.DD',
+                                   'NCC.',
+                                   'NBCD',
+                                   'N.DD',
+                                   'NCCE'
                                    ]
 
 
@@ -512,12 +481,11 @@ def symbol_pattern_match_2_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_3_arg_list = ['OBCDE',
-                                   'OCDEF',
-                                   'O.EEG',
-                                   'OBCDE',
-                                   'O.DDG',
-                                   'OCC.F'
+symbol_pattern_match_3_arg_list = ['OBCD',
+                                   'OCDE',
+                                   'O.EE',
+                                   'O.DD',
+                                   'OCC.'
                                    ]
 
 
@@ -534,21 +502,21 @@ def symbol_pattern_match_3_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_4_arg_list = ['IBCD',
-                                   'ICDE',
-                                   'I.EE',
-                                   'ICCE',
-                                   'JBCD',
-                                   'JCDE',
-                                   'J.EE',
-                                   'JCCE',
-                                   'KBCD',
-                                   'KCDE',
-                                   'K.EE',
-                                   'KCCE',
-                                   'LCDE',
-                                   'L.EE',
-                                   'LCCE'
+symbol_pattern_match_4_arg_list = ['IBC',
+                                   'ICD',
+                                   'I.E',
+                                   'ICC',
+                                   'JBC',
+                                   'JCD',
+                                   'J.E',
+                                   'JCC',
+                                   'KBC',
+                                   'KCD',
+                                   'K.E',
+                                   'KCC',
+                                   'LCD',
+                                   'L.E',
+                                   'LCC'
                                    ]
 
 
@@ -565,13 +533,13 @@ def symbol_pattern_match_4_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_8_arg_list = ['MBCD',
-                                   'MCDE',
-                                   'M.E.',
-                                   'M.DD',
-                                   'NBCD',
-                                   'N.DD',
-                                   'NCCE'
+symbol_pattern_match_8_arg_list = ['MBC',
+                                   'MCD',
+                                   'M.E',
+                                   'M.D',
+                                   'NBC',
+                                   'N.D',
+                                   'NCC'
                                    ]
 
 
@@ -588,11 +556,11 @@ def symbol_pattern_match_8_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_12_arg_list = ['OBCD',
-                                    'OCDE',
-                                    'O.EE',
-                                    'O.DD',
-                                    'OCCE'
+symbol_pattern_match_12_arg_list = ['OBC',
+                                    'OCD',
+                                    'O.E',
+                                    'O.D',
+                                    'OCC'
                                     ]
 
 
@@ -609,11 +577,11 @@ def symbol_pattern_match_12_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_16_arg_list = ['PBCD',
-                                    'PCDE',
-                                    'P.EE',
-                                    'PCC.',
-                                    'P.DD',
+symbol_pattern_match_16_arg_list = ['PBC',
+                                    'PCD',
+                                    'P.E',
+                                    'PCC',
+                                    'P.D',
                                     ]
 
 
@@ -630,11 +598,11 @@ def symbol_pattern_match_16_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_20_arg_list = ['QBCD',
-                                    'QCDE',
-                                    'Q.EE',
-                                    'QCCE',
-                                    'Q.DD',
+symbol_pattern_match_20_arg_list = ['QBC',
+                                    'QCD',
+                                    'Q.E',
+                                    'QCC',
+                                    'Q.D',
                                     ]
 
 
