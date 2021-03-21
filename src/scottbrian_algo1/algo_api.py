@@ -23,7 +23,7 @@ from ibapi.utils import current_fn_name  # type: ignore
 # types
 from ibapi.common import ListOfContractDescription  # type: ignore
 # from ibapi.order_condition import *  # @UnusedWildImport
-# from ibapi.contract import *  # @UnusedWildImport
+from ibapi.contract import Contract, ContractDetails
 # from ibapi.order import *  # @UnusedWildImport
 # from ibapi.order_state import *  # @UnusedWildImport
 # from ibapi.execution import Execution
@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 class AlgoAppError(Exception):
-    """Base class for exception in this module."""
+    """Base class for exceptions in this module."""
     pass
 
 
@@ -106,15 +106,17 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.disconnect_lock = Lock()
         self.ds_catalog = ds_catalog
         self.request_id: int = 0
+        self.response_complete_event = Event()
+        self.nextValidId_event = Event()
+        self.run_thread = Thread(target=self.run)
 
         # stock symbols
         self.symbols_status = pd.DataFrame()
         self.num_stock_symbols_received = 0
         self.stock_symbols = pd.DataFrame()
 
-        self.response_complete_event = Event()
-        self.nextValidId_event = Event()
-        self.run_thread = Thread(target=self.run)
+        # contract details
+        self.contract_details = pd.DataFrame()
 
     ###########################################################################
     # __repr__
@@ -305,46 +307,9 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                 self.reset()
 
     ###########################################################################
-    # symbolSamples
-    ###########################################################################
-    def symbolSamples(self, request_id: int,
-                      contract_descriptions: ListOfContractDescription
-                      ) -> None:
-        """Receive IB reply for reqMatchingSymbols request.
-
-        Args:
-            request_id: the id used on the request
-            contract_descriptions: contains a list of contract descriptions.
-                                     Each description includes the symbol,
-                                     conId, security type, primary exchange,
-                                     currency, and derivative security
-                                     types.
-
-        The contracts are filtered for stocks traded in the USA and are
-        stored into a data frame as contracts that can be used later to
-        request additional information or to make trades.
-        """
-        logger.info('entered for request_id %d', request_id)
-        self.num_stock_symbols_received = len(contract_descriptions)
-        logger.info('Number of descriptions received: %d',
-                    self.num_stock_symbols_received)
-
-        for desc in contract_descriptions:
-            logger.debug('Symbol: {}'.format(desc.contract.symbol))
-            if desc.contract.secType == 'STK' and \
-                    desc.contract.currency == 'USD' and \
-                    'OPT' in desc.derivativeSecTypes:
-                self.stock_symbols = self.stock_symbols.append(
-                    pd.DataFrame([[desc.contract.symbol,
-                                   desc.contract.primaryExchange,
-                                   ]],
-                                 columns=['symbol',
-                                          'primaryExchange'],
-                                 index=[desc.contract.conId]))
-        self.response_complete_event.set()
-
     ###########################################################################
     # get_symbols
+    ###########################################################################
     ###########################################################################
     def get_symbols(self) -> None:
         """Gets symbols and place them in the stock_symbols list."""
@@ -478,6 +443,99 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # doing the 1 second wait before making the request).
         time.sleep(1)  # throttle to avoid overloading IB
         self.response_complete_event.wait()
+
+    ###########################################################################
+    # symbolSamples - callback
+    ###########################################################################
+    def symbolSamples(self, request_id: int,
+                      contract_descriptions: ListOfContractDescription
+                      ) -> None:
+        """Receive IB reply for reqMatchingSymbols request.
+
+        Args:
+            request_id: the id used on the request
+            contract_descriptions: contains a list of contract descriptions.
+                                     Each description includes the symbol,
+                                     conId, security type, primary exchange,
+                                     currency, and derivative security
+                                     types.
+
+        The contracts are filtered for stocks traded in the USA and are
+        stored into a data frame as contracts that can be used later to
+        request additional information or to make trades.
+        """
+        logger.info('entered for request_id %d', request_id)
+        self.num_stock_symbols_received = len(contract_descriptions)
+        logger.info('Number of descriptions received: %d',
+                    self.num_stock_symbols_received)
+
+        for desc in contract_descriptions:
+            logger.debug('Symbol: {}'.format(desc.contract.symbol))
+            if desc.contract.secType == 'STK' and \
+                    desc.contract.currency == 'USD' and \
+                    'OPT' in desc.derivativeSecTypes:
+                self.stock_symbols = self.stock_symbols.append(
+                    pd.DataFrame([[desc.contract.symbol,
+                                   desc.contract.primaryExchange,
+                                   ]],
+                                 columns=['symbol',
+                                          'primaryExchange'],
+                                 index=[desc.contract.conId]))
+        self.response_complete_event.set()
+
+    ###########################################################################
+    ###########################################################################
+    # get_contract_details
+    ###########################################################################
+    ###########################################################################
+    def get_contract_details(self, contract: Contract) -> None:
+        """Get contract details for one or more contracts.
+
+        Args:
+            contract: contains the search criteria for details request
+
+        The request for contract details sens the input contract to ib which
+        it will use to find all contracts that match the contract fields. This
+        could be a specific contract, or many contracts determined by how
+        specific the input contract fields are.
+        """
+        self.reqContractDetails(self.get_req_id(), contract)
+        self.response_complete_event.wait()
+
+    ###########################################################################
+    # contractDetails
+    ###########################################################################
+    def contractDetails(self,
+                        request_id: int,
+                        contractDetails: ContractDetails) -> None:
+        """Receive IB reply for reqContractDetails request.
+
+        Args:
+            request_id: the id used on the request
+            contractDetails: contains contract and details
+
+        """
+        logger.info('entered for request_id %d', request_id)
+        logger.debug('Symbol: %s', contractDetails.contract.symbol)
+        print('contractDetails:\n', contractDetails)
+        self.contract_details = self.contract_details.append(
+                    pd.DataFrame([[contractDetails
+                                   ]],
+                                 columns=['contractDetails'],
+                                 index=[contractDetails.contract.conId]))
+
+    ###########################################################################
+    # contractDetailsEnd
+    ###########################################################################
+    def contractDetailsEnd(self, request_id: int) -> None:
+        """Receive IB reply for reqContractDetails request end.
+
+        Args:
+            request_id: the id used on the request
+
+        """
+        logger.info('entered for request_id %d', request_id)
+        self.response_complete_event.set()
 
 
 # stock_symbols = pd.read_csv('/home/Tiger/Downloads/companylist.csv'

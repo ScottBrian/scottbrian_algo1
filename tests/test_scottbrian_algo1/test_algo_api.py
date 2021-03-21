@@ -46,6 +46,7 @@ def verify_algo_app_initialized(algo_app: "AlgoApp") -> None:
     assert algo_app.stock_symbols.empty
     assert algo_app.response_complete_event.is_set() is False
     assert algo_app.nextValidId_event.is_set() is False
+    assert algo_app.__repr__() == 'AlgoApp(ds_catalog)'
     # assert algo_app.run_thread is None
 
 
@@ -858,3 +859,22 @@ class TestAlgoApp:
                 algo_app.disconnect_from_ib()
                 logger.debug('verifying disconnected')
                 verify_algo_app_disconnected(algo_app)
+
+    def test_error_path_by_request_when_not_connected(self,
+                                                      algo_app: "AlgoApp",
+                                                      capsys: Any) -> None:
+        """Test the error callback by any request while not connected.
+
+        Args:
+            algo_app: instance of AlgoApp from conftest pytest fixture
+            mock_ib: pytest fixture of contract_descriptions
+
+        """
+        verify_algo_app_initialized(algo_app)
+        logger.debug('verifying disconnected')
+        verify_algo_app_disconnected(algo_app)
+
+        logger.debug("about to request time")
+        algo_app.reqCurrentTime()
+        captured = capsys.readouterr().out
+        assert captured == 'Error:  -1   504   Not connected' + '\n'

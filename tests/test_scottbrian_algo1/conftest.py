@@ -266,6 +266,117 @@ class MockIB:
             recv_msg = make_msg(build_msg)
 
         #######################################################################
+        # reqContractDetails
+        #######################################################################
+        elif int(fields[0]) == OUT.REQ_CONTRACT_DATA:
+            logger.info('reqContractDetails detected')
+            version = int(fields[1])
+            req_id = int(fields[2])
+            con_id = int(fields[3])
+
+            # construct start of receive message for wrapper
+            start_msg = make_field(IN.CONTRACT_DATA) \
+                + make_field(version) \
+                + make_field(req_id)
+
+            # find pattern matches in mock contract descriptions
+            # fow now, just conId
+            match_descs = self.contract_descriptions.loc[
+                self.contract_descriptions['conId'] == con_id]
+
+            last_trade_date = None  # for now
+            strike = 0  # for now
+            right = 'P'  # for now
+            exchange = 'SMART'  # for now
+            currency = 'USD'
+            market_name = 'MarketName'
+            trading_class = 'TradingClass'
+            min_tick = 0.01
+            md_size_multiplier = 1
+            multiplier = 2
+            order_types = 'OrderTypes'
+            valid_exchanges = 'ValidExchanges'
+            price_magnifier = 3
+            under_conid = 12345
+            long_name = 'LongName'
+
+            contract_month = 'ContractMonth'
+            industry = 'Industry'
+            category = 'Category'
+            subcategory = 'SubCategory'
+            time_zone_id = 'TimeZoneId'
+            trading_hours = 'TradingHours'
+            liquid_hours = 'LiquidHours'
+            ev_rule = 'EvRule'
+            ev_multiplier = 4
+            sec_id_list_count = 5   # will also need to try 0, 1, 2 for test
+            sec_id_list = ['tag0', 'value0',
+                           'tag1', 'value1',
+                           'tag2', 'value2',
+                           'tag3', 'value3',
+                           'tag4', 'value4']
+
+            agg_group = 6
+            under_symbol = 'UnderSymbol'
+            under_sec_type = 'UnderSecType'
+            market_rule_ids = 'MarketRuleIds'
+            real_expiration_date = 'RealExpirationDate'
+            stock_type = 'StockType)'
+
+            for i in range(len(match_descs)):
+                local_symbol = match_descs.iloc[i].symbol
+                build_msg = start_msg \
+                    + make_field(match_descs.iloc[i].symbol) \
+                    + make_field(match_descs.iloc[i].secType) \
+                    + make_field(last_trade_date) \
+                    + make_field(strike) \
+                    + make_field(right) \
+                    + make_field(exchange) \
+                    + make_field(currency) \
+                    + make_field(local_symbol) \
+                    + make_field(market_name) \
+                    + make_field(trading_class) \
+                    + make_field(match_descs.iloc[i].conId) \
+                    + make_field(min_tick) \
+                    + make_field(md_size_multiplier) \
+                    + make_field(multiplier) \
+                    + make_field(order_types) \
+                    + make_field(valid_exchanges) \
+                    + make_field(price_magnifier) \
+                    + make_field(under_conid) \
+                    + make_field(long_name) \
+                    + make_field(match_descs.iloc[i].primaryExchange) \
+                    + make_field(match_descs.iloc[i].currency) \
+                    + make_field(contract_month) \
+                    + make_field(industry) \
+                    + make_field(category) \
+                    + make_field(subcategory) \
+                    + make_field(time_zone_id) \
+                    + make_field(trading_hours) \
+                    + make_field(liquid_hours) \
+                    + make_field(ev_rule) \
+                    + make_field(ev_multiplier) \
+                    + make_field(sec_id_list_count)
+
+                for j in range(2*sec_id_list_count):
+                    build_msg += make_field(sec_id_list[j])
+
+                build_msg += make_field(agg_group) \
+                    + make_field(under_symbol) \
+                    + make_field(under_sec_type) \
+                    + make_field(market_rule_ids) \
+                    + make_field(real_expiration_date) \
+                    + make_field(stock_type)
+
+                recv_msg = make_msg(build_msg)
+                self.msg_rcv_q.put(recv_msg, timeout=5)
+
+            build_msg = make_field(IN.CONTRACT_DATA_END) \
+                + make_field(version) \
+                + make_field(req_id)
+            recv_msg = make_msg(build_msg)
+
+        #######################################################################
         # queue the message to be received
         #######################################################################
         self.msg_rcv_q.put(recv_msg, timeout=5)
