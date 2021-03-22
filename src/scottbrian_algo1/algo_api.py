@@ -39,6 +39,7 @@ import string
 
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
+from scottbrian_utils.time_hdr import time_box
 
 # from datetime import datetime
 import logging
@@ -543,36 +544,51 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 #                             ,index_col=['Symbol']
 #                            )
 
-# @time_box
-# def main():
-#     ds_catalog = FileCatalog()
-#
-#     try:
-#         algo_app = AlgoApp(ds_catalog)
-#
-#         algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
-#
-#         print("serverVersion:%s connectionTime:%s" %
-#         (algo_app.serverVersion(),
-#         algo_app.twsConnectionTime()))
-#     except:
-#         raise
+@time_box
+def main():
+    from pathlib import Path
+    proj_dir = Path.cwd().resolve().parents[1]  # back two directories
+    ds_catalog = \
+        FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
+                     'mock_contract_descs':
+                         Path(proj_dir / 't_datasets/mock_contract_descs.csv'),
+                     'contract_details':
+                         Path(proj_dir / 't_datasets/contract_details.csv')
+                     })
 
-    # print('get_stock_symbols:main about to sleep 2 seconds')
-    # time.sleep(2)
-    # print('SBT get_stock_symbols:main about to wait on nextValidId_event')
-    # algo_app.nextValidId_event.wait()
+    try:
+        algo_app = AlgoApp(ds_catalog)
+
+        algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+
+        print("serverVersion:%s connectionTime:%s" %
+              (algo_app.serverVersion(),
+               algo_app.twsConnectionTime()))
+    except:
+        raise
+
     # print('SBT get_stock_symbols:main about to call get_symbols')
-    # # algo_app.get_symbols(start_char='A', end_char='A')
-    # # algo_app.get_symbols(start_char='B', end_char='B')
-    #
+    # algo_app.get_symbols(start_char='A', end_char='A')
+    # algo_app.get_symbols(start_char='B', end_char='B')
+
     # algo_app.request_symbols('SWKS')
     #
-    # algo_app.disconnect()
-    # print('get_stock_symbols: main About to sleep for 2 seconds before exit')
-    # time.sleep(2)
-    # print('get_stock_symbols: main exiting')
+    # print('algo_app.stock_symbols\n', algo_app.stock_symbols)
+
+    contract = Contract()
+    contract.conId = 4726021
+    algo_app.get_contract_details(contract)
+
+    print('algo_app..contract_details\n', algo_app.contract_details)
+
+    my_contract_details = algo_app.contract_details.loc[contract.conId][0]
+
+    print('my_contract_details\n', my_contract_details)
 
 
-# if __name__ == "__main__":
-#     main()
+    print('about to disconnect')
+    algo_app.disconnect()
+
+
+if __name__ == "__main__":
+    main()

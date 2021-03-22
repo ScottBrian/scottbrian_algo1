@@ -284,7 +284,7 @@ class MockIB:
             match_descs = self.contract_descriptions.loc[
                 self.contract_descriptions['conId'] == con_id]
 
-            last_trade_date = None  # for now
+            last_trade_date = '01012022'  # for now
             strike = 0  # for now
             right = 'P'  # for now
             exchange = 'SMART'  # for now
@@ -332,7 +332,7 @@ class MockIB:
                     + make_field(strike) \
                     + make_field(right) \
                     + make_field(exchange) \
-                    + make_field(currency) \
+                    + make_field(match_descs.iloc[i].currency) \
                     + make_field(local_symbol) \
                     + make_field(market_name) \
                     + make_field(trading_class) \
@@ -346,7 +346,6 @@ class MockIB:
                     + make_field(under_conid) \
                     + make_field(long_name) \
                     + make_field(match_descs.iloc[i].primaryExchange) \
-                    + make_field(match_descs.iloc[i].currency) \
                     + make_field(contract_month) \
                     + make_field(industry) \
                     + make_field(category) \

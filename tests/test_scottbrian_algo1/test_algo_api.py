@@ -12,12 +12,12 @@ import math
 from typing import Any, Tuple  # Callable, cast, Tuple, Union
 # from typing_extensions import Final
 
-# from ibapi.contract import ContractDescription
+from ibapi.contract import Contract, ContractDetails
 
 from scottbrian_algo1.algo_api import AlgoApp, AlreadyConnected, \
     DisconnectLockHeld, ConnectTimeout
 
-# from scottbrian_utils.diag_msg import diag_msg
+from scottbrian_utils.diag_msg import diag_msg
 # from scottbrian_utils.file_catalog import FileCatalog
 # from datetime import datetime
 import logging
@@ -278,8 +278,8 @@ def verify_get_symbols(letter: str,
     return full_match_descs, stock_symbols_ds
 
 
-class TestAlgoApp:
-    """TestAlgoApp class."""
+class TestAlgoAppConnect:
+    """TestAlgoAppConnect class."""
 
     def test_mock_connect_to_ib(self,
                                 algo_app: "AlgoApp"
@@ -420,6 +420,8 @@ class TestAlgoApp:
     #     assert not algo_app.run_thread.is_alive()
     #     assert not algo_app.isConnected()
 
+class TestAlgoAppMatchingSymbols:
+    """TestAlgoAppMatchingSymbols class."""
     def test_request_symbols_null_result(self,
                                          algo_app: "AlgoApp",
                                          mock_ib: Any,
@@ -878,3 +880,131 @@ class TestAlgoApp:
         algo_app.reqCurrentTime()
         captured = capsys.readouterr().out
         assert captured == 'Error:  -1   504   Not connected' + '\n'
+
+
+def verify_contract_details(contract: "Contract",
+                            algo_app: "AlgoApp",
+                            mock_ib: Any,
+                            num_expected: int) -> None:
+    """Verify contract details.
+
+    Args:
+        contract: the contract used to get details
+        algo_app: instance of AlgoApp from conftest pytest fixture
+        mock_ib: pytest fixture of contract_descriptions
+        num_expected: number of contracts expected to have been returned
+
+    """
+    match_descs = mock_ib.contract_descriptions.loc[
+        mock_ib.contract_descriptions['conId'] == contract.conId]
+    # diag_msg('mock_ib.contract_descriptions.info:\n',
+    #          mock_ib.contract_descriptions.info())
+    #
+    # diag_msg('match_descs.info:\n',
+    #          match_descs.info())
+    #
+    # diag_msg('algo_app.contract_details.info:\n',
+    #          algo_app.contract_details.info())
+
+    assert len(match_descs) == num_expected
+    assert len(algo_app.contract_details) == num_expected
+
+    if num_expected == 1:
+        test_contract_details = \
+            algo_app.contract_details.loc[contract.conId][0]
+        assert test_contract_details.contract.conId == contract.conId
+
+
+class TestAlgoAppContractDetails:
+    """TestAlgoAppContractDetails class."""
+
+    def test_get_contract_details_0_entries(self,
+                                            algo_app: "AlgoApp",
+                                            mock_ib: Any
+                                            ) -> None:
+        """Test contract details for non-existent conId.
+
+        Args:
+            algo_app: pytest fixture instance of AlgoApp (see conftest.py)
+            mock_ib: pytest fixture of contract_descriptions
+
+        """
+        verify_algo_app_initialized(algo_app)
+
+        logger.debug("about to connect")
+        algo_app.connect_to_ib("127.0.0.1",
+                               algo_app.PORT_FOR_LIVE_TRADING,
+                               client_id=0)
+
+        # verify that algo_app is connected and alive with a valid reqId
+        verify_algo_app_connected(algo_app)
+
+        contract = Contract()  # create an empty contract with conId of 0
+        algo_app.get_contract_details(contract)
+
+        verify_contract_details(contract, algo_app, mock_ib, 0)
+
+        algo_app.disconnect_from_ib()
+        verify_algo_app_disconnected(algo_app)
+
+    def test_get_contract_details_1_entry(self,
+                                          algo_app: "AlgoApp",
+                                          mock_ib: Any
+                                          ) -> None:
+        """Test contract details for non-existent conId.
+
+        Args:
+            algo_app: pytest fixture instance of AlgoApp (see conftest.py)
+            mock_ib: pytest fixture of contract_descriptions
+
+        """
+        verify_algo_app_initialized(algo_app)
+
+        logger.debug("about to connect")
+        algo_app.connect_to_ib("127.0.0.1",
+                               algo_app.PORT_FOR_LIVE_TRADING,
+                               client_id=0)
+
+        # verify that algo_app is connected and alive with a valid reqId
+        verify_algo_app_connected(algo_app)
+
+        contract = Contract()  # create an empty contract with conId of 0
+        contract.conId = 7001
+        algo_app.get_contract_details(contract)
+
+        verify_contract_details(contract, algo_app, mock_ib, 1)
+
+        algo_app.disconnect_from_ib()
+        verify_algo_app_disconnected(algo_app)
+
+        """
+        example details:
+
+        4726021, SWKS, STK,, 0.0,, , SMART, NASDAQ, USD, SWKS, NMS, False,, combo:, NMS, 0.01, 
+        ACTIVETIM, AD, ADJUST, ALERT, ALGO, ALLOC, AON, AVGCOST, BASKET, BENCHPX, CASHQTY, COND,\
+        CONDORDER, DARKONLY, DARKPOLL, DAY, DEACT, DEACTDIS, DEACTEOD, DIS, GAT, GTC, GTD, GTT, \
+        HID, IBKRATS, ICE, IMB, IOC, LIT, LMT, LOC, MIDPX, MIT, MKT, MOC, MTL, NGCOMB, NODARK, \
+        NONALGO, OCA, OPG, OPGREROUT, PEGBENCH, POSTONLY, PREOPGRTH, PRICECHK, REL, RPI, RTH, \
+        SCALE, SCALEODD, SCALERST, SIZECHK, SNAPMID, SNAPMKT, SNAPREL, STP, STPLMT, SWEEP, \
+        TRAIL, TRAILLIT, TRAILLMT, TRAILMIT, WHATIF, SMART, AMEX, NYSE, CBOE, PHLX, ISE, CHX, \
+        ARCA, ISLAND, DRCTEDGE, BEX, BATS, EDGEA, CSFBALGO, JEFFALGO, BYX, IEX, EDGX, FOXRIVER, \
+        PEARL, TPLUS1, NYSENAT, LTSE, MEMX, PSX, 1, 0, SKYWORKS
+        SOLUTIONS
+        INC,, Technology, Semiconductors, Electronic
+        Compo - Semicon, US / Eastern, 20210322: 0400 - 20210322:2000;
+        20210323: 0400 - 20210323:2000;
+        20210324: 0400 - 20210324:2000;
+        20210325: 0400 - 20210325:2000;
+        20210326: 0400 - 20210326:2000, 20210322: 0
+        930 - 20210322: 1600;
+        20210323: 0
+        930 - 20210323: 1600;
+        20210324: 0
+        930 - 20210324: 1600;
+        20210325: 0
+        930 - 20210325: 1600;
+        20210326: 0
+        930 - 20210326: 1600, , 0, 100,, , 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 1, [
+            139768445031136: ISIN = US83088M1027;], , COMMON,, , , , , False, False, 0, False,, , , , False,
+            
+            """
