@@ -177,9 +177,9 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.nextValidId_event.set()
 
     ###########################################################################
-    # get_req_id
+    # get_reqId
     ###########################################################################
-    def get_req_id(self) -> int:
+    def get_reqId(self) -> int:
         """Obtain a request id to use for the current request.
 
         The request id is bumped and then returned
@@ -434,7 +434,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         #######################################################################
         # send request to IB
         #######################################################################
-        self.reqMatchingSymbols(self.get_req_id(), symbol_to_get)
+        self.reqMatchingSymbols(self.get_reqId(), symbol_to_get)
         # the following sleep for 1 second is required to avoid
         # overloading IB with requests (they ask for 1 second). Note that we
         # are doing the sleep after the request is made and before we wait
@@ -495,13 +495,44 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         Args:
             contract: contains the search criteria for details request
 
-        The request for contract details sens the input contract to ib which
+        The request for contract details sends the input contract to ib which
         it will use to find all contracts that match the contract fields. This
         could be a specific contract, or many contracts determined by how
         specific the input contract fields are.
         """
-        self.reqContractDetails(self.get_req_id(), contract)
+        #######################################################################
+        # if contract_details data set exists, load it and reset the index
+        #######################################################################
+        contract_details_path = self.ds_catalog.get_path('contract_details')
+        logger.info('path: %s', contract_details_path)
+
+        # if contract_details_path.exists():
+        #     self.contract_details = pd.read_csv(contract_details_path,
+        #                                         header=0,
+        #                                         index_col=0)
+        ################################################################
+        # make the request for details
+        ################################################################
+        self.response_complete_event.clear()
+        self.reqContractDetails(self.get_reqId(), contract)
         self.response_complete_event.wait()
+
+        #######################################################################
+        # Save contract_details DataFrame to csv
+        #######################################################################
+        logger.info('contract_details obtained')
+        logger.info('Number of entries before drop dups and sort: %d',
+                    len(self.contract_details))
+
+        if not self.contract_details.empty:
+            self.contract_details.drop_duplicates(inplace=True)
+            self.contract_details.sort_index(inplace=True)
+
+        logger.info('Number of entries after drop dups and sort: %d',
+                    len(self.contract_details))
+
+        logger.info('saving contract_details DataFrame to csv')
+        self.contract_details.to_csv(contract_details_path)
 
     ###########################################################################
     # contractDetails
@@ -518,7 +549,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         """
         logger.info('entered for request_id %d', request_id)
         logger.debug('Symbol: %s', contractDetails.contract.symbol)
-        print('contractDetails:\n', contractDetails)
+        # print('contractDetails:\n', contractDetails)
         self.contract_details = self.contract_details.append(
                     pd.DataFrame([[contractDetails
                                    ]],

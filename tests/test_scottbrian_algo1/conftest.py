@@ -161,8 +161,10 @@ def algo_app(monkeypatch: Any,
     d.mkdir()
     stock_symbols_path = d / "stock_symbols.csv"
     symbol_status_path = d / "symbol_status.csv"
+    contract_details_path = d / "contract_details.csv"
     catalog = FileCatalog({'stock_symbols': stock_symbols_path,
-                           'symbols_status': symbol_status_path})
+                           'symbols_status': symbol_status_path,
+                           'contract_details': contract_details_path})
 
     a_algo_app = AlgoApp(catalog)
     return a_algo_app
@@ -182,7 +184,7 @@ class MockIB:
         self.test_cat = test_cat
         self.msg_rcv_q = queue.Queue()
         self.reqId_timeout = False
-        self.next_con_id = 7000
+        self.next_conId = 7000
         self.MAX_CONTRACT_DESCS_RETURNED = 16
         self.contract_descriptions = pd.DataFrame()
 
@@ -271,34 +273,33 @@ class MockIB:
         elif int(fields[0]) == OUT.REQ_CONTRACT_DATA:
             logger.info('reqContractDetails detected')
             version = int(fields[1])
-            req_id = int(fields[2])
-            con_id = int(fields[3])
+            reqId = int(fields[2])
+            conId = int(fields[3])
 
             # construct start of receive message for wrapper
             start_msg = make_field(IN.CONTRACT_DATA) \
                 + make_field(version) \
-                + make_field(req_id)
+                + make_field(reqId)
 
             # find pattern matches in mock contract descriptions
             # fow now, just conId
             match_descs = self.contract_descriptions.loc[
-                self.contract_descriptions['conId'] == con_id]
+                self.contract_descriptions['conId'] == conId]
 
             last_trade_date = '01012022'  # for now
             strike = 0  # for now
             right = 'P'  # for now
             exchange = 'SMART'  # for now
-            currency = 'USD'
-            market_name = 'MarketName'
-            trading_class = 'TradingClass'
+            market_name = 'MarketName' + str(conId)
+            trading_class = 'TradingClass' + str(conId)
             min_tick = 0.01
             md_size_multiplier = 1
-            multiplier = 2
-            order_types = 'OrderTypes'
-            valid_exchanges = 'ValidExchanges'
+            multiplier = "2"
+            order_types = 'OrderTypes' + str(conId)
+            valid_exchanges = 'ValidExchanges' + str(conId)
             price_magnifier = 3
             under_conid = 12345
-            long_name = 'LongName'
+            long_name = 'LongName' + str(conId)
 
             contract_month = 'ContractMonth'
             industry = 'Industry'
@@ -321,7 +322,7 @@ class MockIB:
             under_sec_type = 'UnderSecType'
             market_rule_ids = 'MarketRuleIds'
             real_expiration_date = 'RealExpirationDate'
-            stock_type = 'StockType)'
+            stock_type = 'StockType' + str(conId)
 
             for i in range(len(match_descs)):
                 local_symbol = match_descs.iloc[i].symbol
@@ -372,7 +373,7 @@ class MockIB:
 
             build_msg = make_field(IN.CONTRACT_DATA_END) \
                 + make_field(version) \
-                + make_field(req_id)
+                + make_field(reqId)
             recv_msg = make_msg(build_msg)
 
         #######################################################################
@@ -411,9 +412,9 @@ class MockIB:
         """
         combos = self.get_combos(symbol)
         for combo in combos:
-            self.next_con_id += 1
+            self.next_conId += 1
             self.contract_descriptions = self.contract_descriptions.append(
-                            pd.DataFrame([[self.next_con_id,
+                            pd.DataFrame([[self.next_conId,
                                            symbol,
                                            combo[0],
                                            combo[1],
