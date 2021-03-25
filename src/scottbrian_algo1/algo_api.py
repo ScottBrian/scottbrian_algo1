@@ -15,6 +15,8 @@ from threading import Event, get_ident, get_native_id, Thread, Lock
 
 import time
 
+import pickle
+
 from ibapi.wrapper import EWrapper  # type: ignore
 # from ibapi import utils
 from ibapi.client import EClient  # type: ignore
@@ -30,7 +32,7 @@ from ibapi.contract import Contract, ContractDetails
 # from ibapi.execution import ExecutionFilter
 # from ibapi.commission_report import CommissionReport
 # from ibapi.ticktype import *  # @UnusedWildImport
-# from ibapi.tag_value import TagValue
+from ibapi.tag_value import TagValue
 #
 # from ibapi.account_summary_tags import *
 
@@ -44,7 +46,9 @@ from scottbrian_utils.time_hdr import time_box
 # from datetime import datetime
 import logging
 
-# set logging for debug for now until things ar working
+########################################################################
+# logging
+########################################################################
 logging.basicConfig(filename='AlgoApp.log',
                     filemode='w',
                     level=logging.DEBUG,
@@ -58,13 +62,23 @@ logging.basicConfig(filename='AlgoApp.log',
 logger = logging.getLogger(__name__)
 
 
+########################################################################
+# pandas options
+########################################################################
+pd.set_option('mode.chained_assignment', 'raise')
+pd.set_option('display.max_columns', 10)
+
+
+########################################################################
+# Exceptions
+########################################################################
 class AlgoAppError(Exception):
     """Base class for exceptions in this module."""
     pass
 
 
 class AlreadyConnected(AlgoAppError):
-    """AlgoApp exception for an attempt to connect when already connected."""
+    """AlgoApp attempt to connect when already connected."""
     pass
 
 
@@ -76,11 +90,24 @@ class ConnectTimeout(AlgoAppError):
     """Connect timeout waiting for nextValid_ID event."""
 
 
+class DisconnectDuringRequest(AlgoAppError):
+    """Request detected disconnect while waiting on event completion."""
+
+
+class RequestTimeout(AlgoAppError):
+    """Request timed out while waiting on event completion."""
+
+
+########################################################################
+# AlgoApp
+########################################################################
 class AlgoApp(EWrapper, EClient):  # type: ignore
     """AlgoApp class."""
 
     PORT_FOR_LIVE_TRADING = 7496
     PORT_FOR_PAPER_TRADING = 7497
+
+    REQUEST_TIMEOUT_SECONDS = 60
 
     ###########################################################################
     # __init__
@@ -308,6 +335,24 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                 self.reset()
 
     ###########################################################################
+    # wait_for_request_completion
+    ###########################################################################
+    def wait_for_request_completion(self):
+        call_seq = get_formatted_call_sequence()
+        logger.info('%s about to wait for request event completion',
+                    call_seq)
+        for i in range(self.REQUEST_TIMEOUT_SECONDS):  # try for one minute
+            if not self.isConnected():
+                logger.error('%s detected disconnect while waiting',
+                             call_seq)
+                raise DisconnectDuringRequest
+            if self.response_complete_event.wait(timeout=1):
+                return  # good, event completed w/o timeout
+        # if here, we timed out out while still connected
+        logger.error('%s request timed out', call_seq)
+        raise RequestTimeout
+
+    ###########################################################################
     ###########################################################################
     # get_symbols
     ###########################################################################
@@ -428,12 +473,12 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             symbol_to_get: one of more chars to match to symbols
 
         """
-        self.response_complete_event.clear()
         logger.info('getting symbols that start with %s', symbol_to_get)
 
         #######################################################################
         # send request to IB
         #######################################################################
+        self.response_complete_event.clear()  # reset the wait bit first
         self.reqMatchingSymbols(self.get_reqId(), symbol_to_get)
         # the following sleep for 1 second is required to avoid
         # overloading IB with requests (they ask for 1 second). Note that we
@@ -443,7 +488,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # we sleep, thus helping to reduce the entire wait (as opposed to
         # doing the 1 second wait before making the request).
         time.sleep(1)  # throttle to avoid overloading IB
-        self.response_complete_event.wait()
+        self.wait_for_request_completion()
 
     ###########################################################################
     # symbolSamples - callback
@@ -506,17 +551,15 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         contract_details_path = self.ds_catalog.get_path('contract_details')
         logger.info('path: %s', contract_details_path)
 
-        # if contract_details_path.exists():
-        #     self.contract_details = pd.read_csv(contract_details_path,
-        #                                         header=0,
-        #                                         index_col=0)
+        if contract_details_path.exists():
+            with open(contract_details_path, 'rb') as f:
+                self.contract_details = pickle.load(f)
         ################################################################
         # make the request for details
         ################################################################
         self.response_complete_event.clear()
         self.reqContractDetails(self.get_reqId(), contract)
-        self.response_complete_event.wait()
-
+        self.wait_for_request_completion()
         #######################################################################
         # Save contract_details DataFrame to csv
         #######################################################################
@@ -531,8 +574,9 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         logger.info('Number of entries after drop dups and sort: %d',
                     len(self.contract_details))
 
-        logger.info('saving contract_details DataFrame to csv')
-        self.contract_details.to_csv(contract_details_path)
+        logger.info('saving contract_details DataFrame to pickle')
+        with open(contract_details_path, 'wb') as f:
+            pickle.dump(self.contract_details, f, pickle.HIGHEST_PROTOCOL)
 
     ###########################################################################
     # contractDetails
@@ -550,6 +594,14 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         logger.info('entered for request_id %d', request_id)
         logger.debug('Symbol: %s', contractDetails.contract.symbol)
         # print('contractDetails:\n', contractDetails)
+
+        # remove the contract if it already exists in the DataFrame
+        # as we want the newest information to replace the old
+        self.contract_details.drop(contractDetails.contract.conId,
+                                   inplace=True,
+                                   errors='ignore')
+
+        # add the contract details to the DataFrame
         self.contract_details = self.contract_details.append(
                     pd.DataFrame([[contractDetails
                                    ]],
@@ -619,6 +671,7 @@ def main():
 
     print('about to disconnect')
     algo_app.disconnect()
+
 
 
 if __name__ == "__main__":

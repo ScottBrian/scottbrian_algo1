@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd  # type: ignore
 import string
 import math
+import pickle
+
 
 from typing import Any, List, Tuple  # Callable, cast, Tuple, Union
 # from typing_extensions import Final
@@ -15,7 +17,7 @@ from typing import Any, List, Tuple  # Callable, cast, Tuple, Union
 from ibapi.contract import Contract, ContractDetails
 
 from scottbrian_algo1.algo_api import AlgoApp, AlreadyConnected, \
-    DisconnectLockHeld, ConnectTimeout
+    DisconnectLockHeld, ConnectTimeout, RequestTimeout
 
 from scottbrian_utils.diag_msg import diag_msg
 # from scottbrian_utils.file_catalog import FileCatalog
@@ -595,6 +597,34 @@ class TestAlgoAppMatchingSymbols:
                              exp_non_recursive_matches=num_exp_non_recursive,
                              req_type=2)
 
+    def test_get_symbols_timeout(self,
+                                 algo_app: "AlgoApp",
+                                 mock_ib: Any) -> None:
+        """Test get_symbols with pattern that finds no symbols.
+
+        Args:
+            algo_app: instance of AlgoApp from conftest pytest fixture
+            mock_ib: pytest fixture of contract_descriptions
+
+        """
+        verify_algo_app_initialized(algo_app)
+        try:
+            logger.debug("about to connect")
+            algo_app.connect_to_ib("127.0.0.1",
+                                   mock_ib.PORT_FOR_MATCHING_SYMBOLS_TIMEOUT,
+                                   client_id=0)
+            verify_algo_app_connected(algo_app)
+
+            with pytest.raises(RequestTimeout):
+                algo_app.request_symbols('A')
+
+        finally:
+            logger.debug('disconnecting')
+            algo_app.disconnect_from_ib()
+            logger.debug('verifying disconnected')
+            verify_algo_app_disconnected(algo_app)
+            logger.debug('disconnected - test case returning')
+
     def test_get_symbols(self,
                          algo_app: "AlgoApp",
                          mock_ib: Any) -> None:
@@ -1000,7 +1030,55 @@ class TestAlgoAppContractDetails:
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
+    def test_get_contract_details_duplicates(self,
+                                             algo_app: "AlgoApp",
+                                             mock_ib: Any
+                                             ) -> None:
+        """Test contract details for 3 entries plus a duplicate.
 
+        Args:
+            algo_app: pytest fixture instance of AlgoApp (see conftest.py)
+            mock_ib: pytest fixture of contract_descriptions
+
+        """
+        verify_algo_app_initialized(algo_app)
+
+        logger.debug("about to connect")
+        algo_app.connect_to_ib("127.0.0.1",
+                               algo_app.PORT_FOR_LIVE_TRADING,
+                               client_id=0)
+
+        # verify that algo_app is connected and alive with a valid reqId
+        verify_algo_app_connected(algo_app)
+
+        contract = Contract()  # create an empty contract with conId of 0
+        contract.conId = 7001
+        algo_app.get_contract_details(contract)
+
+        verify_contract_details(contract, algo_app, mock_ib, [7001])
+
+        contract.conId = 7002
+        algo_app.get_contract_details(contract)
+
+        verify_contract_details(contract, algo_app, mock_ib, [7001, 7002])
+
+        contract.conId = 7001  # try to add 7001 again
+        algo_app.get_contract_details(contract)
+
+        verify_contract_details(contract, algo_app, mock_ib, [7001, 7002])
+
+        contract.conId = 7003
+        algo_app.get_contract_details(contract)
+
+        verify_contract_details(contract, algo_app, mock_ib, [7001, 7002, 7003])
+
+        contract.conId = 7002  # another duplicate
+        algo_app.get_contract_details(contract)
+
+        verify_contract_details(contract, algo_app, mock_ib, [7001, 7002, 7003])
+
+        algo_app.disconnect_from_ib()
+        verify_algo_app_disconnected(algo_app)
 ###############################################################################
 # contract details verification
 ###############################################################################
@@ -1027,6 +1105,14 @@ def verify_contract_details(contract: "Contract",
     # diag_msg('algo_app.contract_details.info:\n',
     #          algo_app.contract_details.info())
 
+    # diag_msg('algo_app.contract_details:\n',
+    #          algo_app.contract_details)
+    #
+    # diag_msg('algo_app.contract_details.iloc[0]:\n',
+    #          algo_app.contract_details.iloc[0])
+    #
+    # diag_msg('algo_app.contract_details.iloc[1]:\n',
+    #          algo_app.contract_details.iloc[1])
     # assert len(match_descs) == num_expected
     assert len(algo_app.contract_details) == len(conId_list)
 
@@ -1037,55 +1123,110 @@ def verify_contract_details(contract: "Contract",
             algo_app.ds_catalog.get_path('contract_details')
         logger.info('stock_symbols_path: %s', contract_details_path)
 
-        contract_details_ds = pd.read_csv(contract_details_path,
-                                          header=0,
-                                          index_col=0)
+        # contract_details_ds = pd.read_csv(contract_details_path,
+        #                                   header=0,
+        #                                   index_col=0)
+        with open(contract_details_path, 'rb') as f:
+            contract_details_ds = pickle.load(f)
+
         for conId in conId_list:
             match_desc = mock_ib.contract_descriptions.loc[
                 mock_ib.contract_descriptions['conId'] == conId]
-            diag_msg('match_desc\n', match_desc)
-            diag_msg('match_desc.conId[0]\n', match_desc.conId[0])
-            diag_msg('match_desc.symbol[0]\n', match_desc.symbol[0])
+            # diag_msg('match_desc\n', match_desc)
+            # diag_msg('match_desc.conId[0]\n', match_desc.conId[0])
+            # diag_msg('match_desc.symbol[0]\n', match_desc.symbol[0])
 
             test_contract_details = \
                 algo_app.contract_details.loc[conId]['contractDetails']
 
-            diag_msg('test_contract_details\n', test_contract_details)
-            diag_msg('test_contract_details.contract.conId:\n',
-                     test_contract_details.contract.conId)
-            diag_msg('test_contract_details.contract.symbol:\n',
-                     test_contract_details.contract.symbol)
-            assert test_contract_details.contract.conId == conId
+            test_contract_details2 = \
+                contract_details_ds.loc[conId]['contractDetails']
+
+            # diag_msg('test_contract_details\n', test_contract_details)
+            # diag_msg('test_contract_details.contract.conId:\n',
+            #          test_contract_details.contract.conId)
+            # diag_msg('test_contract_details.contract.symbol:\n',
+            #          test_contract_details.contract.symbol)
+            #
+            # diag_msg('test_contract_details2\n', test_contract_details2)
+            # diag_msg('test_contract_details2.contract.conId:\n',
+            #          test_contract_details2.contract.conId)
+            # diag_msg('test_contract_details2.contract.symbol:\n',
+            #          test_contract_details2.contract.symbol)
+
+            assert (test_contract_details.contract.conId
+                    == test_contract_details2.contract.conId
+                    == conId)
+
             assert (test_contract_details.contract.symbol
+                    == test_contract_details2.contract.symbol
                     == match_desc.symbol[0])
+
             assert (test_contract_details.contract.secType
+                    == test_contract_details2.contract.secType
                     == match_desc.secType[0])
+
             assert (test_contract_details.contract.lastTradeDateOrContractMonth
+                    == test_contract_details2.contract
+                        .lastTradeDateOrContractMonth
                     == '01012022')
-            assert (test_contract_details.contract.strike == 0.0)
-            assert (test_contract_details.contract.right == "P")
-            assert (test_contract_details.contract.multiplier == "2")
-            assert (test_contract_details.contract.exchange == 'SMART')
+
+            assert (test_contract_details.contract.strike
+                    == test_contract_details2.contract.strike
+                    == 0.0)
+
+            assert (test_contract_details.contract.right
+                    == test_contract_details2.contract.right
+                    == "P")
+
+            assert (test_contract_details.contract.multiplier
+                    == test_contract_details2.contract.multiplier
+                    == "2")
+
+            assert (test_contract_details.contract.exchange
+                    == test_contract_details2.contract.exchange
+                    == 'SMART')
+
             assert (test_contract_details.contract.primaryExchange
+                    == test_contract_details2.contract.primaryExchange
                     == match_desc.primaryExchange[0])
+
             assert (test_contract_details.contract.currency
+                    == test_contract_details2.contract.currency
                     == match_desc.currency[0])
+
             assert (test_contract_details.contract.localSymbol
+                    == test_contract_details2.contract.localSymbol
                     == match_desc.symbol[0])
+
             assert (test_contract_details.contract.tradingClass
+                    == test_contract_details2.contract.tradingClass
                     == 'TradingClass' + str(conId))
-            assert (test_contract_details.contract.includeExpired is False)
-            assert (test_contract_details.contract.secIdType == "")
-            assert (test_contract_details.contract.secId == "")
+
+            assert (test_contract_details.contract.includeExpired
+                    == test_contract_details2.contract.includeExpired
+                    is False)
+
+            assert (test_contract_details.contract.secIdType
+                    == test_contract_details2.contract.secIdType
+                    == "")
+
+            assert (test_contract_details.contract.secId
+                    == test_contract_details2.contract.secId
+                    == "")
 
             # combos
-            assert (test_contract_details.contract.comboLegsDescrip == "")
-            assert (test_contract_details.contract.comboLegs is None)
-            assert (test_contract_details.contract.deltaNeutralContract
+            assert (test_contract_details.contract.comboLegsDescrip
+                    == test_contract_details2.contract.comboLegsDescrip
+                    == "")
+
+            assert (test_contract_details.contract.comboLegs
+                    == test_contract_details2.contract.comboLegs
                     is None)
 
-
-
+            assert (test_contract_details.contract.deltaNeutralContract
+                    == test_contract_details2.contract.deltaNeutralContract
+                    is None)
 
 
 ###############################################################################
