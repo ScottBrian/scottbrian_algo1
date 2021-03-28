@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 import string
+import time
 
 import pytest
 import pandas as pd  # type: ignore
@@ -69,10 +70,16 @@ def algo_app(monkeypatch: Any,
         else:
             mock_ib.reqId_timeout = False
 
-        if self.port == mock_ib.PORT_FOR_MATCHING_SYMBOLS_TIMEOUT:
-            mock_ib.matching_symbols_timeout = True  # simulate timeout
+        if self.port == mock_ib.PORT_FOR_SIMULATE_REQUEST_DISCONNECT:
+            mock_ib.simulate_request_disconnect = True  # simulate disconnect
         else:
-            mock_ib.matching_symbols_timeout = False
+            mock_ib.simulate_request_disconnect = False
+
+        if self.port == mock_ib.PORT_FOR_SIMULATE_REQUEST_TIMEOUT:
+            mock_ib.simulate_request_timeout = True  # simulate timeout
+        else:
+            mock_ib.simulate_request_timeout = False
+
         self.socket.settimeout(1)  # non-blocking
 
     monkeypatch.setattr(Connection, "connect", mock_connection_connect)
@@ -179,7 +186,9 @@ class MockIB:
     """Class provides simulation data and methods for testing with ibapi."""
 
     PORT_FOR_REQID_TIMEOUT = 9001
-    PORT_FOR_MATCHING_SYMBOLS_TIMEOUT = 9002
+    PORT_FOR_SIMULATE_REQUEST_DISCONNECT = 9002
+    PORT_FOR_SIMULATE_REQUEST_TIMEOUT = 9003
+
 
     def __init__(self, test_cat):
         """Initialize the MockIB instance.
@@ -190,7 +199,8 @@ class MockIB:
         self.test_cat = test_cat
         self.msg_rcv_q = queue.Queue()
         self.reqId_timeout = False
-        self.matching_symbols_timeout = False
+        self.simulate_request_disconnect = False
+        self.simulate_request_timeout = False
         self.next_conId = 7000
         self.MAX_CONTRACT_DESCS_RETURNED = 16
         self.contract_descriptions = pd.DataFrame()
@@ -211,6 +221,7 @@ class MockIB:
         logger.debug('fields: %s', fields)
 
         recv_msg = b''
+
         #######################################################################
         # get version and connect time (special case - not decode able)
         #######################################################################
@@ -238,6 +249,14 @@ class MockIB:
                                     + make_field('1'))
             logger.debug('recv_msg: %s', recv_msg)
         #######################################################################
+        # Handle special test cases for request disconnect and timeout
+        #######################################################################
+        elif self.simulate_request_disconnect:  # if testing timeout case
+            time.sleep(2)  # allow some time for request to get into wait loop
+            recv_msg = b''  # simulate disconnect
+        elif self.simulate_request_timeout:
+            recv_msg = make_msg('0')  # simulate timeout
+        #######################################################################
         # reqMatchingSymbols
         #######################################################################
         elif int(fields[0]) == OUT.REQ_MATCHING_SYMBOLS:
@@ -246,37 +265,34 @@ class MockIB:
             pattern = fields[2].decode(errors='backslashreplace')
             logger.debug('pattern: %s', pattern)
 
-            if self.matching_symbols_timeout:  # if testing timeout case
-                recv_msg = make_msg('0')  # simulate timeout
-            else:  # build the normal matching symbols message
-                # construct start of receive message for wrapper
-                build_msg = make_field(IN.SYMBOL_SAMPLES) + make_field(reqId)
+            # construct start of receive message for wrapper
+            build_msg = make_field(IN.SYMBOL_SAMPLES) + make_field(reqId)
 
-                # find pattern matches in mock contract descriptions
-                match_descs = self.contract_descriptions.loc[
-                    self.contract_descriptions['symbol'].str.
-                    startswith(pattern)]
+            # find pattern matches in mock contract descriptions
+            match_descs = self.contract_descriptions.loc[
+                self.contract_descriptions['symbol'].str.
+                startswith(pattern)]
 
-                # limit the number found as ib does
-                num_found = min(self.MAX_CONTRACT_DESCS_RETURNED,
-                                match_descs.shape[0])
+            # limit the number found as ib does
+            num_found = min(self.MAX_CONTRACT_DESCS_RETURNED,
+                            match_descs.shape[0])
 
-                # add the number of descriptions to the receive message
-                build_msg = build_msg + make_field(num_found)
+            # add the number of descriptions to the receive message
+            build_msg = build_msg + make_field(num_found)
 
-                for i in range(num_found):
-                    build_msg = build_msg \
-                        + make_field(match_descs.iloc[i].conId) \
-                        + make_field(match_descs.iloc[i].symbol) \
-                        + make_field(match_descs.iloc[i].secType) \
-                        + make_field(match_descs.iloc[i].primaryExchange) \
-                        + make_field(match_descs.iloc[i].currency) \
-                        + make_field(len(match_descs.iloc[i].derivative_types))
+            for i in range(num_found):
+                build_msg = build_msg \
+                    + make_field(match_descs.iloc[i].conId) \
+                    + make_field(match_descs.iloc[i].symbol) \
+                    + make_field(match_descs.iloc[i].secType) \
+                    + make_field(match_descs.iloc[i].primaryExchange) \
+                    + make_field(match_descs.iloc[i].currency) \
+                    + make_field(len(match_descs.iloc[i].derivative_types))
 
-                    for dvt in match_descs.iloc[i].derivative_types:
-                        build_msg = build_msg + make_field(dvt)
+                for dvt in match_descs.iloc[i].derivative_types:
+                    build_msg = build_msg + make_field(dvt)
 
-                recv_msg = make_msg(build_msg)
+            recv_msg = make_msg(build_msg)
 
         #######################################################################
         # reqContractDetails
@@ -404,6 +420,7 @@ class MockIB:
         msg = self.msg_rcv_q.get(timeout=1)  # wait for 1 second if empty
 
         return msg
+
     ###########################################################################
     # since ib will return only 16 symbols per request, we need to
     # create a table with earlier entries being the single character symbols
@@ -414,7 +431,6 @@ class MockIB:
     #  4) symbols starting with one char and going up to 6 chars, and
     #     enough of each to drive the recursion code to 6 char exact names
     ###########################################################################
-
     def build_desc(self, symbol):
         """Build the mock contract_descriptions.
 

@@ -16,6 +16,7 @@ from threading import Event, get_ident, get_native_id, Thread, Lock
 import time
 
 import pickle
+import json
 
 from ibapi.wrapper import EWrapper  # type: ignore
 # from ibapi import utils
@@ -32,7 +33,7 @@ from ibapi.contract import Contract, ContractDetails
 # from ibapi.execution import ExecutionFilter
 # from ibapi.commission_report import CommissionReport
 # from ibapi.ticktype import *  # @UnusedWildImport
-from ibapi.tag_value import TagValue
+# from ibapi.tag_value import TagValue
 #
 # from ibapi.account_summary_tags import *
 
@@ -577,6 +578,36 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         logger.info('saving contract_details DataFrame to pickle')
         with open(contract_details_path, 'wb') as f:
             pickle.dump(self.contract_details, f, pickle.HIGHEST_PROTOCOL)
+        # self.save_contract_details()
+
+    ###########################################################################
+    # save_contract_details
+    ###########################################################################
+    # def save_contract_details(self):
+    #     """Save the contract_details DataFrame to storage."""
+    #     for i in range(len(self.contract_details)):
+    #         contract_details = self.contract_details.iloc[i].contractDetails
+    #         contract = contract_details.contract
+    #         json_str_contract = json.dumps(contract.__dict__)
+    #         print('*******json_str_contract*******:\n', json_str_contract)
+    #
+    #         sec_id_list = contract_details.secIdList
+    #         print('***** sec_id_list ****\n', sec_id_list)
+    #
+    #         for j in range(len(sec_id_list)):
+    #             tag_thing = sec_id_list[j]
+    #             json_str_tag_thing = json.dumps(tag_thing.__dict__)
+    #             print('***** json_str_tag_thing ****\n', json_str_tag_thing)
+    #
+    #
+    #         contract_details.contract = ''
+    #         contract_details.secIdList = None
+    #         json_str_contract_details = json.dumps(contract_details.__dict__)
+    #         print('*******json_str_contract_details*******:\n',
+    #               json_str_contract_details)
+    #
+    #         contract_details.contract = contract
+    #         contract_details.secIdList = sec_id_list
 
     ###########################################################################
     # contractDetails
@@ -593,7 +624,8 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         """
         logger.info('entered for request_id %d', request_id)
         logger.debug('Symbol: %s', contractDetails.contract.symbol)
-        # print('contractDetails:\n', contractDetails)
+        print('contractDetails:\n', contractDetails)
+        print('contractDetails.__dict__:\n', contractDetails.__dict__)
 
         # remove the contract if it already exists in the DataFrame
         # as we want the newest information to replace the old
@@ -607,6 +639,11 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                                    ]],
                                  columns=['contractDetails'],
                                  index=[contractDetails.contract.conId]))
+
+        print('self.contract_details:\n', contractDetails)
+        print('self.contract_details.__dict__:\n',
+              self.contract_details.__dict__)
+
 
     ###########################################################################
     # contractDetailsEnd
@@ -629,6 +666,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
 @time_box
 def main():
+    """main routine for quick discovery tests."""
     from pathlib import Path
     proj_dir = Path.cwd().resolve().parents[1]  # back two directories
     ds_catalog = \
@@ -639,16 +677,13 @@ def main():
                          Path(proj_dir / 't_datasets/contract_details.csv')
                      })
 
-    try:
-        algo_app = AlgoApp(ds_catalog)
+    algo_app = AlgoApp(ds_catalog)
 
-        algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+    algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
 
-        print("serverVersion:%s connectionTime:%s" %
-              (algo_app.serverVersion(),
-               algo_app.twsConnectionTime()))
-    except:
-        raise
+    print("serverVersion:%s connectionTime:%s" %
+          (algo_app.serverVersion(),
+           algo_app.twsConnectionTime()))
 
     # print('SBT get_stock_symbols:main about to call get_symbols')
     # algo_app.get_symbols(start_char='A', end_char='A')
@@ -668,10 +703,8 @@ def main():
 
     print('my_contract_details\n', my_contract_details)
 
-
     print('about to disconnect')
     algo_app.disconnect()
-
 
 
 if __name__ == "__main__":

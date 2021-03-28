@@ -17,7 +17,7 @@ from typing import Any, List, Tuple  # Callable, cast, Tuple, Union
 from ibapi.contract import Contract, ContractDetails
 
 from scottbrian_algo1.algo_api import AlgoApp, AlreadyConnected, \
-    DisconnectLockHeld, ConnectTimeout, RequestTimeout
+    DisconnectLockHeld, ConnectTimeout, RequestTimeout, DisconnectDuringRequest
 
 from scottbrian_utils.diag_msg import diag_msg
 # from scottbrian_utils.file_catalog import FileCatalog
@@ -600,7 +600,7 @@ class TestAlgoAppMatchingSymbols:
     def test_get_symbols_timeout(self,
                                  algo_app: "AlgoApp",
                                  mock_ib: Any) -> None:
-        """Test get_symbols with pattern that finds no symbols.
+        """Test get_symbols gets timeout.
 
         Args:
             algo_app: instance of AlgoApp from conftest pytest fixture
@@ -611,11 +611,40 @@ class TestAlgoAppMatchingSymbols:
         try:
             logger.debug("about to connect")
             algo_app.connect_to_ib("127.0.0.1",
-                                   mock_ib.PORT_FOR_MATCHING_SYMBOLS_TIMEOUT,
+                                   mock_ib.PORT_FOR_SIMULATE_REQUEST_TIMEOUT,
                                    client_id=0)
             verify_algo_app_connected(algo_app)
 
             with pytest.raises(RequestTimeout):
+                algo_app.request_symbols('A')
+
+        finally:
+            logger.debug('disconnecting')
+            algo_app.disconnect_from_ib()
+            logger.debug('verifying disconnected')
+            verify_algo_app_disconnected(algo_app)
+            logger.debug('disconnected - test case returning')
+
+    def test_get_symbols_disconnect(self,
+                                 algo_app: "AlgoApp",
+                                 mock_ib: Any) -> None:
+        """Test get_symbols gets disconnected while waiting.
+
+        Args:
+            algo_app: instance of AlgoApp from conftest pytest fixture
+            mock_ib: pytest fixture of contract_descriptions
+
+        """
+        verify_algo_app_initialized(algo_app)
+        try:
+            logger.debug("about to connect")
+            algo_app.connect_to_ib("127.0.0.1",
+                                   mock_ib.
+                                   PORT_FOR_SIMULATE_REQUEST_DISCONNECT,
+                                   client_id=0)
+            verify_algo_app_connected(algo_app)
+
+            with pytest.raises(DisconnectDuringRequest):
                 algo_app.request_symbols('A')
 
         finally:
@@ -1079,6 +1108,8 @@ class TestAlgoAppContractDetails:
 
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
+
+
 ###############################################################################
 # contract details verification
 ###############################################################################
@@ -1129,6 +1160,9 @@ def verify_contract_details(contract: "Contract",
         with open(contract_details_path, 'rb') as f:
             contract_details_ds = pickle.load(f)
 
+        print('contract_details_ds:\n', contract_details_ds)
+        print('contract_details_ds.__dict__:\n',
+              contract_details_ds.__dict__)
         for conId in conId_list:
             match_desc = mock_ib.contract_descriptions.loc[
                 mock_ib.contract_descriptions['conId'] == conId]
@@ -1141,7 +1175,9 @@ def verify_contract_details(contract: "Contract",
 
             test_contract_details2 = \
                 contract_details_ds.loc[conId]['contractDetails']
-
+            print('test_contract_details2:\n', test_contract_details2)
+            print('test_contract_details2.__dict__:\n',
+                  test_contract_details2.__dict__)
             # diag_msg('test_contract_details\n', test_contract_details)
             # diag_msg('test_contract_details.contract.conId:\n',
             #          test_contract_details.contract.conId)
@@ -1227,6 +1263,33 @@ def verify_contract_details(contract: "Contract",
             assert (test_contract_details.contract.deltaNeutralContract
                     == test_contract_details2.contract.deltaNeutralContract
                     is None)
+
+            ############################################################
+            # details
+            ############################################################
+            assert (test_contract_details.marketName
+                    == test_contract_details2.marketName
+                    == 'MarketName' + str(conId))
+
+            assert (test_contract_details.minTick
+                    == test_contract_details2.minTick
+                    == 0.01)
+
+            assert (test_contract_details.orderTypes
+                    == test_contract_details2.orderTypes
+                    == 'OrderTypes' + str(conId))
+
+            assert (len(test_contract_details.secIdList)
+                    == len(test_contract_details2.secIdList)
+                    == 5)
+            for i in range(len(test_contract_details.secIdList)):
+                assert (test_contract_details.secIdList[i].tag
+                        == test_contract_details2.secIdList[i].tag
+                        == 'tag' + str(i))
+
+                assert (test_contract_details.secIdList[i].value
+                        == test_contract_details2.secIdList[i].value
+                        == 'value' + str(i))
 
 
 ###############################################################################
