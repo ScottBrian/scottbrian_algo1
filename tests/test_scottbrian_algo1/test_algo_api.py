@@ -223,12 +223,48 @@ def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
     assert not algo_app.run_thread.is_alive()
     assert not algo_app.isConnected()
 
-
+###############################################################################
 ###############################################################################
 # matching symbols
 ###############################################################################
+###############################################################################
 class TestAlgoAppMatchingSymbols:
     """TestAlgoAppMatchingSymbols class."""
+    def test_request_symbols_all_combos(self,
+                                        algo_app: "AlgoApp",
+                                        mock_ib: Any) -> None:
+        """Test request_symbols with all patterns.
+
+        Args:
+            algo_app: pytest fixture instance of AlgoApp (see conftest.py)
+            mock_ib: pytest fixture of contract_descriptions
+
+        """
+        verify_algo_app_initialized(algo_app)
+
+        for idx, search_pattern in enumerate(mock_ib.search_patterns()):
+            num_exp_recursive, num_exp_non_recursive = \
+                get_exp_number(search_pattern, mock_ib)
+            # verify symbol table has zero entries for the symbol
+            logger.info("calling verify_match_symbols req_type 1 sym %s num %d",
+                        search_pattern, idx)
+            verify_match_symbols(algo_app,
+                                 mock_ib,
+                                 search_pattern,
+                                 exp_recursive_matches=num_exp_recursive,
+                                 exp_non_recursive_matches=
+                                 num_exp_non_recursive,
+                                 req_type=1)
+            logger.info("calling verify_match_symbols req_type 2 sym %s num %d",
+                        search_pattern, idx)
+            verify_match_symbols(algo_app,
+                                 mock_ib,
+                                 search_pattern,
+                                 exp_recursive_matches=num_exp_recursive,
+                                 exp_non_recursive_matches=
+                                 num_exp_non_recursive,
+                                 req_type=2)
+
     def test_request_symbols_null_result(self,
                                          algo_app: "AlgoApp",
                                          mock_ib: Any,
@@ -753,7 +789,7 @@ def verify_match_symbols(algo_app: "AlgoApp",
                                algo_app.PORT_FOR_LIVE_TRADING,
                                client_id=0)
         verify_algo_app_connected(algo_app)
-
+        algo_app.request_throttle_secs = 0.01
         # make request for symbol that will be returned
         assert algo_app.request_id == 1
         assert req_type == 1 or req_type == 2
@@ -791,9 +827,7 @@ def verify_match_symbols(algo_app: "AlgoApp",
 
         logger.debug("verifying results match DataFrame")
         if exp_recursive_matches > 0:
-            match_descs = match_descs.drop(columns=['secType',
-                                                    'currency',
-                                                    'derivative_types'])
+            match_descs = match_descs.drop(columns=['derivative_types'])
 
             if req_type == 1:
                 match_descs = match_descs.iloc[0:exp_non_recursive_matches]
@@ -833,27 +867,45 @@ def if_opt_in_derivative_types(df: Any) -> Any:
     return ret_array
 
 
-def get_exp_number(search_char: str, mock_ib: Any) -> Tuple[int, int]:
+def get_exp_number(search_pattern: str, mock_ib: Any) -> Tuple[int, int]:
     """Helper function to get number of expected symbols.
 
     Args:
-        search_char: single char that will be searched
+        search_pattern: search arg as string of one or more chars
         mock_ib: mock of ib
 
     Returns:
         number of expected matches for recursive and non-recursive requests
     """
-    if search_char not in string.ascii_uppercase[8:17]:  # I to Q, inclusive
-        return 0, 0
+    combo_factor = (1 + 3 + 3**2 + 3**3)
+    if len(search_pattern) > 4:
+        return 0, 0  # 5 or more chars will never match (for our mock setup)
+    if search_pattern[0] not in string.ascii_uppercase[0:17]:
+        return 0, 0  # not in A-Q, inclusive
+    if len(search_pattern) >= 2:
+        if search_pattern[1] not in string.ascii_uppercase[1:3] + '.':
+            return 0, 0  # # not in 'BC.'
+        combo_factor = (1 + 3 + 3**2)
+    if len(search_pattern) >= 3:
+        if search_pattern[2] not in string.ascii_uppercase[2:5]:
+            return 0, 0  # # not in 'CDE'
+        combo_factor = (1 + 3)
+    if len(search_pattern) == 4:
+        if search_pattern[3] not in string.ascii_uppercase[3:5] + '.':
+            return 0, 0  # # not in 'DE.'
+        combo_factor = 1
+
     count = 0
-    combo = mock_ib.get_combos(search_char)
+    combo = mock_ib.get_combos(search_pattern[0])
+
+    raw_count = len(combo)
 
     for item in combo:
         if item[0] == 'STK' and item[2] == 'USD' and 'OPT' in item[3]:
             count += 1
-    num_exp_recursive = count * (1 + 3 + 3**2 + 3**3)
+    num_exp_recursive = count * combo_factor
     num_exp_non_recursive = \
-        math.ceil(min(16, num_exp_recursive) * (count/len(combo)))
+        math.ceil(min(16, len(combo) * combo_factor) * (count/len(combo)))
 
     return num_exp_recursive, num_exp_non_recursive
 

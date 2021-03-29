@@ -431,6 +431,18 @@ class MockIB:
     #  4) symbols starting with one char and going up to 6 chars, and
     #     enough of each to drive the recursion code to 6 char exact names
     ###########################################################################
+    @staticmethod
+    def search_patterns():
+        """Generator for search pattern strings"""
+        for char1 in string.ascii_uppercase[8:17]:  # A-Q
+            yield char1
+            for char2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
+                yield f'{char1}{char2}'
+                for char3 in string.ascii_uppercase[2:5]:  # C-E
+                    yield f'{char1}{char2}{char3}'
+                    for char4 in string.ascii_uppercase[3:5] + '.':  # D-E
+                        yield f'{char1}{char2}{char3}{char4}'
+
     def build_desc(self, symbol):
         """Build the mock contract_descriptions.
 
@@ -465,7 +477,7 @@ class MockIB:
 
         for chr1 in string.ascii_uppercase[0:17]:  # A-Q
             self.build_desc(chr1)
-            for chr2 in string.ascii_uppercase[1:3] + '.':  # B-C
+            for chr2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
                 self.build_desc(chr1 + chr2)
                 for chr3 in string.ascii_uppercase[2:5]:  # C-E
                     self.build_desc(chr1 + chr2 + chr3)
@@ -481,7 +493,7 @@ class MockIB:
         """Get combos.
 
         Args:
-            symbol: get combos for this symbol
+            symbol: get combos for this symbol (must be valid)
 
         Returns:
             List of lists of combos
@@ -537,24 +549,12 @@ def mock_ib() -> "MockIB":
     return MockIB(test_cat)
 
 
-nonexistent_symbol_arg_list = ['A',
-                               'AB',
-                               'ABC',
-                               'ABCD',
-                               'ABCDE',
-                               'ABCDEF',
-                               'B',
-                               'BB',
-                               'BBC',
-                               'BBCD',
-                               'BBCDE',
-                               'BBCDEF',
-                               'C',
-                               'D',
-                               'E',
-                               'F',
-                               'G',
-                               'H'
+nonexistent_symbol_arg_list = ['AA',
+                               'AD',
+                               'A.B',
+                               'BCD',
+                               'R',
+                               'SRS',
                                ]
 
 
@@ -574,11 +574,6 @@ def nonexistent_symbol_arg(request: Any) -> str:
 symbol_pattern_match_1_arg_list = ['IBCD',
                                    'ICDE',
                                    'I.E.',
-                                   'JBCD',
-                                   'J.DD',
-                                   'KCCE',
-                                   'L.DD',
-                                   'LCC.'
                                    ]
 
 
@@ -595,14 +590,15 @@ def symbol_pattern_match_1_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_2_arg_list = ['MBCD',
+symbol_pattern_match_2_arg_list = ['JBCD',
+                                   'J.DD',
+                                   'KCCE',
+                                   'L.DD',
+                                   'LCC.'
+                                   'MBCD',
                                    'MCDE',
                                    'M.E.',
                                    'M.DD',
-                                   'NCC.',
-                                   'NBCD',
-                                   'N.DD',
-                                   'NCCE'
                                    ]
 
 
@@ -619,7 +615,11 @@ def symbol_pattern_match_2_arg(request: Any) -> str:
     return cast(str, request.param)
 
 
-symbol_pattern_match_3_arg_list = ['OBCD',
+symbol_pattern_match_3_arg_list = ['NCC.',
+                                   'NBCD',
+                                   'N.DD',
+                                   'NCCE'
+                                   'OBCD',
                                    'OCDE',
                                    'O.EE',
                                    'O.DD',
@@ -643,18 +643,16 @@ def symbol_pattern_match_3_arg(request: Any) -> str:
 symbol_pattern_match_4_arg_list = ['IBC',
                                    'ICD',
                                    'I.E',
-                                   'ICC',
-                                   'JBC',
-                                   'JCD',
-                                   'J.E',
-                                   'JCC',
+
                                    'KBC',
                                    'KCD',
                                    'K.E',
                                    'KCC',
                                    'LCD',
                                    'L.E',
-                                   'LCC'
+                                   'LCC',
+                                   'P.E.',
+                                   'P.DD'
                                    ]
 
 

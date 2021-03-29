@@ -52,7 +52,7 @@ import logging
 ########################################################################
 logging.basicConfig(filename='AlgoApp.log',
                     filemode='w',
-                    level=logging.DEBUG,
+                    level=logging.INFO,
                     format='%(asctime)s '
                            '%(levelname)s '
                            '%(filename)s:'
@@ -109,11 +109,14 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     PORT_FOR_PAPER_TRADING = 7497
 
     REQUEST_TIMEOUT_SECONDS = 60
+    REQUEST_THROTTLE_SECONDS = 1
 
     ###########################################################################
     # __init__
     ###########################################################################
-    def __init__(self, ds_catalog: FileCatalog) -> None:
+    def __init__(self,
+                 ds_catalog: FileCatalog,
+                 ) -> None:
         """Instantiate the AlgoApp.
 
         Args:
@@ -140,6 +143,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.run_thread = Thread(target=self.run)
 
         # stock symbols
+        self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
         self.symbols_status = pd.DataFrame()
         self.num_stock_symbols_received = 0
         self.stock_symbols = pd.DataFrame()
@@ -488,7 +492,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # processing, which is on a different thread, to make progress while
         # we sleep, thus helping to reduce the entire wait (as opposed to
         # doing the 1 second wait before making the request).
-        time.sleep(1)  # throttle to avoid overloading IB
+        time.sleep(self.request_throttle_secs)  # avoid overloading IB
         self.wait_for_request_completion()
 
     ###########################################################################
@@ -523,10 +527,14 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                     'OPT' in desc.derivativeSecTypes:
                 self.stock_symbols = self.stock_symbols.append(
                     pd.DataFrame([[desc.contract.symbol,
+                                   desc.contract.secType,
                                    desc.contract.primaryExchange,
+                                   desc.contract.currency
                                    ]],
                                  columns=['symbol',
-                                          'primaryExchange'],
+                                          'secType',
+                                          'primaryExchange',
+                                          'currency'],
                                  index=[desc.contract.conId]))
         self.response_complete_event.set()
 
