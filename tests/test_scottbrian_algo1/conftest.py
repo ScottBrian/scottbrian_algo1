@@ -171,10 +171,12 @@ def algo_app(monkeypatch: Any,
 
     d = tmp_path / "t_files"
     d.mkdir()
+    symbols_path = d / "symbols.csv"
     stock_symbols_path = d / "stock_symbols.csv"
     symbol_status_path = d / "symbol_status.csv"
     contract_details_path = d / "contract_details.csv"
-    catalog = FileCatalog({'stock_symbols': stock_symbols_path,
+    catalog = FileCatalog({'symbols': symbols_path,
+                           'stock_symbols': stock_symbols_path,
                            'symbols_status': symbol_status_path,
                            'contract_details': contract_details_path})
 
@@ -287,9 +289,9 @@ class MockIB:
                     + make_field(match_descs.iloc[i].secType) \
                     + make_field(match_descs.iloc[i].primaryExchange) \
                     + make_field(match_descs.iloc[i].currency) \
-                    + make_field(len(match_descs.iloc[i].derivative_types))
+                    + make_field(len(match_descs.iloc[i].derivativeSecTypes))
 
-                for dvt in match_descs.iloc[i].derivative_types:
+                for dvt in match_descs.iloc[i].derivativeSecTypes:
                     build_msg = build_msg + make_field(dvt)
 
             recv_msg = make_msg(build_msg)
@@ -434,7 +436,7 @@ class MockIB:
     @staticmethod
     def search_patterns():
         """Generator for search pattern strings"""
-        for char1 in string.ascii_uppercase[8:17]:  # A-Q
+        for char1 in string.ascii_uppercase[0:17]:  # A-Q
             yield char1
             for char2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
                 yield f'{char1}{char2}'
@@ -465,7 +467,7 @@ class MockIB:
                                                   'secType',
                                                   'primaryExchange',
                                                   'currency',
-                                                  'derivative_types'
+                                                  'derivativeSecTypes'
                                                   ]))
 
     def build_contract_descriptions(self):
@@ -475,14 +477,16 @@ class MockIB:
 
         self.contract_descriptions = pd.DataFrame()
 
-        for chr1 in string.ascii_uppercase[0:17]:  # A-Q
-            self.build_desc(chr1)
-            for chr2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
-                self.build_desc(chr1 + chr2)
-                for chr3 in string.ascii_uppercase[2:5]:  # C-E
-                    self.build_desc(chr1 + chr2 + chr3)
-                    for chr4 in string.ascii_uppercase[3:5] + '.':  # D-E
-                        self.build_desc(chr1 + chr2 + chr3 + chr4)
+        # for chr1 in string.ascii_uppercase[0:17]:  # A-Q
+        #     self.build_desc(chr1)
+        #     for chr2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
+        #         self.build_desc(chr1 + chr2)
+        #         for chr3 in string.ascii_uppercase[2:5]:  # C-E
+        #             self.build_desc(chr1 + chr2 + chr3)
+        #             for chr4 in string.ascii_uppercase[3:5] + '.':  # D-E
+        #                 self.build_desc(chr1 + chr2 + chr3 + chr4)
+        for symbol in self.search_patterns():
+            self.build_desc(symbol)
 
         logger.info('built mock_con_descs DataFrame with %d entries',
                     len(self.contract_descriptions))

@@ -145,7 +145,8 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # stock symbols
         self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
         self.symbols_status = pd.DataFrame()
-        self.num_stock_symbols_received = 0
+        self.num_symbols_received = 0
+        self.symbols = pd.DataFrame()
         self.stock_symbols = pd.DataFrame()
 
         # contract details
@@ -246,6 +247,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.request_id = 0
         self.num_stock_symbols_received = 0
         self.stock_symbols = pd.DataFrame()
+        self.symbols = pd.DataFrame()
         self.response_complete_event.clear()
         self.nextValidId_event.clear()
 
@@ -363,7 +365,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     ###########################################################################
     ###########################################################################
     def get_symbols(self) -> None:
-        """Gets symbols and place them in the stock_symbols list."""
+        """Gets symbols and place them in the symbols list."""
         # get_symbols is the starting point to the reqMatchingSymbols request
         # to ib. Input to reqMatchingSymbols is a pattern which is used to
         # find symbols. The pattern acts similar to a "string*" where the
@@ -388,6 +390,16 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # fairly up-to-date list.
 
         #######################################################################
+        # if symbols data set exists, load it and reset the index
+        #######################################################################
+        symbols_path = self.ds_catalog.get_path('symbols')
+        logger.info('path: %s', symbols_path)
+
+        if symbols_path.exists():
+            self.symbols = pd.read_csv(symbols_path,
+                                       header=0,
+                                       index_col=0)
+        #######################################################################
         # if stock_symbols data set exists, load it and reset the index
         #######################################################################
         stock_symbols_path = self.ds_catalog.get_path('stock_symbols')
@@ -397,7 +409,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             self.stock_symbols = pd.read_csv(stock_symbols_path,
                                              header=0,
                                              index_col=0)
-
         #######################################################################
         # load or create the symbols_status ds
         #######################################################################
@@ -423,18 +434,27 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.get_symbols_recursive(search_char)
 
         #######################################################################
+        # Save symbols DataFrame to csv
+        #######################################################################
+        logger.info('Symbols obtained')
+        logger.info('Number of symbol entries: %d',
+                    len(self.symbols))
+
+        if not self.symbols.empty:
+            self.symbols.sort_index(inplace=True)
+
+        logger.info('saving symbols DataFrame to csv')
+        self.symbols.to_csv(symbols_path)
+
+        #######################################################################
         # Save stock_symbols DataFrame to csv
         #######################################################################
         logger.info('Symbols obtained')
-        logger.info('Number of entries before drop dups and sort: %d',
+        logger.info('Number of stoc_symbol entries: %d',
                     len(self.stock_symbols))
 
         if not self.stock_symbols.empty:
-            self.stock_symbols.drop_duplicates(inplace=True)
             self.stock_symbols.sort_index(inplace=True)
-
-        logger.info('Number of entries after drop dups and sort: %d',
-                    len(self.stock_symbols))
 
         logger.info('saving stock_symbols DataFrame to csv')
         self.stock_symbols.to_csv(stock_symbols_path)
@@ -455,14 +475,14 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     # get_symbols_recursive
     ###########################################################################
     def get_symbols_recursive(self, search_string: str) -> None:
-        """Gets symbols and place them in the stock_symbols list.
+        """Gets symbols and place them in the symbols list.
 
         Args:
             search_string: string to start with
 
         """
         self.request_symbols(search_string)
-        if self.num_stock_symbols_received > 15:  # possibly more to find
+        if self.num_symbols_received > 15:  # possibly more to find
             # call recursively to get more symbols for this char sequence
             for add_char in string.ascii_uppercase + '.':
                 longer_search_string = search_string + add_char
@@ -516,26 +536,44 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         request additional information or to make trades.
         """
         logger.info('entered for request_id %d', request_id)
-        self.num_stock_symbols_received = len(contract_descriptions)
+        self.num_symbols_received = len(contract_descriptions)
         logger.info('Number of descriptions received: %d',
-                    self.num_stock_symbols_received)
+                    self.num_symbols_received)
 
         for desc in contract_descriptions:
             logger.debug('Symbol: {}'.format(desc.contract.symbol))
+
+            desc_to_add_df = pd.DataFrame([[desc.contract.symbol,
+                                            desc.contract.secType,
+                                            desc.contract.primaryExchange,
+                                            desc.contract.currency,
+                                            tuple(desc.derivativeSecTypes)
+                                            ]],
+                                          columns=['symbol',
+                                                   'secType',
+                                                   'primaryExchange',
+                                                   'currency',
+                                                   'derivativeSecTypes'],
+                                          index=[desc.contract.conId])
+
             if desc.contract.secType == 'STK' and \
                     desc.contract.currency == 'USD' and \
                     'OPT' in desc.derivativeSecTypes:
-                self.stock_symbols = self.stock_symbols.append(
-                    pd.DataFrame([[desc.contract.symbol,
-                                   desc.contract.secType,
-                                   desc.contract.primaryExchange,
-                                   desc.contract.currency
-                                   ]],
-                                 columns=['symbol',
-                                          'secType',
-                                          'primaryExchange',
-                                          'currency'],
-                                 index=[desc.contract.conId]))
+                # remove the descriptor if it already exists in the DataFrame
+                # as we want the newest information to replace the old
+                self.stock_symbols.drop(desc.contract.conId,
+                                        inplace=True,
+                                        errors='ignore')
+                self.stock_symbols = self.stock_symbols.append(desc_to_add_df)
+            else:  # all other symbols
+                # remove the descriptor if it already exists in the DataFrame
+                # as we want the newest information to replace the old
+                self.symbols.drop(desc.contract.conId,
+                                  inplace=True,
+                                  errors='ignore')
+
+                self.symbols = self.symbols.append(desc_to_add_df)
+
         self.response_complete_event.set()
 
     ###########################################################################
@@ -666,11 +704,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         logger.info('entered for request_id %d', request_id)
         self.response_complete_event.set()
 
-
-# stock_symbols = pd.read_csv('/home/Tiger/Downloads/companylist.csv'
-#                             ,usecols = ['Symbol', 'Name', 'MarketCap']
-#                             ,index_col=['Symbol']
-#                            )
 
 @time_box
 def main():
