@@ -6,7 +6,7 @@ import time
 
 import pytest
 import pandas as pd  # type: ignore
-from typing import Any, cast, Tuple
+from typing import Any, Tuple
 import socket
 
 from ibapi.connection import Connection
@@ -190,7 +190,6 @@ class MockIB:
     PORT_FOR_REQID_TIMEOUT = 9001
     PORT_FOR_SIMULATE_REQUEST_DISCONNECT = 9002
     PORT_FOR_SIMULATE_REQUEST_TIMEOUT = 9003
-
 
     def __init__(self, test_cat):
         """Initialize the MockIB instance.
@@ -435,7 +434,12 @@ class MockIB:
     ###########################################################################
     @staticmethod
     def search_patterns():
-        """Generator for search pattern strings"""
+        """Generator for search pattern strings.
+
+        Yields:
+            search pattern
+
+        """
         for char1 in string.ascii_uppercase[0:17]:  # A-Q
             yield char1
             for char2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
@@ -444,6 +448,44 @@ class MockIB:
                     yield f'{char1}{char2}{char3}'
                     for char4 in string.ascii_uppercase[3:5] + '.':  # D-E
                         yield f'{char1}{char2}{char3}{char4}'
+
+    @staticmethod
+    def no_find_search_patterns():
+        """Generator for search patterns that will not find symbols.
+
+        Yields:
+            search pattern
+
+        """
+        # one character
+        for char1 in string.ascii_uppercase[17:20]:  # RST
+            yield char1
+
+        # two characters
+        for char1 in string.ascii_uppercase[0:2]:  # ABC
+            for char2 in string.ascii_uppercase[3:5]:  # 'DE'
+                yield f'{char1}{char2}'
+
+        # three characters
+        for char1 in string.ascii_uppercase[0:2]:  # ABC
+            for char2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
+                for char3 in string.ascii_uppercase[5:7]:  # 'FG'
+                    yield f'{char1}{char2}{char3}'
+
+        # four characters
+        for char1 in string.ascii_uppercase[0:2]:  # 'AB'
+            for char2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
+                for char3 in string.ascii_uppercase[2:4]:  # 'CD'
+                    for char4 in string.ascii_uppercase[5:7]:  # 'FG'
+                        yield f'{char1}{char2}{char3}{char4}'
+
+        # five characters
+        for char1 in string.ascii_uppercase[0:2]:  # 'AB'
+            for char2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
+                for char3 in string.ascii_uppercase[2:4]:  # 'CD'
+                    for char4 in string.ascii_uppercase[3:5] + '.':  # 'DE.'
+                        for char5 in string.ascii_uppercase[0:2]:  # 'AB'
+                            yield f'{char1}{char2}{char3}{char4}{char5}'
 
     def build_desc(self, symbol):
         """Build the mock contract_descriptions.
@@ -551,259 +593,3 @@ def mock_ib() -> "MockIB":
         An instance of MockIB
     """
     return MockIB(test_cat)
-
-
-nonexistent_symbol_arg_list = ['AA',
-                               'AD',
-                               'A.B',
-                               'BCD',
-                               'R',
-                               'SRS',
-                               ]
-
-
-@pytest.fixture(params=nonexistent_symbol_arg_list)  # type: ignore
-def nonexistent_symbol_arg(request: Any) -> str:
-    """Provide symbol patterns that are not in the mock contract descriptions.
-
-    Args:
-        request: pytest fixture that returns the fixture params
-
-    Returns:
-        The params values are returned one at a time
-    """
-    return cast(str, request.param)
-
-
-symbol_pattern_match_1_arg_list = ['IBCD',
-                                   'ICDE',
-                                   'I.E.',
-                                   ]
-
-
-@pytest.fixture(params=symbol_pattern_match_1_arg_list)  # type: ignore
-def symbol_pattern_match_1_arg(request: Any) -> str:
-    """Provide symbol patterns that are in the mock contract descriptions.
-
-    Args:
-        request: pytest fixture that returns the fixture params
-
-    Returns:
-        The params values are returned one at a time
-    """
-    return cast(str, request.param)
-
-
-symbol_pattern_match_2_arg_list = ['JBCD',
-                                   'J.DD',
-                                   'KCCE',
-                                   'L.DD',
-                                   'LCC.'
-                                   'MBCD',
-                                   'MCDE',
-                                   'M.E.',
-                                   'M.DD',
-                                   ]
-
-
-@pytest.fixture(params=symbol_pattern_match_2_arg_list)  # type: ignore
-def symbol_pattern_match_2_arg(request: Any) -> str:
-    """Provide symbol patterns that are in the mock contract descriptions.
-
-    Args:
-        request: pytest fixture that returns the fixture params
-
-    Returns:
-        The params values are returned one at a time
-    """
-    return cast(str, request.param)
-
-
-symbol_pattern_match_3_arg_list = ['NCC.',
-                                   'NBCD',
-                                   'N.DD',
-                                   'NCCE'
-                                   'OBCD',
-                                   'OCDE',
-                                   'O.EE',
-                                   'O.DD',
-                                   'OCC.'
-                                   ]
-
-
-@pytest.fixture(params=symbol_pattern_match_3_arg_list)  # type: ignore
-def symbol_pattern_match_3_arg(request: Any) -> str:
-    """Provide symbol patterns that are in the mock contract descriptions.
-
-    Args:
-        request: pytest fixture that returns the fixture params
-
-    Returns:
-        The params values are returned one at a time
-    """
-    return cast(str, request.param)
-
-
-symbol_pattern_match_4_arg_list = ['IBC',
-                                   'ICD',
-                                   'I.E',
-
-                                   'KBC',
-                                   'KCD',
-                                   'K.E',
-                                   'KCC',
-                                   'LCD',
-                                   'L.E',
-                                   'LCC',
-                                   'P.E.',
-                                   'P.DD'
-                                   ]
-
-
-@pytest.fixture(params=symbol_pattern_match_4_arg_list)  # type: ignore
-def symbol_pattern_match_4_arg(request: Any) -> str:
-    """Provide symbol patterns that are in the mock contract descriptions.
-
-    Args:
-        request: pytest fixture that returns the fixture params
-
-    Returns:
-        The params values are returned one at a time
-    """
-    return cast(str, request.param)
-
-
-symbol_pattern_match_8_arg_list = ['MBC',
-                                   'MCD',
-                                   'M.E',
-                                   'M.D',
-                                   'NBC',
-                                   'N.D',
-                                   'NCC'
-                                   ]
-
-
-@pytest.fixture(params=symbol_pattern_match_8_arg_list)  # type: ignore
-def symbol_pattern_match_8_arg(request: Any) -> str:
-    """Provide symbol patterns that are in the mock contract descriptions.
-
-    Args:
-        request: pytest fixture that returns the fixture params
-
-    Returns:
-        The params values are returned one at a time
-    """
-    return cast(str, request.param)
-
-
-symbol_pattern_match_12_arg_list = ['OBC',
-                                    'OCD',
-                                    'O.E',
-                                    'O.D',
-                                    'OCC'
-                                    ]
-
-
-@pytest.fixture(params=symbol_pattern_match_12_arg_list)  # type: ignore
-def symbol_pattern_match_12_arg(request: Any) -> str:
-    """Provide symbol patterns that are in the mock contract descriptions.
-
-    Args:
-        request: pytest fixture that returns the fixture params
-
-    Returns:
-        The params values are returned one at a time
-    """
-    return cast(str, request.param)
-
-
-symbol_pattern_match_16_arg_list = ['PBC',
-                                    'PCD',
-                                    'P.E',
-                                    'PCC',
-                                    'P.D',
-                                    ]
-
-
-@pytest.fixture(params=symbol_pattern_match_16_arg_list)  # type: ignore
-def symbol_pattern_match_16_arg(request: Any) -> str:
-    """Provide symbol patterns that are in the mock contract descriptions.
-
-    Args:
-        request: pytest fixture that returns the fixture params
-
-    Returns:
-        The params values are returned one at a time
-    """
-    return cast(str, request.param)
-
-
-symbol_pattern_match_20_arg_list = ['QBC',
-                                    'QCD',
-                                    'Q.E',
-                                    'QCC',
-                                    'Q.D',
-                                    ]
-
-
-@pytest.fixture(params=symbol_pattern_match_20_arg_list)  # type: ignore
-def symbol_pattern_match_20_arg(request: Any) -> str:
-    """Provide symbol patterns that are in the mock contract descriptions.
-
-    Args:
-        request: pytest fixture that returns the fixture params
-
-    Returns:
-        The params values are returned one at a time
-    """
-    return cast(str, request.param)
-
-
-symbol_pattern_match_0_arg_list = ['IBCDEF',
-                                   'ICDEFG',
-                                   'IDEFGH',
-                                   'JBCDEF',
-                                   'JDDDGH',
-                                   'KCCFFF',
-                                   'LDDDGH',
-                                   'LCCFFF'
-                                   ]
-
-
-@pytest.fixture(params=symbol_pattern_match_0_arg_list)  # type: ignore
-def symbol_pattern_match_0_arg(request: Any) -> str:
-    """Provide symbol patterns that are in the mock contract descriptions.
-
-    Args:
-        request: pytest fixture that returns the fixture params
-
-    Returns:
-        The params values are returned one at a time
-    """
-    return cast(str, request.param)
-
-
-get_symbols_search_char_list = ['A',
-                                'B',
-                                'J',
-                                'K',
-                                'L',
-                                'M',
-                                'N',
-                                'O',
-                                'P',
-                                'Q'
-                                ]
-
-
-@pytest.fixture(params=get_symbols_search_char_list)  # type: ignore
-def get_symbols_search_char_arg(request: Any) -> str:
-    """Provide single char to use for get_symbols test.
-
-    Args:
-        request: pytest fixture that returns the fixture params
-
-    Returns:
-        The params values are returned one at a time
-    """
-    return cast(str, request.param)

@@ -16,7 +16,6 @@ from threading import Event, get_ident, get_native_id, Thread, Lock
 import time
 
 import pickle
-import json
 
 from ibapi.wrapper import EWrapper  # type: ignore
 # from ibapi import utils
@@ -345,6 +344,13 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     # wait_for_request_completion
     ###########################################################################
     def wait_for_request_completion(self):
+        """Wait for the request to complete.
+
+        Raises:
+            DisconnectDuringRequest: disconnect detected
+            RequestTimeout: waited too long
+
+        """
         call_seq = get_formatted_call_sequence()
         logger.info('%s about to wait for request event completion',
                     call_seq)
@@ -398,7 +404,10 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         if symbols_path.exists():
             self.symbols = pd.read_csv(symbols_path,
                                        header=0,
-                                       index_col=0)
+                                       index_col=0,
+                                       converters={
+                                           'derivativeSecTypes':
+                                               lambda x: eval(x)})
         #######################################################################
         # if stock_symbols data set exists, load it and reset the index
         #######################################################################
@@ -408,7 +417,10 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         if stock_symbols_path.exists():
             self.stock_symbols = pd.read_csv(stock_symbols_path,
                                              header=0,
-                                             index_col=0)
+                                             index_col=0,
+                                             converters={
+                                                 'derivativeSecTypes':
+                                                     lambda x: eval(x)})
         #######################################################################
         # load or create the symbols_status ds
         #######################################################################
@@ -690,7 +702,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         print('self.contract_details.__dict__:\n',
               self.contract_details.__dict__)
 
-
     ###########################################################################
     # contractDetailsEnd
     ###########################################################################
@@ -707,7 +718,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
 @time_box
 def main():
-    """main routine for quick discovery tests."""
+    """Main routine for quick discovery tests."""
     from pathlib import Path
     proj_dir = Path.cwd().resolve().parents[1]  # back two directories
     ds_catalog = \

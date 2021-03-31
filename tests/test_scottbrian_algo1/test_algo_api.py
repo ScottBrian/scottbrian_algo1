@@ -11,15 +11,15 @@ import math
 import pickle
 
 
-from typing import Any, List, NamedTuple, Tuple  # Callable, cast, Tuple, Union
+from typing import Any, List, NamedTuple
 # from typing_extensions import Final
 
-from ibapi.contract import Contract, ContractDetails
+from ibapi.contract import Contract  # ContractDetails
 
 from scottbrian_algo1.algo_api import AlgoApp, AlreadyConnected, \
     DisconnectLockHeld, ConnectTimeout, RequestTimeout, DisconnectDuringRequest
 
-from scottbrian_utils.diag_msg import diag_msg
+# from scottbrian_utils.diag_msg import diag_msg
 # from scottbrian_utils.file_catalog import FileCatalog
 # from datetime import datetime
 import logging
@@ -232,10 +232,32 @@ def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
 ###############################################################################
 class ExpCounts(NamedTuple):
     """NamedTuple for the expected counts."""
-    stock_non_recursive: int
-    stock_recursive: int
-    other_non_recursive: int
-    other_recursive: int
+    sym_non_recursive: int
+    sym_recursive: int
+    stock_sym_non_recursive: int
+    stock_sym_recursive: int
+
+
+class SymDfs:
+    """Saved sym dfs."""
+    def __init__(self,
+                 mock_sym_df: Any,
+                 sym_df: Any,
+                 mock_stock_sym_df: Any,
+                 stock_sym_df: Any) -> None:
+        """Initialize the SymDfs.
+
+        Args:
+            mock_sym_df: mock sym DataFrame
+            sym_df: symbol DataFrame
+            mock_stock_sym_df: mock stock symbol DataFrame
+            stock_sym_df: stock symbols dataFrame
+
+        """
+        self.mock_sym_df = mock_sym_df
+        self.sym_df = sym_df
+        self.mock_stock_sym_df = mock_stock_sym_df
+        self.stock_sym_df = stock_sym_df
 
 
 class TestAlgoAppMatchingSymbols:
@@ -290,98 +312,53 @@ class TestAlgoAppMatchingSymbols:
             verify_algo_app_disconnected(algo_app)
             logger.debug('disconnected - test case returning')
 
-    def test_request_symbols_null_result(self,
-                                         algo_app: "AlgoApp",
-                                         mock_ib: Any,
-                                         nonexistent_symbol_arg: str) -> None:
-        """Test request_symbols with unmatched pattern.
-
-        Args:
-            algo_app: pytest fixture instance of AlgoApp (see conftest.py)
-            mock_ib: pytest fixture of contract_descriptions
-            nonexistent_symbol_arg: pytest fixture of symbols
-
-        The steps are:
-            * mock connect to ib
-            * request symbols that will not be found
-            * verify that stock symbols table is empty
-
-        """
-        verify_algo_app_initialized(algo_app)
-        exp_counts = ExpCounts(0, 0, 0, 0)
-
-        # verify symbol table has zero entries for the symbol
-        verify_match_symbols(algo_app,
-                             mock_ib,
-                             nonexistent_symbol_arg,
-                             exp_counts=exp_counts,
-                             req_type=1)
-
     def test_request_symbols_zero_result(self,
                                          algo_app: "AlgoApp",
-                                         mock_ib: Any,
-                                         symbol_pattern_match_0_arg: str
+                                         mock_ib: Any
                                          ) -> None:
         """Test request_symbols with pattern that finds exactly 1 symbol.
 
         Args:
             algo_app: instance of AlgoApp from conftest pytest fixture
             mock_ib: pytest fixture of contract_descriptions
-            symbol_pattern_match_0_arg: symbols to use for searching
-
-        The steps are:
-            * mock connect to ib
-            * request symbols with pattern for one match
-            * verify that stock symbols table has the expected entry
 
         """
         verify_algo_app_initialized(algo_app)
-        exp_counts = ExpCounts(0, 0, 0, 0)
-        # verify symbol table has zero entries for the symbol
-        logger.debug("calling verify_match_symbols req_type 1")
-        verify_match_symbols(algo_app,
-                             mock_ib,
-                             symbol_pattern_match_0_arg,
-                             exp_counts=exp_counts,
-                             req_type=1)
+        logger.debug("about to connect")
+        algo_app.connect_to_ib("127.0.0.1",
+                               algo_app.PORT_FOR_LIVE_TRADING,
+                               client_id=0)
+        verify_algo_app_connected(algo_app)
+        algo_app.request_throttle_secs = 0.01
 
-        logger.debug("calling verify_match_symbols req_type 2")
-        verify_match_symbols(algo_app,
-                             mock_ib,
-                             symbol_pattern_match_0_arg,
-                             exp_counts=exp_counts,
-                             req_type=2)
+        try:
+            exp_counts = ExpCounts(0, 0, 0, 0)
 
+            # verify symbol table has zero entries for the symbols
+            for idx, search_pattern in enumerate(
+                    mock_ib.no_find_search_patterns()):
+                logger.info("calling verify_match_symbols req_type 1 "
+                            "sym %s num %d", search_pattern, idx)
+                verify_match_symbols(algo_app,
+                                     mock_ib,
+                                     search_pattern,
+                                     exp_counts=exp_counts,
+                                     req_type=1)
 
-    def test_get_symbols_recursive(self,
-                                   algo_app: "AlgoApp",
-                                   mock_ib: Any,
-                                   get_symbols_search_char_arg: str) -> None:
-        """Test get_symbols with single letter patterns.
+                logger.info("calling verify_match_symbols req_type 2 "
+                            "sym %s num %d", search_pattern, idx)
+                verify_match_symbols(algo_app,
+                                     mock_ib,
+                                     search_pattern,
+                                     exp_counts=exp_counts,
+                                     req_type=2)
 
-        Args:
-            algo_app: instance of AlgoApp from conftest pytest fixture
-            mock_ib: pytest fixture of contract_descriptions
-            get_symbols_search_char_arg: single character to use for searching
-
-        """
-        verify_algo_app_initialized(algo_app)
-        exp_counts = get_exp_number(get_symbols_search_char_arg, mock_ib)
-
-        # verify symbol table has correct entries for the symbol
-        logger.debug("calling verify_match_symbols req_type 1")
-        verify_match_symbols(algo_app,
-                             mock_ib,
-                             get_symbols_search_char_arg,
-                             exp_counts=exp_counts,
-                             req_type=1)
-
-        logger.debug("calling verify_match_symbols req_type 2")
-        verify_match_symbols(algo_app,
-                             mock_ib,
-                             get_symbols_search_char_arg,
-                             exp_counts=exp_counts,
-                             req_type=2)
+        finally:
+            logger.debug('disconnecting')
+            algo_app.disconnect_from_ib()
+            logger.debug('verifying disconnected')
+            verify_algo_app_disconnected(algo_app)
+            logger.debug('disconnected - test case returning')
 
     def test_get_symbols_timeout(self,
                                  algo_app: "AlgoApp",
@@ -412,8 +389,8 @@ class TestAlgoAppMatchingSymbols:
             logger.debug('disconnected - test case returning')
 
     def test_get_symbols_disconnect(self,
-                                 algo_app: "AlgoApp",
-                                 mock_ib: Any) -> None:
+                                    algo_app: "AlgoApp",
+                                    mock_ib: Any) -> None:
         """Test get_symbols gets disconnected while waiting.
 
         Args:
@@ -457,16 +434,26 @@ class TestAlgoAppMatchingSymbols:
                                    algo_app.PORT_FOR_LIVE_TRADING,
                                    client_id=0)
             verify_algo_app_connected(algo_app)
-            full_match_descs = pd.DataFrame()
-            stock_symbols_ds = pd.DataFrame()
+            algo_app.request_throttle_secs = 0.01
+
+            sym_dfs = SymDfs(pd.DataFrame(),
+                             pd.DataFrame(),
+                             pd.DataFrame(),
+                             pd.DataFrame())
+            # full_stock_sym_match_descs = pd.DataFrame()
+            # stock_symbols_ds = pd.DataFrame()
+            # full_sym_match_descs = pd.DataFrame()
+            # symbols_ds = pd.DataFrame()
             # we need to loop from A to Z
             for letter in string.ascii_uppercase:
-                full_match_descs, stock_symbols_ds = \
-                    verify_get_symbols(letter,
-                                       algo_app,
-                                       mock_ib,
-                                       full_match_descs,
-                                       stock_symbols_ds)
+                logger.debug("about to verify_get_symbols for letter %s",
+                             letter)
+                # full_stock_sym_match_descs, stock_symbols_ds,\
+                #     full_sym_match_descs, symbols_ds = \
+                sym_dfs = verify_get_symbols(letter,
+                                             algo_app,
+                                             mock_ib,
+                                             sym_dfs)
 
         finally:
             logger.debug('disconnecting')
@@ -487,8 +474,14 @@ class TestAlgoAppMatchingSymbols:
         """
         verify_algo_app_initialized(algo_app)
 
-        full_match_descs = pd.DataFrame()
-        stock_symbols_ds = pd.DataFrame()
+        sym_dfs = SymDfs(pd.DataFrame(),
+                         pd.DataFrame(),
+                         pd.DataFrame(),
+                         pd.DataFrame())
+        # full_stock_sym_match_descs = pd.DataFrame()
+        # full_sym_match_descs = pd.DataFrame()
+        # stock_symbols_ds = pd.DataFrame()
+        # symbols_ds = pd.DataFrame()
         # we need to loop from A to Z
         for letter in string.ascii_uppercase:
             try:
@@ -497,14 +490,16 @@ class TestAlgoAppMatchingSymbols:
                                        algo_app.PORT_FOR_LIVE_TRADING,
                                        client_id=0)
                 verify_algo_app_connected(algo_app)
+                algo_app.request_throttle_secs = 0.01
+
                 logger.debug("about to verify_get_symbols for letter %s",
                              letter)
-                full_match_descs, stock_symbols_ds = \
-                    verify_get_symbols(letter,
-                                       algo_app,
-                                       mock_ib,
-                                       full_match_descs,
-                                       stock_symbols_ds)
+                # full_stock_sym_match_descs, stock_symbols_ds, \
+                #     full_sym_match_descs, symbols_ds = \
+                sym_dfs = verify_get_symbols(letter,
+                                             algo_app,
+                                             mock_ib,
+                                             sym_dfs)
 
             finally:
                 logger.debug('disconnecting')
@@ -542,8 +537,8 @@ def verify_match_symbols(algo_app: "AlgoApp",
         assert algo_app.request_id >= 2
         # algo_app.stock_symbols.drop_duplicates(inplace=True)
 
-    logger.debug("getting match_descs")
-    match_descs = mock_ib.contract_descriptions.loc[
+    logger.debug("getting stock_sym_match_descs")
+    stock_sym_match_descs = mock_ib.contract_descriptions.loc[
         (mock_ib.contract_descriptions['symbol'].str.
          startswith(pattern))
         & (mock_ib.contract_descriptions['secType'] == 'STK')
@@ -551,60 +546,57 @@ def verify_match_symbols(algo_app: "AlgoApp",
         & (if_opt_in_derivativeSecTypes(mock_ib.contract_descriptions))
         ]
 
-    other_match_descs = mock_ib.contract_descriptions.loc[
+    sym_match_descs = mock_ib.contract_descriptions.loc[
         (mock_ib.contract_descriptions['symbol'].str.
          startswith(pattern))
         & ((mock_ib.contract_descriptions['secType'] != 'STK')
             | (mock_ib.contract_descriptions['currency'] != 'USD')
-            | (if_opt_in_derivativeSecTypes(mock_ib.contract_descriptions)
-               is False))
+            | if_opt_not_in_derivativeSecTypes(mock_ib.contract_descriptions)
+           )
         ]
 
     logger.debug("verifying results counts")
 
-    diag_msg('len(algo_app.symbols):', len(algo_app.symbols))
-    diag_msg(algo_app.symbols)
-    diag_msg('len(other_match_descs):', len(other_match_descs))
-    diag_msg(other_match_descs)
+    # diag_msg('len(algo_app.symbols):', len(algo_app.symbols))
+    # diag_msg(algo_app.symbols)
+    # diag_msg('len(sym_match_descs):', len(sym_match_descs))
+    # diag_msg(sym_match_descs)
     if req_type == 1:
-        assert len(algo_app.stock_symbols) == exp_counts.stock_non_recursive
-        assert len(algo_app.symbols) == exp_counts.other_non_recursive
-        assert len(match_descs) == exp_counts.stock_recursive
-        assert len(other_match_descs) == exp_counts.other_recursive
+        assert len(algo_app.stock_symbols) \
+               == exp_counts.stock_sym_non_recursive
+        assert len(algo_app.symbols) == exp_counts.sym_non_recursive
+        assert len(stock_sym_match_descs) == exp_counts.stock_sym_recursive
+        assert len(sym_match_descs) == exp_counts.sym_recursive
     else:
-        assert len(algo_app.stock_symbols) == exp_counts.stock_recursive
-        assert len(algo_app.symbols) == exp_counts.other_recursive
-        assert len(match_descs) == exp_counts.stock_recursive
-        assert len(other_match_descs) == exp_counts.other_recursive
+        assert len(algo_app.stock_symbols) == exp_counts.stock_sym_recursive
+        assert len(algo_app.symbols) == exp_counts.sym_recursive
+        assert len(stock_sym_match_descs) == exp_counts.stock_sym_recursive
+        assert len(sym_match_descs) == exp_counts.sym_recursive
 
     logger.debug("verifying results match DataFrame")
-    if exp_counts.stock_recursive > 0:
-        # match_descs = match_descs.drop(columns=['derivativeSecTypes'])
-
+    if exp_counts.stock_sym_recursive > 0:
         if req_type == 1:
-            match_descs = match_descs.iloc[0:exp_counts.stock_non_recursive]
-        match_descs = match_descs.set_index(
+            stock_sym_match_descs = stock_sym_match_descs.iloc[
+                          0:exp_counts.stock_sym_non_recursive]
+        stock_sym_match_descs = stock_sym_match_descs.set_index(
             ['conId']).sort_index()
-        # diag_msg('len(match_descs) 2:', len(match_descs))
-        # diag_msg(match_descs)
+        # diag_msg('len(stock_sym_match_descs) 2:',
+        #          len(stock_sym_match_descs))
+        # diag_msg(stock_sym_match_descs)
 
         algo_app.stock_symbols.sort_index(inplace=True)
-        comp_df = algo_app.stock_symbols.compare(match_descs)
+        comp_df = algo_app.stock_symbols.compare(stock_sym_match_descs)
         assert comp_df.empty
 
-    if exp_counts.other_recursive > 0:
-        # match_descs = match_descs.drop(columns=['derivativeSecTypes'])
-
+    if exp_counts.sym_recursive > 0:
         if req_type == 1:
-            other_match_descs = other_match_descs.iloc[
-                                0:exp_counts.other_non_recursive]
-        other_match_descs = other_match_descs.set_index(
+            sym_match_descs = sym_match_descs.iloc[
+                                0:exp_counts.sym_non_recursive]
+        sym_match_descs = sym_match_descs.set_index(
             ['conId']).sort_index()
-        # diag_msg('len(match_descs) 2:', len(match_descs))
-        # diag_msg(match_descs)
 
         algo_app.symbols.sort_index(inplace=True)
-        comp_df = algo_app.symbols.compare(other_match_descs)
+        comp_df = algo_app.symbols.compare(sym_match_descs)
         assert comp_df.empty
     logger.debug("all results verified for req_type %d", req_type)
 
@@ -623,6 +615,23 @@ def if_opt_in_derivativeSecTypes(df: Any) -> Any:
     for i in range(len(df)):
         if 'OPT' in df.iloc[i].derivativeSecTypes:
             ret_array[i] = True
+    return ret_array
+
+
+def if_opt_not_in_derivativeSecTypes(df: Any) -> Any:
+    """Find the symbols that do not have options.
+
+    Args:
+        df: pandas DataFrame of symbols
+
+    Returns:
+          array of boolean values used in pandas loc function
+
+    """
+    ret_array = np.full(len(df), True)
+    for i in range(len(df)):
+        if 'OPT' in df.iloc[i].derivativeSecTypes:
+            ret_array[i] = False
     return ret_array
 
 
@@ -655,47 +664,45 @@ def get_exp_number(search_pattern: str, mock_ib: Any) -> ExpCounts:
             return ExpCounts(0, 0, 0, 0)  # not in 'DE.'
         combo_factor = 1
 
-    count = 0
-    other_count = 0
+    num_stock_sym_combos = 0
+    num_sym_combos = 0
     combo = mock_ib.get_combos(search_pattern[0])
-
-    raw_count = len(combo)
 
     for item in combo:
         if item[0] == 'STK' and item[2] == 'USD' and 'OPT' in item[3]:
-            count += 1
+            num_stock_sym_combos += 1
         else:
-            other_count += 1
-    num_exp_recursive = count * combo_factor
-    num_other_exp_recursive = other_count * combo_factor
-    num_exp_non_recursive = \
-        math.ceil(min(16, len(combo) * combo_factor) * (count / len(combo)))
-    num_other_exp_non_recursive = \
-        math.ceil(min(16, len(combo) * combo_factor) * (other_count
-                                                        / len(combo)))
+            num_sym_combos += 1
+    exp_stock_sym_recursive = num_stock_sym_combos * combo_factor
+    exp_sym_recursive = num_sym_combos * combo_factor
+    exp_stock_sym_non_recursive = \
+        math.ceil(min(16, len(combo) * combo_factor)
+                  * (num_stock_sym_combos / len(combo)))
+    exp_sym_non_recursive = \
+        math.floor(min(16, len(combo) * combo_factor)
+                   * (num_sym_combos / len(combo)))
 
-    return ExpCounts(num_exp_non_recursive,
-                     num_exp_recursive,
-                     num_other_exp_non_recursive,
-                     num_other_exp_recursive)
+    return ExpCounts(exp_sym_non_recursive,
+                     exp_sym_recursive,
+                     exp_stock_sym_non_recursive,
+                     exp_stock_sym_recursive
+                     )
 
 
 def verify_get_symbols(letter: str,
                        algo_app: "AlgoApp",
                        mock_ib: Any,
-                       full_match_descs: Any,
-                       stock_symbols_ds: Any) -> Tuple[Any, Any]:
+                       sym_dfs: SymDfs) -> SymDfs:
     """Verify get_symbols.
 
     Args:
         letter: the single letter we are collecting symbols for
         algo_app: instance of AlgoApp from conftest pytest fixture
         mock_ib: pytest fixture of contract_descriptions
-        full_match_descs: DataFrame of cumulative symbols
-        stock_symbols_ds: DataFrame of last copy of stock_symbols
+        sym_dfs: saved DataFrames between calls
 
     Returns:
-        updated full_match_descs and stock_symbols_ds DataFrames
+        updated sym_dfs
 
     """
     if letter != 'A':
@@ -716,8 +723,8 @@ def verify_get_symbols(letter: str,
     algo_app.get_symbols()
     assert algo_app.request_id >= 2
 
-    logger.debug("getting match_descs for %s", letter)
-    match_descs = mock_ib.contract_descriptions.loc[
+    logger.debug("getting stock_sym_match_descs for %s", letter)
+    stock_sym_match_descs = mock_ib.contract_descriptions.loc[
         (mock_ib.contract_descriptions['symbol'].str.
          startswith(letter))
         & (mock_ib.contract_descriptions['secType'] == 'STK')
@@ -725,41 +732,78 @@ def verify_get_symbols(letter: str,
         & (if_opt_in_derivativeSecTypes(
             mock_ib.contract_descriptions))
         ]
+
+    sym_match_descs = mock_ib.contract_descriptions.loc[
+        (mock_ib.contract_descriptions['symbol'].str.
+         startswith(letter))
+        & ((mock_ib.contract_descriptions['secType'] != 'STK')
+           | (mock_ib.contract_descriptions['currency'] != 'USD')
+           | if_opt_not_in_derivativeSecTypes(mock_ib.contract_descriptions)
+           )
+        ]
     # we expect the stock_symbols to accumulate and grow, so the
     # number should now be what was there from the previous
     # iteration of this loop and what we just now added
-    assert len(match_descs) == exp_counts.stock_recursive
-    assert len(algo_app.stock_symbols) == exp_counts.stock_recursive \
-           + len(stock_symbols_ds)
+    assert len(stock_sym_match_descs) == exp_counts.stock_sym_recursive
+    assert len(algo_app.stock_symbols) == exp_counts.stock_sym_recursive \
+           + len(sym_dfs.stock_sym_df)
 
-    if exp_counts.stock_recursive > 0:
-        # match_descs = \
-        #     match_descs.drop(columns=['secType',
-        #                               'currency',
-        #                               'derivativeSecTypes'])
-        match_descs = match_descs.set_index(
+    assert len(sym_match_descs) == exp_counts.sym_recursive
+    assert len(algo_app.symbols) == exp_counts.sym_recursive \
+           + len(sym_dfs.sym_df)
+
+    # diag_msg('algo_app.stock_symbols:\n', algo_app.stock_symbols)
+
+    if exp_counts.stock_sym_recursive > 0:
+        stock_sym_match_descs = stock_sym_match_descs.set_index(
             ['conId']).sort_index()
-        full_match_descs = full_match_descs.append(match_descs)
-        full_match_descs.sort_index(inplace=True)
+        sym_dfs.mock_stock_sym_df \
+            = sym_dfs.mock_stock_sym_df.append(stock_sym_match_descs)
+        sym_dfs.mock_stock_sym_df.sort_index(inplace=True)
 
         # check the data set
         stock_symbols_path = \
             algo_app.ds_catalog.get_path('stock_symbols')
         logger.info('stock_symbols_path: %s', stock_symbols_path)
 
-        stock_symbols_ds = pd.read_csv(stock_symbols_path,
-                                       header=0,
-                                       index_col=0)
-        comp_df = algo_app.stock_symbols.compare(stock_symbols_ds)
+        sym_dfs.stock_sym_df = pd.read_csv(stock_symbols_path,
+                                           header=0,
+                                           index_col=0,
+                                           converters={
+                                               'derivativeSecTypes':
+                                                   lambda x: eval(x)})
+        comp_df = algo_app.stock_symbols.compare(sym_dfs.stock_sym_df)
         assert comp_df.empty
 
-    return full_match_descs, stock_symbols_ds
+    if exp_counts.sym_recursive > 0:
+        sym_match_descs = sym_match_descs.set_index(
+            ['conId']).sort_index()
+        sym_dfs.mock_sym_df = \
+            sym_dfs.mock_sym_df.append(sym_match_descs)
+        sym_dfs.mock_sym_df.sort_index(inplace=True)
+
+        # check the data set
+        symbols_path = \
+            algo_app.ds_catalog.get_path('symbols')
+        logger.info('symbols_path: %s', symbols_path)
+
+        sym_dfs.sym_df = pd.read_csv(symbols_path,
+                                     header=0,
+                                     index_col=0,
+                                     converters={
+                                         'derivativeSecTypes':
+                                             lambda x: eval(x)})
+
+        comp_df = algo_app.symbols.compare(sym_dfs.sym_df)
+        assert comp_df.empty
+    return sym_dfs
 
 
 ###############################################################################
 # error path
 ###############################################################################
 class TestErrorPath:
+    """Class to test error path."""
     def test_error_path_by_request_when_not_connected(self,
                                                       algo_app: "AlgoApp",
                                                       capsys: Any) -> None:
@@ -920,12 +964,14 @@ class TestAlgoAppContractDetails:
         contract.conId = 7003
         algo_app.get_contract_details(contract)
 
-        verify_contract_details(contract, algo_app, mock_ib, [7001, 7002, 7003])
+        verify_contract_details(contract, algo_app, mock_ib,
+                                [7001, 7002, 7003])
 
         contract.conId = 7002  # another duplicate
         algo_app.get_contract_details(contract)
 
-        verify_contract_details(contract, algo_app, mock_ib, [7001, 7002, 7003])
+        verify_contract_details(contract, algo_app, mock_ib,
+                                [7001, 7002, 7003])
 
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
@@ -944,28 +990,9 @@ def verify_contract_details(contract: "Contract",
         contract: the contract used to get details
         algo_app: instance of AlgoApp from conftest pytest fixture
         mock_ib: pytest fixture of contract_descriptions
-        num_expected: number of contracts expected to have been returned
+        conId_list: list of con ids
 
     """
-
-    # diag_msg('mock_ib.contract_descriptions.info:\n',
-    #          mock_ib.contract_descriptions.info())
-    #
-    # diag_msg('match_descs.info:\n',
-    #          match_descs.info())
-    #
-    # diag_msg('algo_app.contract_details.info:\n',
-    #          algo_app.contract_details.info())
-
-    # diag_msg('algo_app.contract_details:\n',
-    #          algo_app.contract_details)
-    #
-    # diag_msg('algo_app.contract_details.iloc[0]:\n',
-    #          algo_app.contract_details.iloc[0])
-    #
-    # diag_msg('algo_app.contract_details.iloc[1]:\n',
-    #          algo_app.contract_details.iloc[1])
-    # assert len(match_descs) == num_expected
     assert len(algo_app.contract_details) == len(conId_list)
 
     if len(conId_list) > 0:
@@ -1023,9 +1050,10 @@ def verify_contract_details(contract: "Contract",
                     == test_contract_details2.contract.secType
                     == match_desc.secType[0])
 
-            assert (test_contract_details.contract.lastTradeDateOrContractMonth
+            assert (test_contract_details.contract.
+                    lastTradeDateOrContractMonth
                     == test_contract_details2.contract
-                        .lastTradeDateOrContractMonth
+                    .lastTradeDateOrContractMonth
                     == '01012022')
 
             assert (test_contract_details.contract.strike
@@ -1143,7 +1171,7 @@ class TestAlgoAppFundamentalData:
         contract = Contract()  # create an empty contract with conId of 0
         algo_app.get_contract_details(contract)
 
-        verify_contract_details(contract, algo_app, mock_ib, 0)
+        verify_contract_details(contract, algo_app, mock_ib, [0])
 
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
