@@ -25,7 +25,7 @@ from ibapi.utils import current_fn_name  # type: ignore
 # types
 from ibapi.common import ListOfContractDescription  # type: ignore
 # from ibapi.order_condition import *  # @UnusedWildImport
-from ibapi.contract import Contract, ContractDetails
+from ibapi.contract import Contract, ContractDetails  # type: ignore
 # from ibapi.order import *  # @UnusedWildImport
 # from ibapi.order_state import *  # @UnusedWildImport
 # from ibapi.execution import Execution
@@ -42,6 +42,13 @@ import string
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
 from scottbrian_utils.time_hdr import time_box
+
+#from scottbrian_algo1.algo_maps import AlgoTagValue, AlgoComboLeg
+#from scottbrian_algo1.algo_maps import AlgoDeltaNeutralContract
+
+from scottbrian_algo1.algo_maps import get_contract_dict
+from scottbrian_algo1.algo_maps import get_contract_details_dict
+
 
 # from datetime import datetime
 import logging
@@ -143,12 +150,13 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         # stock symbols
         self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
-        self.symbols_status = pd.DataFrame()
+        self.symbols_status_df = pd.DataFrame()
         self.num_symbols_received = 0
         self.symbols = pd.DataFrame()
         self.stock_symbols = pd.DataFrame()
 
         # contract details
+        self.contracts = pd.DataFrame()
         self.contract_details = pd.DataFrame()
 
     ###########################################################################
@@ -343,7 +351,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     ###########################################################################
     # wait_for_request_completion
     ###########################################################################
-    def wait_for_request_completion(self):
+    def wait_for_request_completion(self) -> None:
         """Wait for the request to complete.
 
         Raises:
@@ -422,27 +430,28 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                                                  'derivativeSecTypes':
                                                      lambda x: eval(x)})
         #######################################################################
-        # load or create the symbols_status ds
+        # load or create the symbols_status_df
         #######################################################################
-        symbols_status_path = self.ds_catalog.get_path('symbols_status')
+        symbols_status_path = self.ds_catalog.get_path('symbols_status_df')
         logger.info('symbols_status_path: %s', symbols_status_path)
 
         if symbols_status_path.exists():
-            self.symbols_status = pd.read_csv(symbols_status_path,
-                                              header=0,
-                                              index_col=0,
-                                              parse_dates=True)
+            self.symbols_status_df = pd.read_csv(symbols_status_path,
+                                                 header=0,
+                                                 index_col=0,
+                                                 parse_dates=True)
         else:
-            self.symbols_status = pd.DataFrame(list(string.ascii_uppercase),
-                                               columns=['AlphaChar'],
-                                               index=pd.date_range("20000101",
-                                                                   periods=26,
-                                                                   freq="S"))
+            self.symbols_status_df = \
+                pd.DataFrame(list(string.ascii_uppercase),
+                             columns=['AlphaChar'],
+                             index=pd.date_range("20000101",
+                                                 periods=26,
+                                                 freq="S"))
         #######################################################################
         # Get the next single uppercase letter and do the search.
         # The response from ib is handled by symbolSamples wrapper method
         #######################################################################
-        search_char = self.symbols_status.iloc[0].AlphaChar
+        search_char = self.symbols_status_df.iloc[0].AlphaChar
         self.get_symbols_recursive(search_char)
 
         #######################################################################
@@ -472,16 +481,16 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.stock_symbols.to_csv(stock_symbols_path)
 
         #######################################################################
-        # Update and save symbols_status DataFrame to csv. The timestamp
+        # Update and save symbols_status_df DataFrame to csv. The timestamp
         # is updated to 'now' for the letter we just searched and then the ds
         # is sorted to put that entry last and move the next letter to
         # processed into the first slot for next time we call this method.
         #######################################################################
-        self.symbols_status.index = [pd.Timestamp.now()] \
-            + self.symbols_status.index.to_list()[1:]
-        self.symbols_status.sort_index(inplace=True)
-        logger.info('saving symbols_status DataFrame to csv')
-        self.symbols_status.to_csv(symbols_status_path)
+        self.symbols_status_df.index = [pd.Timestamp.now()] \
+            + self.symbols_status_df.index.to_list()[1:]
+        self.symbols_status_df.sort_index(inplace=True)
+        logger.info('saving symbols_status_df DataFrame to csv')
+        self.symbols_status_df.to_csv(symbols_status_path)
 
     ###########################################################################
     # get_symbols_recursive
@@ -605,14 +614,60 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         specific the input contract fields are.
         """
         #######################################################################
+        # The contract details request will cause zero or more contract_details
+        # class instances to be returned to the callback method. The contract
+        # itself will be removed from the contract_details and its dictionary
+        # will be obtained and used to create the DataFrame entry. The same
+        # will be done for the contract_details (minus the contract). Note that
+        # this is tricky code since both the contract and contract details
+        # may contain other class instances or a list of class instances. In
+        # the case of a list or class instances, we must replace each  of those
+        # instances with its dictionary, then turn the list into a tuple,
+        # and then turn that into a string and placed into the containing
+        # class instance. This needs to be dome to 1) allow a list of arbitrary
+        # count be placed into a DataFrame column as one item, and 2) allow
+        # the DataFrame to be stored to a csv file. Note that the list
+        # needs to be a tuple to allow certain DataFrame operations to be
+        # performed, such as removing duplicates which does not like lists
+        # (something about them being non-hashable). Getting the dictionary
+        # of these classes is done with a get_dict method which will take care
+        # of the details described above. When the saved DataFrame is retrieved
+        # later and we want to restore an entry to its class instance, the
+        # DataFrame entry is converted to a dictionary which is then used to
+        # set into the class instance dictionary. When the dictionary contains
+        # strings of tuples of dictionary of imbeded class instances, they
+        # need to be converted back to a list of those instances. The details
+        # of this are handled by get_obj methods.
+        #
+        #######################################################################
+        #######################################################################
+        # if contracts data set exists, load it and reset the index
+        #######################################################################
+        contracts_path = self.ds_catalog.get_path('contracts')
+        logger.info('path: %s', contracts_path)
+
+        if contracts_path.exists():
+            with open(contracts_path, 'rb') as f:
+                self.contract_details = pickle.load(f)
+            self.contracts = pd.read_csv(contracts_path,
+                                         header=0,
+                                         index_col=0)
+                                         # converters={
+                                         #     'derivativeSecTypes':
+                                         #         lambda x: eval(x)})
+        #######################################################################
         # if contract_details data set exists, load it and reset the index
         #######################################################################
         contract_details_path = self.ds_catalog.get_path('contract_details')
         logger.info('path: %s', contract_details_path)
 
         if contract_details_path.exists():
-            with open(contract_details_path, 'rb') as f:
-                self.contract_details = pickle.load(f)
+            self.contract_details = pd.read_csv(contract_details_path,
+                                                header=0,
+                                                index_col=0)
+                                                # converters={
+                                                #     'derivativeSecTypes':
+                                                #         lambda x: eval(x)})
         ################################################################
         # make the request for details
         ################################################################
@@ -620,87 +675,85 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.reqContractDetails(self.get_reqId(), contract)
         self.wait_for_request_completion()
         #######################################################################
+        # Save contracts DataFrame to csv
+        #######################################################################
+        logger.info('Number of contract entries: %d',
+                    len(self.contracts))
+
+        if not self.contracts.empty:
+            self.contracts.sort_index(inplace=True)
+
+        logger.info('saving contracts DataFrame to csv')
+        self.contracts.to_csv(contracts_path)
+        #######################################################################
         # Save contract_details DataFrame to csv
         #######################################################################
-        logger.info('contract_details obtained')
-        logger.info('Number of entries before drop dups and sort: %d',
+        logger.info('Number of contract_details entries: %d',
                     len(self.contract_details))
 
         if not self.contract_details.empty:
-            self.contract_details.drop_duplicates(inplace=True)
             self.contract_details.sort_index(inplace=True)
 
-        logger.info('Number of entries after drop dups and sort: %d',
-                    len(self.contract_details))
-
-        logger.info('saving contract_details DataFrame to pickle')
-        with open(contract_details_path, 'wb') as f:
-            pickle.dump(self.contract_details, f, pickle.HIGHEST_PROTOCOL)
-        # self.save_contract_details()
-
-    ###########################################################################
-    # save_contract_details
-    ###########################################################################
-    # def save_contract_details(self):
-    #     """Save the contract_details DataFrame to storage."""
-    #     for i in range(len(self.contract_details)):
-    #         contract_details = self.contract_details.iloc[i].contractDetails
-    #         contract = contract_details.contract
-    #         json_str_contract = json.dumps(contract.__dict__)
-    #         print('*******json_str_contract*******:\n', json_str_contract)
-    #
-    #         sec_id_list = contract_details.secIdList
-    #         print('***** sec_id_list ****\n', sec_id_list)
-    #
-    #         for j in range(len(sec_id_list)):
-    #             tag_thing = sec_id_list[j]
-    #             json_str_tag_thing = json.dumps(tag_thing.__dict__)
-    #             print('***** json_str_tag_thing ****\n', json_str_tag_thing)
-    #
-    #
-    #         contract_details.contract = ''
-    #         contract_details.secIdList = None
-    #         json_str_contract_details = json.dumps(contract_details.__dict__)
-    #         print('*******json_str_contract_details*******:\n',
-    #               json_str_contract_details)
-    #
-    #         contract_details.contract = contract
-    #         contract_details.secIdList = sec_id_list
+        logger.info('saving contract_details DataFrame to csv')
+        self.contracts.to_csv(contract_details_path)
 
     ###########################################################################
     # contractDetails
     ###########################################################################
     def contractDetails(self,
                         request_id: int,
-                        contractDetails: ContractDetails) -> None:
+                        contract_details: ContractDetails) -> None:
         """Receive IB reply for reqContractDetails request.
 
         Args:
             request_id: the id used on the request
-            contractDetails: contains contract and details
+            contract_details: contains contract and details
 
         """
         logger.info('entered for request_id %d', request_id)
-        logger.debug('Symbol: %s', contractDetails.contract.symbol)
-        print('contractDetails:\n', contractDetails)
-        print('contractDetails.__dict__:\n', contractDetails.__dict__)
+        logger.debug('Symbol: %s', contract_details.contract.symbol)
+        print('contract_details:\n', contract_details)
+        print('contract_details.__dict__:\n', contract_details.__dict__)
 
         # remove the contract if it already exists in the DataFrame
         # as we want the newest information to replace the old
-        self.contract_details.drop(contractDetails.contract.conId,
+        conId = contract_details.contract.conId
+        self.contracts.drop(conId,
+                            inplace=True,
+                            errors='ignore')
+        # get the conId to use as an index
+
+        # Add the contract to the DataFrame using contract dict.
+        # Note that if the contract contains an array for one of the
+        # fields, the DataFrame create will reject it because if the
+        # single item conId for the index. The contract get_dict method
+        # returns a dictionary that can be used to instantiate the
+        # DataFrame item, and any class instances or arrays of class
+        # instances will be returned as a string so that the DataFrame
+        # item will work
+        contract_dict = get_contract_dict(contract_details.contract)
+        self.contracts = self.contracts.append(
+                    pd.DataFrame(contract_dict,
+                                 index=[conId]))
+
+        # remove the contract_details if it already exists in the DataFrame
+        # as we want the newest information to replace the old
+        self.contract_details.drop(conId,
                                    inplace=True,
                                    errors='ignore')
 
-        # add the contract details to the DataFrame
-        self.contract_details = self.contract_details.append(
-                    pd.DataFrame([[contractDetails
-                                   ]],
-                                 columns=['contractDetails'],
-                                 index=[contractDetails.contract.conId]))
+        # remove the contract from the contract_details
+        contract_details.contract = None
 
-        print('self.contract_details:\n', contractDetails)
-        print('self.contract_details.__dict__:\n',
-              self.contract_details.__dict__)
+        # add the contract details to the DataFrame
+        contract_details_dict = get_contract_details_dict(contract_details)
+        self.contract_details = self.contract_details.append(
+                    pd.DataFrame(contract_details_dict,
+                                 index=[conId]))
+
+        # print('self.contract_details:\n', contract_details)
+        # print('self.contract_details.__dict__:\n',
+        #       self.contract_details.__dict__)
 
     ###########################################################################
     # contractDetailsEnd
@@ -717,7 +770,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
 
 @time_box
-def main():
+def main() -> None:
     """Main routine for quick discovery tests."""
     from pathlib import Path
     proj_dir = Path.cwd().resolve().parents[1]  # back two directories

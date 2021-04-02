@@ -800,7 +800,9 @@ def verify_get_symbols(letter: str,
 
 
 ###############################################################################
+###############################################################################
 # error path
+###############################################################################
 ###############################################################################
 class TestErrorPath:
     """Class to test error path."""
@@ -825,7 +827,9 @@ class TestErrorPath:
 
 
 ###############################################################################
+###############################################################################
 # contract details
+###############################################################################
 ###############################################################################
 class TestAlgoAppContractDetails:
     """TestAlgoAppContractDetails class."""
@@ -1000,17 +1004,15 @@ def verify_contract_details(contract: "Contract",
         # check the data set
         contract_details_path = \
             algo_app.ds_catalog.get_path('contract_details')
-        logger.info('stock_symbols_path: %s', contract_details_path)
+        logger.info('contract_details_path: %s', contract_details_path)
 
-        # contract_details_ds = pd.read_csv(contract_details_path,
-        #                                   header=0,
-        #                                   index_col=0)
-        with open(contract_details_path, 'rb') as f:
-            contract_details_ds = pickle.load(f)
+        contract_details_ds = pd.read_csv(contract_details_path,
+                                          header=0,
+                                          index_col=0)
 
-        print('contract_details_ds:\n', contract_details_ds)
-        print('contract_details_ds.__dict__:\n',
-              contract_details_ds.__dict__)
+        # print('contract_details_ds:\n', contract_details_ds)
+        # print('contract_details_ds.__dict__:\n',
+        #       contract_details_ds.__dict__)
         for conId in conId_list:
             match_desc = mock_ib.contract_descriptions.loc[
                 mock_ib.contract_descriptions['conId'] == conId]

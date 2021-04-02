@@ -174,10 +174,12 @@ def algo_app(monkeypatch: Any,
     symbols_path = d / "symbols.csv"
     stock_symbols_path = d / "stock_symbols.csv"
     symbol_status_path = d / "symbol_status.csv"
+    contracts_path = d / "contracts.csv"
     contract_details_path = d / "contract_details.csv"
     catalog = FileCatalog({'symbols': symbols_path,
                            'stock_symbols': stock_symbols_path,
                            'symbols_status': symbol_status_path,
+                           'contracts': contracts_path,
                            'contract_details': contract_details_path})
 
     a_algo_app = AlgoApp(catalog)
@@ -519,14 +521,6 @@ class MockIB:
 
         self.contract_descriptions = pd.DataFrame()
 
-        # for chr1 in string.ascii_uppercase[0:17]:  # A-Q
-        #     self.build_desc(chr1)
-        #     for chr2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
-        #         self.build_desc(chr1 + chr2)
-        #         for chr3 in string.ascii_uppercase[2:5]:  # C-E
-        #             self.build_desc(chr1 + chr2 + chr3)
-        #             for chr4 in string.ascii_uppercase[3:5] + '.':  # D-E
-        #                 self.build_desc(chr1 + chr2 + chr3 + chr4)
         for symbol in self.search_patterns():
             self.build_desc(symbol)
 
