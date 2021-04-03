@@ -14,10 +14,18 @@ import pickle
 from typing import Any, List, NamedTuple
 # from typing_extensions import Final
 
-from ibapi.contract import Contract  # ContractDetails
+from ibapi.tag_value import TagValue
+from ibapi.contract import ComboLeg  # typedef: ignore
+from ibapi.contract import DeltaNeutralContract  # typedef: ignore
+from ibapi.contract import Contract, ContractDetails  # typedef: ignore
+
+
+
 
 from scottbrian_algo1.algo_api import AlgoApp, AlreadyConnected, \
     DisconnectLockHeld, ConnectTimeout, RequestTimeout, DisconnectDuringRequest
+
+from scottbrian_algo1.algo_maps import get_contract_details_obj
 
 # from scottbrian_utils.diag_msg import diag_msg
 # from scottbrian_utils.file_catalog import FileCatalog
@@ -1006,9 +1014,43 @@ def verify_contract_details(contract: "Contract",
             algo_app.ds_catalog.get_path('contract_details')
         logger.info('contract_details_path: %s', contract_details_path)
 
-        contract_details_ds = pd.read_csv(contract_details_path,
-                                          header=0,
-                                          index_col=0)
+        contract_details_ds = \
+            pd.read_csv(contract_details_path,
+                        header=0,
+                        index_col=0,
+                        converters={'contract':
+                                        lambda x: None if x == '' else x,
+                                    'marketName': lambda x: x,
+                                    'orderTypes': lambda x: x,
+                                    'validExchanges': lambda x: x,
+                                    'longName': lambda x: x,
+                                    'contractMonth': lambda x: x,
+                                    'industry': lambda x: x,
+                                    'category': lambda x: x,
+                                    'subcategory': lambda x: x,
+                                    'timeZoneId': lambda x: x,
+                                    'tradingHours': lambda x: x,
+                                    'liquidHours': lambda x: x,
+                                    'evRule': lambda x: x,
+                                    'underSymbol': lambda x: x,
+                                    'underSecType': lambda x: x,
+                                    'marketRuleIds': lambda x: x,
+                                    'secIdList':
+                                        lambda x: None if x == '' else x,
+                                    'realExpirationDate': lambda x: x,
+                                    'lastTradeTime': lambda x: x,
+                                    'stockType': lambda x: x,
+                                    'cusip': lambda x: x,
+                                    'ratings': lambda x: x,
+                                    'descAppend': lambda x: x,
+                                    'bondType': lambda x: x,
+                                    'couponType': lambda x: x,
+                                    'maturity': lambda x: x,
+                                    'issueDate': lambda x: x,
+                                    'nextOptionDate': lambda x: x,
+                                    'nextOptionType': lambda x: x,
+                                    'notes': lambda x: x
+                                    })
 
         # print('contract_details_ds:\n', contract_details_ds)
         # print('contract_details_ds.__dict__:\n',
@@ -1021,13 +1063,22 @@ def verify_contract_details(contract: "Contract",
             # diag_msg('match_desc.symbol[0]\n', match_desc.symbol[0])
 
             test_contract_details = \
-                algo_app.contract_details.loc[conId]['contractDetails']
+                algo_app.contract_details.loc[conId]
+            contract_details1_dict = test_contract_details.to_dict()
+            contract_details1 = \
+                get_contract_details_obj(contract_details1_dict)
 
             test_contract_details2 = \
-                contract_details_ds.loc[conId]['contractDetails']
-            print('test_contract_details2:\n', test_contract_details2)
-            print('test_contract_details2.__dict__:\n',
-                  test_contract_details2.__dict__)
+                contract_details_ds.loc[conId]
+            contract_details2_dict = test_contract_details2.to_dict()
+            contract_details2 = \
+                get_contract_details_obj(contract_details2_dict)
+
+            assert compare_contract_details(contract_details1, contract_details2)
+
+            # print('test_contract_details2:\n', test_contract_details2)
+            # print('test_contract_details2.__dict__:\n',
+            #       test_contract_details2.__dict__)
             # diag_msg('test_contract_details\n', test_contract_details)
             # diag_msg('test_contract_details.contract.conId:\n',
             #          test_contract_details.contract.conId)
@@ -1040,108 +1091,285 @@ def verify_contract_details(contract: "Contract",
             # diag_msg('test_contract_details2.contract.symbol:\n',
             #          test_contract_details2.contract.symbol)
 
-            assert (test_contract_details.contract.conId
-                    == test_contract_details2.contract.conId
-                    == conId)
+            # assert (test_contract_details.contract.conId
+            #         == test_contract_details2.contract.conId
+            #         == conId)
+            #
+            # assert (test_contract_details.contract.symbol
+            #         == test_contract_details2.contract.symbol
+            #         == match_desc.symbol[0])
+            #
+            # assert (test_contract_details.contract.secType
+            #         == test_contract_details2.contract.secType
+            #         == match_desc.secType[0])
+            #
+            # assert (test_contract_details.contract.
+            #         lastTradeDateOrContractMonth
+            #         == test_contract_details2.contract
+            #         .lastTradeDateOrContractMonth
+            #         == '01012022')
+            #
+            # assert (test_contract_details.contract.strike
+            #         == test_contract_details2.contract.strike
+            #         == 0.0)
+            #
+            # assert (test_contract_details.contract.right
+            #         == test_contract_details2.contract.right
+            #         == "P")
+            #
+            # assert (test_contract_details.contract.multiplier
+            #         == test_contract_details2.contract.multiplier
+            #         == "2")
+            #
+            # assert (test_contract_details.contract.exchange
+            #         == test_contract_details2.contract.exchange
+            #         == 'SMART')
+            #
+            # assert (test_contract_details.contract.primaryExchange
+            #         == test_contract_details2.contract.primaryExchange
+            #         == match_desc.primaryExchange[0])
+            #
+            # assert (test_contract_details.contract.currency
+            #         == test_contract_details2.contract.currency
+            #         == match_desc.currency[0])
+            #
+            # assert (test_contract_details.contract.localSymbol
+            #         == test_contract_details2.contract.localSymbol
+            #         == match_desc.symbol[0])
+            #
+            # assert (test_contract_details.contract.tradingClass
+            #         == test_contract_details2.contract.tradingClass
+            #         == 'TradingClass' + str(conId))
+            #
+            # assert (test_contract_details.contract.includeExpired
+            #         == test_contract_details2.contract.includeExpired
+            #         is False)
+            #
+            # assert (test_contract_details.contract.secIdType
+            #         == test_contract_details2.contract.secIdType
+            #         == "")
+            #
+            # assert (test_contract_details.contract.secId
+            #         == test_contract_details2.contract.secId
+            #         == "")
+            #
+            # # combos
+            # assert (test_contract_details.contract.comboLegsDescrip
+            #         == test_contract_details2.contract.comboLegsDescrip
+            #         == "")
+            #
+            # assert (test_contract_details.contract.comboLegs
+            #         == test_contract_details2.contract.comboLegs
+            #         is None)
+            #
+            # assert (test_contract_details.contract.deltaNeutralContract
+            #         == test_contract_details2.contract.deltaNeutralContract
+            #         is None)
+            #
+            # ############################################################
+            # # details
+            # ############################################################
+            # assert (test_contract_details.marketName
+            #         == test_contract_details2.marketName
+            #         == 'MarketName' + str(conId))
+            #
+            # assert (test_contract_details.minTick
+            #         == test_contract_details2.minTick
+            #         == 0.01)
+            #
+            # assert (test_contract_details.orderTypes
+            #         == test_contract_details2.orderTypes
+            #         == 'OrderTypes' + str(conId))
+            #
+            # assert (len(test_contract_details.secIdList)
+            #         == len(test_contract_details2.secIdList)
+            #         == 5)
+            # for i in range(len(test_contract_details.secIdList)):
+            #     assert (test_contract_details.secIdList[i].tag
+            #             == test_contract_details2.secIdList[i].tag
+            #             == 'tag' + str(i))
+            #
+            #     assert (test_contract_details.secIdList[i].value
+            #             == test_contract_details2.secIdList[i].value
+            #             == 'value' + str(i))
 
-            assert (test_contract_details.contract.symbol
-                    == test_contract_details2.contract.symbol
-                    == match_desc.symbol[0])
 
-            assert (test_contract_details.contract.secType
-                    == test_contract_details2.contract.secType
-                    == match_desc.secType[0])
+def compare_tag_value(tag_value1: TagValue,
+                      tag_value2: TagValue
+                      ) -> bool:
+    """Compare two tag_value objects for equality.
 
-            assert (test_contract_details.contract.
-                    lastTradeDateOrContractMonth
-                    == test_contract_details2.contract
-                    .lastTradeDateOrContractMonth
-                    == '01012022')
+    Args:
+        tag_value1: tag_value 1
+        tag_value2: tag_value 2
 
-            assert (test_contract_details.contract.strike
-                    == test_contract_details2.contract.strike
-                    == 0.0)
+    Returns:
+          True is they are equal, False otherwise
 
-            assert (test_contract_details.contract.right
-                    == test_contract_details2.contract.right
-                    == "P")
+    """
+    if tag_value1.tag != tag_value2.tag: return False
+    if tag_value1.value  != tag_value2.value: return False
+    return True
 
-            assert (test_contract_details.contract.multiplier
-                    == test_contract_details2.contract.multiplier
-                    == "2")
+def compare_combo_legs(cl1: ComboLeg,
+                       cl2: ComboLeg
+                       ) -> bool:
+    """Compare two combo leg objects for equality.
 
-            assert (test_contract_details.contract.exchange
-                    == test_contract_details2.contract.exchange
-                    == 'SMART')
+    Args:
+        cl1: combo leg 1
+        cl2: combo leg 2
 
-            assert (test_contract_details.contract.primaryExchange
-                    == test_contract_details2.contract.primaryExchange
-                    == match_desc.primaryExchange[0])
+    Returns:
+          True is they are equal, False otherwise
 
-            assert (test_contract_details.contract.currency
-                    == test_contract_details2.contract.currency
-                    == match_desc.currency[0])
+    """
+    if cl1.conId != cl2.conId: return False
+    if cl1.ratio != cl2.ratio: return False
+    if cl1.action != cl2.action: return False
+    if cl1.exchange != cl2.exchange: return False
+    if cl1.openClose != cl2.openClose: return False
+    if cl1.shortSaleSlot != cl2.shortSaleSlot: return False
+    if cl1.designatedLocation != cl2.designatedLocation: return False
+    if cl1.exemptCode != cl2.exemptCode: return False
+    return True
 
-            assert (test_contract_details.contract.localSymbol
-                    == test_contract_details2.contract.localSymbol
-                    == match_desc.symbol[0])
+def compare_delta_neutral_contracts(con1: DeltaNeutralContract,
+                                    con2: DeltaNeutralContract
+                                    ) -> bool:
+    """Compare two delta neutral contracts for equality.
 
-            assert (test_contract_details.contract.tradingClass
-                    == test_contract_details2.contract.tradingClass
-                    == 'TradingClass' + str(conId))
+    Args:
+        con1: contract 1
+        con2: contract 2
 
-            assert (test_contract_details.contract.includeExpired
-                    == test_contract_details2.contract.includeExpired
-                    is False)
+    Returns:
+          True is they are equal, False otherwise
 
-            assert (test_contract_details.contract.secIdType
-                    == test_contract_details2.contract.secIdType
-                    == "")
+    """
+    if con1.conId != con2.conId: return False
+    if con1.delta != con2.delta: return False
+    if con1.price != con2.price: return False
+    return True
 
-            assert (test_contract_details.contract.secId
-                    == test_contract_details2.contract.secId
-                    == "")
+def compare_contracts(con1: Contract, con2: Contract) -> bool:
+    """Compare two contracts for equality.
 
-            # combos
-            assert (test_contract_details.contract.comboLegsDescrip
-                    == test_contract_details2.contract.comboLegsDescrip
-                    == "")
+    Args:
+        con1: contract 1
+        con2: contract 2
 
-            assert (test_contract_details.contract.comboLegs
-                    == test_contract_details2.contract.comboLegs
-                    is None)
+    Returns:
+          True is they are equal, False otherwise
 
-            assert (test_contract_details.contract.deltaNeutralContract
-                    == test_contract_details2.contract.deltaNeutralContract
-                    is None)
+    """
+    if con1.conId != con2.conId: return False
+    if con1.symbol != con2.symbol: return False
+    if con1.secType != con2.secType: return False
+    if con1.lastTradeDateOrContractMonth != con2.lastTradeDateOrContractMonth:
+        return False
+    if con1.strike != con2.strike: return False
+    if con1.right != con2.right: return False
+    if con1.multiplier != con2.multiplier: return False
+    if con1.exchange != con2.exchange: return False
+    if con1.primaryExchange != con2.primaryExchange: return False
+    if con1.currency != con2.currency: return False
+    if con1.localSymbol != con2.localSymbol: return False
+    if con1.tradingClass != con2.tradingClass: return False
+    if con1.includeExpired != con2.includeExpired: return False
+    if con1.secIdType != con2.secIdType: return False
+    if con1.secId != con2.secId: return False
 
-            ############################################################
-            # details
-            ############################################################
-            assert (test_contract_details.marketName
-                    == test_contract_details2.marketName
-                    == 'MarketName' + str(conId))
+    # combos
+    if con1.comboLegsDescrip != con2.comboLegsDescrip: return False
 
-            assert (test_contract_details.minTick
-                    == test_contract_details2.minTick
-                    == 0.01)
+    if con1.comboLegs and con2.comboLegs:
+        if len(con1.comboLegs) != len(con2.comboLegs): return False
+        for i in range(len(con1.comboLegs)):
+            if not compare_combo_legs(con1.comboLegs[i],
+                                      con2.comboLegs[i]):
+                return False
+    elif con1.comboLegs or con2.comboLegs:
+        return False  # one contract has it and the other does not
 
-            assert (test_contract_details.orderTypes
-                    == test_contract_details2.orderTypes
-                    == 'OrderTypes' + str(conId))
+    if con1.deltaNeutralContract and con2.deltaNeutralContract:
+        if not compare_delta_neutral_contracts(con1.deltaNeutralContract,
+                                               con2.deltaNeutralContract):
+            return False
+    elif con1.deltaNeutralContract or con2.deltaNeutralContract:
+        return False  # one contract has it and one does not
 
-            assert (len(test_contract_details.secIdList)
-                    == len(test_contract_details2.secIdList)
-                    == 5)
-            for i in range(len(test_contract_details.secIdList)):
-                assert (test_contract_details.secIdList[i].tag
-                        == test_contract_details2.secIdList[i].tag
-                        == 'tag' + str(i))
+    return True
 
-                assert (test_contract_details.secIdList[i].value
-                        == test_contract_details2.secIdList[i].value
-                        == 'value' + str(i))
+def compare_contract_details(con1: ContractDetails, con2: ContractDetails
+                             ) -> bool:
+    """Compare two contract_detials for equality.
 
+    Args:
+        con1: contract_details 1
+        con2: contract_details 2
+
+    Returns:
+          True is they are equal, False otherwise
+
+    """
+    if con1.contract and con2.contract:
+        if not compare_contracts(con1.contract, con2.contract):
+            return False
+    elif con1.contract or con2.contract:
+        return False  # one contract has it, one does not
+
+    if con1.marketName != con2.marketName: return False
+    if con1.minTick != con2.minTick: return False
+    if con1.orderTypes != con2.orderTypes: return False
+    if con1.validExchanges != con2.validExchanges: return False
+    if con1.priceMagnifier != con2.priceMagnifier: return False
+    if con1.underConId != con2.underConId: return False
+    if con1.longName != con2.longName: return False
+    if con1.contractMonth != con2.contractMonth: return False
+    if con1.industry != con2.industry: return False
+    if con1.category != con2.category: return False
+    if con1.subcategory != con2.subcategory: return False
+    if con1.timeZoneId != con2.timeZoneId: return False
+    if con1.tradingHours != con2.tradingHours: return False
+    if con1.liquidHours != con2.liquidHours: return False
+    if con1.evRule != con2.evRule: return False
+    if con1.evMultiplier != con2.evMultiplier: return False
+    if con1.mdSizeMultiplier != con2.mdSizeMultiplier: return False
+    if con1.aggGroup != con2.aggGroup: return False
+    if con1.underSymbol != con2.underSymbol: return False
+    if con1.underSecType != con2.underSecType: return False
+    if con1.marketRuleIds != con2.marketRuleIds: return False
+
+    if con1.secIdList and con2.secIdList:
+        if len(con1.secIdList) != len(con2.secIdList): return False
+        for i in range(len(con1.secIdList)):
+            if not compare_tag_value(con1.secIdList[i], con2.secIdList[i]):
+                return False
+    elif con1.secIdList or con2.secIdList:
+        return False  # one contract has it, one does not
+
+    if con1.realExpirationDate != con2.realExpirationDate: return False
+    if con1.lastTradeTime != con2.lastTradeTime: return False
+    if con1.stockType != con2.stockType: return False
+    # BOND values
+    if con1.cusip != con2.cusip: return False
+    if con1.ratings != con2.ratings: return False
+    if con1.descAppend != con2.descAppend: return False
+    if con1.bondType != con2.bondType: return False
+    if con1.couponType != con2.couponType: return False
+    if con1.callable != con2.callable: return False
+    if con1.putable != con2.putable: return False
+    if con1.coupon != con2.coupon: return False
+    if con1.convertible != con2.convertible: return False
+    if con1.maturity != con2.maturity: return False
+    if con1.issueDate != con2.issueDate: return False
+    if con1.nextOptionDate != con2.nextOptionDate: return False
+    if con1.nextOptionType != con2.nextOptionType: return False
+    if con1.nextOptionPartial != con2.nextOptionPartial: return False
+    if con1.notes != con2.notes: return False
+
+    return True
 
 ###############################################################################
 # fundamental data

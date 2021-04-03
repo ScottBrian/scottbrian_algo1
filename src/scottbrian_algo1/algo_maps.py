@@ -111,6 +111,7 @@ def get_contract_dict(contract: Contract) -> Dict:
 
     return ret_dict
 
+
 def get_contract_obj(contract_dict: Dict) -> Contract:
     """Get object from dictionary.
 
@@ -135,6 +136,8 @@ def get_contract_obj(contract_dict: Dict) -> Contract:
     contract.__dict__ = contract_dict
 
     return contract
+
+
 ###############################################################################
 # get ContractDetails dictionary
 ###############################################################################
@@ -157,6 +160,33 @@ def get_contract_details_dict(contract_details: ContractDetails) -> Dict:
 
     return ret_dict
 
+
+def get_contract_details_obj(contract_details_dict: Dict) -> ContractDetails:
+    """Get object from dictionary.
+
+    Args:
+        contract_details_dict: dictionary to be used to restore
+                                 contract_details
+
+    Returns:
+          An instance of contract_details
+
+    """
+    contract_details = ContractDetails()
+    if contract_details_dict['contract']:
+        contract = get_contract_obj(eval(contract_details_dict['contract']))
+        contract_details_dict['contract'] = contract
+
+    if contract_details_dict['secIdList']:
+        secId_tuple = eval(contract_details_dict['secIdList'])
+        secIdList = []
+        for tag_value_dict in secId_tuple:
+            secIdList.append(get_tag_value_obj(tag_value_dict))
+        contract_details_dict['secIdList'] = secIdList
+
+    contract_details.__dict__ = contract_details_dict
+
+    return contract_details
 ###############################################################################
 # AlgoTagValue
 ###############################################################################

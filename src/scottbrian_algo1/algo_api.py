@@ -647,14 +647,28 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         logger.info('path: %s', contracts_path)
 
         if contracts_path.exists():
-            with open(contracts_path, 'rb') as f:
-                self.contract_details = pickle.load(f)
-            self.contracts = pd.read_csv(contracts_path,
-                                         header=0,
-                                         index_col=0)
-                                         # converters={
-                                         #     'derivativeSecTypes':
-                                         #         lambda x: eval(x)})
+            self.contracts = \
+                pd.read_csv(contracts_path,
+                            header=0,
+                            index_col=0,
+                            converters={'symbol': lambda x: x,
+                                        'secType': lambda x: x,
+                                        'right': lambda x: x,
+                                        'multiplier': lambda x: x,
+                                        'exchange': lambda x: x,
+                                        'primaryExchange': lambda x: x,
+                                        'currency': lambda x: x,
+                                        'localSymbol': lambda x: x,
+                                        'tradingClass': lambda x: x,
+                                        'secIdType': lambda x: x,
+                                        'secId': lambda x: x,
+                                        'comboLegsDescrip': lambda x: x,
+                                        'comboLegs':
+                                            lambda x: None if x == '' else x,
+                                        'deltaNeutralContract':
+                                            lambda x: None if x == '' else x
+                                        })
+
         #######################################################################
         # if contract_details data set exists, load it and reset the index
         #######################################################################
@@ -662,12 +676,43 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         logger.info('path: %s', contract_details_path)
 
         if contract_details_path.exists():
-            self.contract_details = pd.read_csv(contract_details_path,
-                                                header=0,
-                                                index_col=0)
-                                                # converters={
-                                                #     'derivativeSecTypes':
-                                                #         lambda x: eval(x)})
+            self.contract_details = \
+                pd.read_csv(contract_details_path,
+                            header=0,
+                            index_col=0,
+                            converters={'contract':
+                                            lambda x: None if x == '' else x,
+                                        'marketName': lambda x: x,
+                                        'orderTypes': lambda x: x,
+                                        'validExchanges': lambda x: x,
+                                        'longName': lambda x: x,
+                                        'contractMonth': lambda x: x,
+                                        'industry': lambda x: x,
+                                        'category': lambda x: x,
+                                        'subcategory': lambda x: x,
+                                        'timeZoneId': lambda x: x,
+                                        'tradingHours': lambda x: x,
+                                        'liquidHours': lambda x: x,
+                                        'evRule': lambda x: x,
+                                        'underSymbol': lambda x: x,
+                                        'underSecType': lambda x: x,
+                                        'marketRuleIds': lambda x: x,
+                                        'secIdList':
+                                            lambda x: None if x == '' else x,
+                                        'realExpirationDate': lambda x: x,
+                                        'lastTradeTime': lambda x: x,
+                                        'stockType': lambda x: x,
+                                        'cusip': lambda x: x,
+                                        'ratings': lambda x: x,
+                                        'descAppend': lambda x: x,
+                                        'bondType': lambda x: x,
+                                        'couponType': lambda x: x,
+                                        'maturity': lambda x: x,
+                                        'issueDate': lambda x: x,
+                                        'nextOptionDate': lambda x: x,
+                                        'nextOptionType': lambda x: x,
+                                        'notes': lambda x: x
+                                        })
         ################################################################
         # make the request for details
         ################################################################
@@ -695,7 +740,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             self.contract_details.sort_index(inplace=True)
 
         logger.info('saving contract_details DataFrame to csv')
-        self.contracts.to_csv(contract_details_path)
+        self.contract_details.to_csv(contract_details_path)
 
     ###########################################################################
     # contractDetails
