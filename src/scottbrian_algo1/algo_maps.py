@@ -1,5 +1,6 @@
 """Mappings of various classes used in the AlgoApp class."""
 
+import pandas as pd
 from typing import Dict
 
 from ibapi.contract import ComboLeg, Contract, ContractDetails  # type: ignore
@@ -98,16 +99,33 @@ def get_contract_dict(contract: Contract) -> Dict:
         contract: instance of Contract class
     """
     ret_dict = contract.__dict__
+
+    # Handle comboLegs
     if contract.comboLegs:
         combo_leg_list = []
         for combo_leg in contract.comboLegs:
             combo_leg_list.append(get_combo_leg_dict(combo_leg))
         ret_dict['comboLegs'] = str(tuple(combo_leg_list))
 
+    # Handle deltaNeutralContract
     if contract.deltaNeutralContract:
         dnc_dict = \
             get_delta_neutral_contract_dict(contract.deltaNeutralContract)
         ret_dict['deltaNeutralContract'] = str(dnc_dict)
+
+    # Convert string date to Timestamp.
+    # We want Timestamps in the DataFrame for analysis,
+    # and we want string dates in the contract for ib requests
+    if ret_dict['lastTradeDateOrContractMonth']:  # if not empty
+        # if year and month only (secType of FUT)
+        if len(ret_dict['lastTradeDateOrContractMonth']) == 6:
+            # add day 01 so we have a legitimate date
+            ret_dict['lastTradeDateOrContractMonth'] = \
+                ret_dict['lastTradeDateOrContractMonth'] + '01'
+        ret_dict['lastTradeDateOrContractMonth'] = \
+            pd.Timestamp(ret_dict['lastTradeDateOrContractMonth'])
+    else:
+        ret_dict['lastTradeDateOrContractMonth'] = pd.NaT
 
     return ret_dict
 
@@ -122,16 +140,29 @@ def get_contract_obj(contract_dict: Dict) -> Contract:
           An instance of Contract
 
     """
-    contract = Contract()
-    if contract_dict['comboLeg']:
-        combo_leg = get_combo_leg_obj(eval(contract_dict['comboLeg']))
-        contract_dict['comboLeg'] = combo_leg
+    contract = Contract()  # start with a default contract
 
+    # Handle comboLegs
+    if contract_dict['comboLegs']:
+        combo_leg = get_combo_leg_obj(eval(contract_dict['comboLegs']))
+        contract_dict['comboLegs'] = combo_leg
+
+    # Handle deltaNeutralContract
     if contract_dict['deltaNeutralContract']:
         delta_neutral_contract = \
             get_delta_neutral_contract_obj(
                 eval(contract_dict['deltaNeutralContract']))
         contract_dict['deltaNeutralContract'] = delta_neutral_contract
+
+    # Convert Timestamp back to string date.
+    # We want Timestamps in the DataFrame for analysis,
+    # and we want string dates in the contract for ib requests
+    if contract_dict['lastTradeDateOrContractMonth'] is pd.NaT:
+        contract_dict['lastTradeDateOrContractMonth'] = ""
+    else:
+        contract_dict['lastTradeDateOrContractMonth'] = \
+            contract_dict['lastTradeDateOrContractMonth'].strftime('%Y%m%d')
+        # $$$ should we get back to a 6 char string for FUT?
 
     contract.__dict__ = contract_dict
 

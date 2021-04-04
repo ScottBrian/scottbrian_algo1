@@ -25,6 +25,7 @@ from ibapi.contract import Contract, ContractDetails  # typedef: ignore
 from scottbrian_algo1.algo_api import AlgoApp, AlreadyConnected, \
     DisconnectLockHeld, ConnectTimeout, RequestTimeout, DisconnectDuringRequest
 
+from scottbrian_algo1.algo_maps import get_contract_obj
 from scottbrian_algo1.algo_maps import get_contract_details_obj
 
 # from scottbrian_utils.diag_msg import diag_msg
@@ -1014,47 +1015,21 @@ def verify_contract_details(contract: "Contract",
             algo_app.ds_catalog.get_path('contract_details')
         logger.info('contract_details_path: %s', contract_details_path)
 
-        contract_details_ds = \
-            pd.read_csv(contract_details_path,
-                        header=0,
-                        index_col=0,
-                        converters={'contract':
-                                        lambda x: None if x == '' else x,
-                                    'marketName': lambda x: x,
-                                    'orderTypes': lambda x: x,
-                                    'validExchanges': lambda x: x,
-                                    'longName': lambda x: x,
-                                    'contractMonth': lambda x: x,
-                                    'industry': lambda x: x,
-                                    'category': lambda x: x,
-                                    'subcategory': lambda x: x,
-                                    'timeZoneId': lambda x: x,
-                                    'tradingHours': lambda x: x,
-                                    'liquidHours': lambda x: x,
-                                    'evRule': lambda x: x,
-                                    'underSymbol': lambda x: x,
-                                    'underSecType': lambda x: x,
-                                    'marketRuleIds': lambda x: x,
-                                    'secIdList':
-                                        lambda x: None if x == '' else x,
-                                    'realExpirationDate': lambda x: x,
-                                    'lastTradeTime': lambda x: x,
-                                    'stockType': lambda x: x,
-                                    'cusip': lambda x: x,
-                                    'ratings': lambda x: x,
-                                    'descAppend': lambda x: x,
-                                    'bondType': lambda x: x,
-                                    'couponType': lambda x: x,
-                                    'maturity': lambda x: x,
-                                    'issueDate': lambda x: x,
-                                    'nextOptionDate': lambda x: x,
-                                    'nextOptionType': lambda x: x,
-                                    'notes': lambda x: x
-                                    })
+        # first, save the algo_app contracts and contract_details
+        contracts_ds = algo_app.contracts
+        contract_details_ds = algo_app.contract_details
+
+        # next, reload algo_app contracts and contract_details from csv
+        # so we can test that they were saved and restored
+        # correctly (i.e., we will compare them against
+        # what we just loaded)
+        algo_app.load_contracts()
+        algo_app.load_contract_details()
 
         # print('contract_details_ds:\n', contract_details_ds)
         # print('contract_details_ds.__dict__:\n',
         #       contract_details_ds.__dict__)
+
         for conId in conId_list:
             match_desc = mock_ib.contract_descriptions.loc[
                 mock_ib.contract_descriptions['conId'] == conId]
@@ -1062,19 +1037,22 @@ def verify_contract_details(contract: "Contract",
             # diag_msg('match_desc.conId[0]\n', match_desc.conId[0])
             # diag_msg('match_desc.symbol[0]\n', match_desc.symbol[0])
 
-            test_contract_details = \
-                algo_app.contract_details.loc[conId]
-            contract_details1_dict = test_contract_details.to_dict()
-            contract_details1 = \
-                get_contract_details_obj(contract_details1_dict)
+            contracts1 = get_contract_obj(
+                algo_app.contracts.loc[conId].to_dict())
 
-            test_contract_details2 = \
-                contract_details_ds.loc[conId]
-            contract_details2_dict = test_contract_details2.to_dict()
-            contract_details2 = \
-                get_contract_details_obj(contract_details2_dict)
+            contracts2 = get_contract_obj(contracts_ds.loc[conId].to_dict())
 
-            assert compare_contract_details(contract_details1, contract_details2)
+            assert compare_contracts(contracts1,
+                                     contracts2)
+
+            contract_details1 = get_contract_details_obj(
+                algo_app.contract_details.loc[conId].to_dict())
+
+            contract_details2 = get_contract_details_obj(
+                contract_details_ds.loc[conId].to_dict())
+
+            assert compare_contract_details(contract_details1,
+                                            contract_details2)
 
             # print('test_contract_details2:\n', test_contract_details2)
             # print('test_contract_details2.__dict__:\n',

@@ -374,6 +374,145 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         raise RequestTimeout
 
     ###########################################################################
+    # load_contracts
+    ###########################################################################
+    def load_contracts(self) -> None:
+        """Load the contracts DataFrame.
+
+        """
+        #######################################################################
+        # if contracts data set exists, load it and reset the index
+        #######################################################################
+        contracts_path = self.ds_catalog.get_path('contracts')
+        logger.info('contracts path: %s', contracts_path)
+
+        if contracts_path.exists():
+            self.contracts = \
+                pd.read_csv(contracts_path,
+                            header=0,
+                            index_col=0,
+                            parse_dates=['lastTradeDateOrContractMonth'],
+                            converters={'symbol': lambda x: x,
+                                        'secType': lambda x: x,
+                                        'right': lambda x: x,
+                                        'multiplier': lambda x: x,
+                                        'exchange': lambda x: x,
+                                        'primaryExchange': lambda x: x,
+                                        'currency': lambda x: x,
+                                        'localSymbol': lambda x: x,
+                                        'tradingClass': lambda x: x,
+                                        'secIdType': lambda x: x,
+                                        'secId': lambda x: x,
+                                        'comboLegsDescrip': lambda x: x,
+                                        'comboLegs':
+                                            lambda x: None if x == '' else x,
+                                        'deltaNeutralContract':
+                                            lambda x: None if x == '' else x
+                                        })
+
+    ###########################################################################
+    # load_contract_details
+    ###########################################################################
+    def load_contract_details(self) -> None:
+        """Load the contracts DataFrame.
+
+        """
+        #######################################################################
+        # if contract_details data set exists, load it and reset the index
+        #######################################################################
+        contract_details_path = self.ds_catalog.get_path('contract_details')
+        logger.info('contract_details path: %s', contract_details_path)
+
+        if contract_details_path.exists():
+            self.contract_details = \
+                pd.read_csv(contract_details_path,
+                            header=0,
+                            index_col=0,
+                            converters={'contract':
+                                            lambda x: None if x == '' else x,
+                                        'marketName': lambda x: x,
+                                        'orderTypes': lambda x: x,
+                                        'validExchanges': lambda x: x,
+                                        'longName': lambda x: x,
+                                        'contractMonth': lambda x: x,
+                                        'industry': lambda x: x,
+                                        'category': lambda x: x,
+                                        'subcategory': lambda x: x,
+                                        'timeZoneId': lambda x: x,
+                                        'tradingHours': lambda x: x,
+                                        'liquidHours': lambda x: x,
+                                        'evRule': lambda x: x,
+                                        'underSymbol': lambda x: x,
+                                        'underSecType': lambda x: x,
+                                        'marketRuleIds': lambda x: x,
+                                        'secIdList':
+                                            lambda x: None if x == '' else x,
+                                        'realExpirationDate': lambda x: x,
+                                        'lastTradeTime': lambda x: x,
+                                        'stockType': lambda x: x,
+                                        'cusip': lambda x: x,
+                                        'ratings': lambda x: x,
+                                        'descAppend': lambda x: x,
+                                        'bondType': lambda x: x,
+                                        'couponType': lambda x: x,
+                                        'maturity': lambda x: x,
+                                        'issueDate': lambda x: x,
+                                        'nextOptionDate': lambda x: x,
+                                        'nextOptionType': lambda x: x,
+                                        'notes': lambda x: x
+                                        })
+
+    ###########################################################################
+    # save_contracts
+    ###########################################################################
+    def save_contracts(self) -> None:
+        """Save the contracts DataFrame.
+
+        """
+        #######################################################################
+        # Get the contracts path
+        #######################################################################
+        contracts_path = self.ds_catalog.get_path('contracts')
+        logger.info('contracts path: %s', contracts_path)
+
+        #######################################################################
+        # Save contracts DataFrame to csv
+        #######################################################################
+        logger.info('Number of contract entries: %d',
+                    len(self.contracts))
+
+        if not self.contracts.empty:
+            self.contracts.sort_index(inplace=True)
+
+        logger.info('saving contracts DataFrame to csv')
+        self.contracts.to_csv(contracts_path)
+
+    ###########################################################################
+    # save_contract_details
+    ###########################################################################
+    def save_contract_details(self) -> None:
+        """Save the contract_details DataFrame.
+
+        """
+        #######################################################################
+        # get the contract_details path
+        #######################################################################
+        contract_details_path = self.ds_catalog.get_path('contract_details')
+        logger.info('contract_details path: %s', contract_details_path)
+
+        #######################################################################
+        # Save contract_details DataFrame to csv
+        #######################################################################
+        logger.info('Number of contract_details entries: %d',
+                    len(self.contract_details))
+
+        if not self.contract_details.empty:
+            self.contract_details.sort_index(inplace=True)
+
+        logger.info('saving contract_details DataFrame to csv')
+        self.contract_details.to_csv(contract_details_path)
+
+    ###########################################################################
     ###########################################################################
     # get_symbols
     ###########################################################################
@@ -640,110 +779,28 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # of this are handled by get_obj methods.
         #
         #######################################################################
-        #######################################################################
-        # if contracts data set exists, load it and reset the index
-        #######################################################################
-        contracts_path = self.ds_catalog.get_path('contracts')
-        logger.info('path: %s', contracts_path)
 
-        if contracts_path.exists():
-            self.contracts = \
-                pd.read_csv(contracts_path,
-                            header=0,
-                            index_col=0,
-                            converters={'symbol': lambda x: x,
-                                        'secType': lambda x: x,
-                                        'right': lambda x: x,
-                                        'multiplier': lambda x: x,
-                                        'exchange': lambda x: x,
-                                        'primaryExchange': lambda x: x,
-                                        'currency': lambda x: x,
-                                        'localSymbol': lambda x: x,
-                                        'tradingClass': lambda x: x,
-                                        'secIdType': lambda x: x,
-                                        'secId': lambda x: x,
-                                        'comboLegsDescrip': lambda x: x,
-                                        'comboLegs':
-                                            lambda x: None if x == '' else x,
-                                        'deltaNeutralContract':
-                                            lambda x: None if x == '' else x
-                                        })
+        ################################################################
+        # load the contracts and contract_details DataFrames
+        ################################################################
+        self.load_contracts()
+        self.load_contract_details()
 
-        #######################################################################
-        # if contract_details data set exists, load it and reset the index
-        #######################################################################
-        contract_details_path = self.ds_catalog.get_path('contract_details')
-        logger.info('path: %s', contract_details_path)
-
-        if contract_details_path.exists():
-            self.contract_details = \
-                pd.read_csv(contract_details_path,
-                            header=0,
-                            index_col=0,
-                            converters={'contract':
-                                            lambda x: None if x == '' else x,
-                                        'marketName': lambda x: x,
-                                        'orderTypes': lambda x: x,
-                                        'validExchanges': lambda x: x,
-                                        'longName': lambda x: x,
-                                        'contractMonth': lambda x: x,
-                                        'industry': lambda x: x,
-                                        'category': lambda x: x,
-                                        'subcategory': lambda x: x,
-                                        'timeZoneId': lambda x: x,
-                                        'tradingHours': lambda x: x,
-                                        'liquidHours': lambda x: x,
-                                        'evRule': lambda x: x,
-                                        'underSymbol': lambda x: x,
-                                        'underSecType': lambda x: x,
-                                        'marketRuleIds': lambda x: x,
-                                        'secIdList':
-                                            lambda x: None if x == '' else x,
-                                        'realExpirationDate': lambda x: x,
-                                        'lastTradeTime': lambda x: x,
-                                        'stockType': lambda x: x,
-                                        'cusip': lambda x: x,
-                                        'ratings': lambda x: x,
-                                        'descAppend': lambda x: x,
-                                        'bondType': lambda x: x,
-                                        'couponType': lambda x: x,
-                                        'maturity': lambda x: x,
-                                        'issueDate': lambda x: x,
-                                        'nextOptionDate': lambda x: x,
-                                        'nextOptionType': lambda x: x,
-                                        'notes': lambda x: x
-                                        })
         ################################################################
         # make the request for details
         ################################################################
         self.response_complete_event.clear()
         self.reqContractDetails(self.get_reqId(), contract)
         self.wait_for_request_completion()
-        #######################################################################
-        # Save contracts DataFrame to csv
-        #######################################################################
-        logger.info('Number of contract entries: %d',
-                    len(self.contracts))
 
-        if not self.contracts.empty:
-            self.contracts.sort_index(inplace=True)
-
-        logger.info('saving contracts DataFrame to csv')
-        self.contracts.to_csv(contracts_path)
         #######################################################################
-        # Save contract_details DataFrame to csv
+        # Save contracts and contract_details DataFrames
         #######################################################################
-        logger.info('Number of contract_details entries: %d',
-                    len(self.contract_details))
-
-        if not self.contract_details.empty:
-            self.contract_details.sort_index(inplace=True)
-
-        logger.info('saving contract_details DataFrame to csv')
-        self.contract_details.to_csv(contract_details_path)
+        self.save_contracts()
+        self.save_contract_details()
 
     ###########################################################################
-    # contractDetails
+    # contractDetails callback method
     ###########################################################################
     def contractDetails(self,
                         request_id: int,
@@ -757,8 +814,8 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         """
         logger.info('entered for request_id %d', request_id)
         logger.debug('Symbol: %s', contract_details.contract.symbol)
-        print('contract_details:\n', contract_details)
-        print('contract_details.__dict__:\n', contract_details.__dict__)
+        # print('contract_details:\n', contract_details)
+        # print('contract_details.__dict__:\n', contract_details.__dict__)
 
         # remove the contract if it already exists in the DataFrame
         # as we want the newest information to replace the old

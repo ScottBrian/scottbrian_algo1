@@ -316,7 +316,7 @@ class MockIB:
             match_descs = self.contract_descriptions.loc[
                 self.contract_descriptions['conId'] == conId]
 
-            last_trade_date = '01012022'  # for now
+            last_trade_date = '20220101'  # for now
             strike = 0  # for now
             right = 'P'  # for now
             exchange = 'SMART'  # for now
