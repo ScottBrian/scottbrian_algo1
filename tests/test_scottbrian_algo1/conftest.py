@@ -17,6 +17,7 @@ from ibapi.errors import FAIL_CREATE_SOCK
 
 from scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_utils.file_catalog import FileCatalog
+from scottbrian_utils.diag_msg import diag_msg
 
 import queue
 from pathlib import Path
@@ -316,87 +317,88 @@ class MockIB:
             match_descs = self.contract_descriptions.loc[
                 self.contract_descriptions['conId'] == conId]
 
-            last_trade_date = '20220101'  # for now
-            strike = 0  # for now
-            right = 'P'  # for now
-            exchange = 'SMART'  # for now
-            market_name = 'MarketName' + str(conId)
-            trading_class = 'TradingClass' + str(conId)
-            min_tick = 0.01
-            md_size_multiplier = 1
-            multiplier = "2"
-            order_types = 'OrderTypes' + str(conId)
-            valid_exchanges = 'ValidExchanges' + str(conId)
-            price_magnifier = 3
-            under_conid = 12345
-            long_name = 'LongName' + str(conId)
-
-            contract_month = 'ContractMonth'
-            industry = 'Industry'
-            category = 'Category'
-            subcategory = 'SubCategory'
-            time_zone_id = 'TimeZoneId'
-            trading_hours = 'TradingHours'
-            liquid_hours = 'LiquidHours'
-            ev_rule = 'EvRule'
-            ev_multiplier = 4
-            sec_id_list_count = 5   # will also need to try 0, 1, 2 for test
-            sec_id_list = ['tag0', 'value0',
-                           'tag1', 'value1',
-                           'tag2', 'value2',
-                           'tag3', 'value3',
-                           'tag4', 'value4']
-
-            agg_group = 6
-            under_symbol = 'UnderSymbol'
-            under_sec_type = 'UnderSecType'
-            market_rule_ids = 'MarketRuleIds'
-            real_expiration_date = 'RealExpirationDate'
-            stock_type = 'StockType' + str(conId)
+            # last_trade_date = '20220101'  # for now
+            # strike = 0  # for now
+            # right = 'P'  # for now
+            # exchange = 'SMART'  # for now
+            # market_name = 'MarketName' + str(conId)
+            # trading_class = 'TradingClass' + str(conId)
+            # min_tick = 0.01
+            # md_size_multiplier = 1
+            # multiplier = "2"
+            # order_types = 'OrderTypes' + str(conId)
+            # valid_exchanges = 'ValidExchanges' + str(conId)
+            # price_magnifier = 3
+            # under_conid = 12345
+            # long_name = 'LongName' + str(conId)
+            #
+            # contract_month = 'ContractMonth'
+            # industry = 'Industry'
+            # category = 'Category'
+            # subcategory = 'SubCategory'
+            # time_zone_id = 'TimeZoneId'
+            # trading_hours = 'TradingHours'
+            # liquid_hours = 'LiquidHours'
+            # ev_rule = 'EvRule'
+            # ev_multiplier = 4
+            # sec_id_list_count = 5   # will also need to try 0, 1, 2 for test
+            # sec_id_list = ['tag0', 'value0',
+            #                'tag1', 'value1',
+            #                'tag2', 'value2',
+            #                'tag3', 'value3',
+            #                'tag4', 'value4']
+            #
+            # agg_group = 6
+            # under_symbol = 'UnderSymbol'
+            # under_sec_type = 'UnderSecType'
+            # market_rule_ids = 'MarketRuleIds'
+            # real_expiration_date = 'RealExpirationDate'
+            # stock_type = 'StockType' + str(conId)
 
             for i in range(len(match_descs)):
-                local_symbol = match_descs.iloc[i].symbol
                 build_msg = start_msg \
                     + make_field(match_descs.iloc[i].symbol) \
                     + make_field(match_descs.iloc[i].secType) \
-                    + make_field(last_trade_date) \
-                    + make_field(strike) \
-                    + make_field(right) \
-                    + make_field(exchange) \
+                    + make_field(match_descs.iloc[i].
+                                 lastTradeDateOrContractMonth) \
+                    + make_field(match_descs.iloc[i].strike) \
+                    + make_field(match_descs.iloc[i].right) \
+                    + make_field(match_descs.iloc[i].exchange) \
                     + make_field(match_descs.iloc[i].currency) \
-                    + make_field(local_symbol) \
-                    + make_field(market_name) \
-                    + make_field(trading_class) \
+                    + make_field(match_descs.iloc[i].localSymbol) \
+                    + make_field(match_descs.iloc[i].marketName) \
+                    + make_field(match_descs.iloc[i].tradingClass) \
                     + make_field(match_descs.iloc[i].conId) \
-                    + make_field(min_tick) \
-                    + make_field(md_size_multiplier) \
-                    + make_field(multiplier) \
-                    + make_field(order_types) \
-                    + make_field(valid_exchanges) \
-                    + make_field(price_magnifier) \
-                    + make_field(under_conid) \
-                    + make_field(long_name) \
+                    + make_field(match_descs.iloc[i].minTick) \
+                    + make_field(match_descs.iloc[i].mdSizeMultiplier) \
+                    + make_field(match_descs.iloc[i].multiplier) \
+                    + make_field(match_descs.iloc[i].orderTypes) \
+                    + make_field(match_descs.iloc[i].validExchanges) \
+                    + make_field(match_descs.iloc[i].priceMagnifier) \
+                    + make_field(match_descs.iloc[i].underConId) \
+                    + make_field(match_descs.iloc[i].longName) \
                     + make_field(match_descs.iloc[i].primaryExchange) \
-                    + make_field(contract_month) \
-                    + make_field(industry) \
-                    + make_field(category) \
-                    + make_field(subcategory) \
-                    + make_field(time_zone_id) \
-                    + make_field(trading_hours) \
-                    + make_field(liquid_hours) \
-                    + make_field(ev_rule) \
-                    + make_field(ev_multiplier) \
-                    + make_field(sec_id_list_count)
+                    + make_field(match_descs.iloc[i].contractMonth) \
+                    + make_field(match_descs.iloc[i].industry) \
+                    + make_field(match_descs.iloc[i].category) \
+                    + make_field(match_descs.iloc[i].subcategory) \
+                    + make_field(match_descs.iloc[i].timeZoneId) \
+                    + make_field(match_descs.iloc[i].tradingHours) \
+                    + make_field(match_descs.iloc[i].liquidHours) \
+                    + make_field(match_descs.iloc[i].evRule) \
+                    + make_field(match_descs.iloc[i].evMultiplier) \
+                    + make_field(match_descs.iloc[i].secIdListCount)
 
-                for j in range(2*sec_id_list_count):
-                    build_msg += make_field(sec_id_list[j])
+                secIdList = match_descs.iloc[i].secIdList[0]
+                for j in range(2*match_descs.iloc[i].secIdListCount):
+                    build_msg += make_field(secIdList[j])
 
-                build_msg += make_field(agg_group) \
-                    + make_field(under_symbol) \
-                    + make_field(under_sec_type) \
-                    + make_field(market_rule_ids) \
-                    + make_field(real_expiration_date) \
-                    + make_field(stock_type)
+                build_msg += make_field(match_descs.iloc[i].aggGroup) \
+                    + make_field(match_descs.iloc[i].underSymbol) \
+                    + make_field(match_descs.iloc[i].underSecType) \
+                    + make_field(match_descs.iloc[i].marketRuleIds) \
+                    + make_field(match_descs.iloc[i].realExpirationDate) \
+                    + make_field(match_descs.iloc[i].stockType)
 
                 recv_msg = make_msg(build_msg)
                 self.msg_rcv_q.put(recv_msg, timeout=5)
@@ -498,22 +500,123 @@ class MockIB:
         combos = self.get_combos(symbol)
         for combo in combos:
             self.next_conId += 1
-            self.contract_descriptions = self.contract_descriptions.append(
-                            pd.DataFrame([[self.next_conId,
-                                           symbol,
-                                           combo[0],
-                                           combo[1],
-                                           combo[2],
-                                           combo[3],
-                                           ]],
-                                         columns=['conId',
-                                                  'symbol',
-                                                  'secType',
-                                                  'primaryExchange',
-                                                  'currency',
-                                                  'derivativeSecTypes'
-                                                  ]))
+            cd_dict = {'conId': self.next_conId,
+                       'symbol': symbol,
+                       'secType': combo[0],
+                       'primaryExchange': combo[1],
+                       'currency': combo[2],
+                       'derivativeSecTypes': [combo[3]]
+                       }
+            if self.next_conId % 3 == 0:
+                cd_dict['lastTradeDateOrContractMonth'] = '20220202'
+                cd_dict['right'] = 'C'
+                cd_dict['mdSizeMultiplier'] = 1
+                cd_dict['validExchanges'] = 'ABC'
+                cd_dict['industry'] = 'Industry1'
+                cd_dict['subcategory'] = 'SubCategoryA'
+                cd_dict['liquidHours'] = 'LiquidHours50'
+                cd_dict['realExpirationDate'] = '20220203'
+            elif self.next_conId % 3 == 1:
+                cd_dict['lastTradeDateOrContractMonth'] = '202203'
+                cd_dict['right'] = 'P'
+                cd_dict['mdSizeMultiplier'] = 2
+                cd_dict['validExchanges'] = 'DEFXYZ'
+                cd_dict['industry'] = 'Industry2'
+                cd_dict['subcategory'] = 'SubCategoryB'
+                cd_dict['liquidHours'] = 'LiquidHours60'
+                cd_dict['realExpirationDate'] = '20220202'
+            else:
+                cd_dict['lastTradeDateOrContractMonth'] = ''
+                cd_dict['right'] = ['']
+                cd_dict['mdSizeMultiplier'] = 3
+                cd_dict['validExchanges'] = 'WXYZ'
+                cd_dict['industry'] = 'Industry2'
+                cd_dict['subcategory'] = 'SubCategoryC'
+                cd_dict['liquidHours'] = 'LiquidHours70'
+                cd_dict['realExpirationDate'] = ''
 
+            cd_dict['strike'] = ((self.next_conId % 5) + 1) * 100
+
+            if self.next_conId % 4 == 0:
+                cd_dict['exchange'] = 'SMART'
+                cd_dict['minTick'] = 0.01
+                cd_dict['multiplier'] = "3"
+                cd_dict['priceMagnifier'] = 11
+                cd_dict['category'] = 'Category10'
+                cd_dict['evRule'] = 'EvRuleX'
+            elif self.next_conId % 4 == 1:
+                cd_dict['exchange'] = 'BRIGHT'
+                cd_dict['minTick'] = 0.02
+                cd_dict['multiplier'] = "2"
+                cd_dict['priceMagnifier'] = 12
+                cd_dict['category'] = 'Category100'
+                cd_dict['evRule'] = 'EvRuleY'
+            elif self.next_conId % 4 == 2:
+                cd_dict['exchange'] = 'GENIUS'
+                cd_dict['minTick'] = 0.03
+                cd_dict['multiplier'] = "1"
+                cd_dict['priceMagnifier'] = 14
+                cd_dict['category'] = 'Category1000'
+                cd_dict['evRule'] = 'EvRuleW'
+            else:
+                cd_dict['exchange'] = 'WHIZ'
+                cd_dict['minTick'] = 0.04
+                cd_dict['multiplier'] = "100"
+                cd_dict['priceMagnifier'] = 18
+                cd_dict['category'] = 'Category10000'
+                cd_dict['evRule'] = 'EvRuleZ'
+
+            cd_dict['localSymbol'] = symbol + str(self.next_conId)
+
+            cd_dict['marketName'] = 'MarketName' + str(self.next_conId)
+            cd_dict['tradingClass'] = 'TradingClass' + str(self.next_conId)
+
+            cd_dict['orderTypes'] = 'OrdType' + str(self.next_conId)
+
+            cd_dict['underConId'] = self.next_conId - 1000
+            cd_dict['longName'] = 'ABC DEF XYZ ' + str(self.next_conId)
+
+            cd_dict['contractMonth'] = str((self.next_conId % 12) + 1)
+
+            cd_dict['evMultiplier'] = (self.next_conId % 7) + 1
+
+            if self.next_conId % 5 == 0:
+                cd_dict['timeZoneId'] = 'EST'
+                cd_dict['tradingHours'] = 'TradingHours0000'
+            elif self.next_conId % 5 == 1:
+                cd_dict['timeZoneId'] = 'PMT'
+                cd_dict['tradingHours'] = 'TradingHours0200'
+            elif self.next_conId % 5 == 2:
+                cd_dict['timeZoneId'] = 'EDT'
+                cd_dict['tradingHours'] = 'TradingHours0400'
+            elif self.next_conId % 5 == 3:
+                cd_dict['timeZoneId'] = 'PDT'
+                cd_dict['tradingHours'] = 'TradingHours0600'
+            else:
+                cd_dict['timeZoneId'] = 'CST'
+                cd_dict['tradingHours'] = 'TradingHours0800'
+
+            cd_dict['secIdListCount'] = self.next_conId % 5
+            secIdList = []
+            for i in range(cd_dict['secIdListCount']):
+                secIdList.append('tag' + str(i))
+                secIdList.append('value' + str(i))
+            cd_dict['secIdList'] = [secIdList]
+
+            cd_dict['aggGroup'] = (self.next_conId % 4) + 1
+            cd_dict['underSymbol'] = 'Under' + symbol
+            cd_dict['underSecType'] = 'Under' + combo[0]
+
+            cd_dict['marketRuleIds'] = 'MarketRuleIds' + str(self.next_conId)
+
+            cd_dict['stockType'] = 'StockType' + str((self.next_conId % 9) + 1)
+
+            self.contract_descriptions = self.contract_descriptions.append(
+                            pd.DataFrame(cd_dict))
+
+            # if self.next_conId < 7050:
+            #     diag_msg('self.contract_descriptions:\n',
+            #              self.contract_descriptions)
     def build_contract_descriptions(self):
         """Build the set of contract descriptions to use for testing."""
         contract_descs_path = self.test_cat.get_path('mock_contract_descs')

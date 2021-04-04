@@ -28,7 +28,7 @@ from scottbrian_algo1.algo_api import AlgoApp, AlreadyConnected, \
 from scottbrian_algo1.algo_maps import get_contract_obj
 from scottbrian_algo1.algo_maps import get_contract_details_obj
 
-# from scottbrian_utils.diag_msg import diag_msg
+from scottbrian_utils.diag_msg import diag_msg
 # from scottbrian_utils.file_catalog import FileCatalog
 # from datetime import datetime
 import logging
@@ -731,7 +731,8 @@ def verify_get_symbols(letter: str,
     logger.debug("about to get_symbols for %s", letter)
     algo_app.get_symbols()
     assert algo_app.request_id >= 2
-
+    diag_msg('mock_ib.contract_descriptions:\n',
+             mock_ib.contract_descriptions)
     logger.debug("getting stock_sym_match_descs for %s", letter)
     stock_sym_match_descs = mock_ib.contract_descriptions.loc[
         (mock_ib.contract_descriptions['symbol'].str.
@@ -1037,13 +1038,18 @@ def verify_contract_details(contract: "Contract",
             # diag_msg('match_desc.conId[0]\n', match_desc.conId[0])
             # diag_msg('match_desc.symbol[0]\n', match_desc.symbol[0])
 
-            contracts1 = get_contract_obj(
+            contract1 = get_contract_obj(
                 algo_app.contracts.loc[conId].to_dict())
 
-            contracts2 = get_contract_obj(contracts_ds.loc[conId].to_dict())
+            contract2 = get_contract_obj(contracts_ds.loc[conId].to_dict())
 
-            assert compare_contracts(contracts1,
-                                     contracts2)
+            assert compare_contracts(contract1,
+                                     contract2)
+
+            contract3 = get_contract_from_mock_desc(match_desc)
+
+            assert compare_contracts(contract1,
+                                     contract3)
 
             contract_details1 = get_contract_details_obj(
                 algo_app.contract_details.loc[conId].to_dict())
@@ -1171,6 +1177,30 @@ def verify_contract_details(contract: "Contract",
             #             == test_contract_details2.secIdList[i].value
             #             == 'value' + str(i))
 
+def get_contract_from_mock_desc(mock_desc: Any) -> Contract:
+    ret_con = Contract()
+    ret_con.conId = mock_desc.conId[0]
+    ret_con.symbol = mock_desc.symbol[0]
+    ret_con.secType = mock_desc.secType[0]
+    ret_con.lastTradeDateOrContractMonth = mock_desc.lastTradeDateOrContractMonth[0]
+    ret_con.strike = mock_desc.strike[0]
+    ret_con.right = mock_desc.right[0]
+    ret_con.multiplier = mock_desc.multiplier[0]
+    ret_con.exchange = mock_desc.exchange[0]
+    ret_con.primaryExchange = mock_desc.primaryExchange[0]
+    ret_con.currency = mock_desc.currency[0]
+    ret_con.localSymbol = mock_desc.localSymbol[0]
+    ret_con.tradingClass = mock_desc.tradingClass[0]
+    # ret_con.includeExpired = mock_desc.includeExpired[0]
+    # ret_con.secIdType = mock_desc.secIdType[0]
+    # ret_con.secId = mock_desc.secId[0]
+
+        #combos
+    # ret_con.comboLegsDescrip = mock_desc.comboLegsDescrip[0]
+    # ret_con.comboLegs = mock_desc.comboLegs[0]
+    # ret_con.deltaNeutralContract = mock_desc.deltaNeutralContract[0]
+
+    return ret_con
 
 def compare_tag_value(tag_value1: TagValue,
                       tag_value2: TagValue

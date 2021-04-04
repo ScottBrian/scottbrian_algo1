@@ -15,8 +15,6 @@ from threading import Event, get_ident, get_native_id, Thread, Lock
 
 import time
 
-import pickle
-
 from ibapi.wrapper import EWrapper  # type: ignore
 # from ibapi import utils
 from ibapi.client import EClient  # type: ignore
@@ -43,8 +41,8 @@ from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
 from scottbrian_utils.time_hdr import time_box
 
-#from scottbrian_algo1.algo_maps import AlgoTagValue, AlgoComboLeg
-#from scottbrian_algo1.algo_maps import AlgoDeltaNeutralContract
+# from scottbrian_algo1.algo_maps import AlgoTagValue, AlgoComboLeg
+# from scottbrian_algo1.algo_maps import AlgoDeltaNeutralContract
 
 from scottbrian_algo1.algo_maps import get_contract_dict
 from scottbrian_algo1.algo_maps import get_contract_details_dict
@@ -150,7 +148,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         # stock symbols
         self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
-        self.symbols_status_df = pd.DataFrame()
+        self.symbols_status = pd.DataFrame()
         self.num_symbols_received = 0
         self.symbols = pd.DataFrame()
         self.stock_symbols = pd.DataFrame()
@@ -377,9 +375,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     # load_contracts
     ###########################################################################
     def load_contracts(self) -> None:
-        """Load the contracts DataFrame.
-
-        """
+        """Load the contracts DataFrame."""
         #######################################################################
         # if contracts data set exists, load it and reset the index
         #######################################################################
@@ -407,16 +403,15 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                                         'comboLegs':
                                             lambda x: None if x == '' else x,
                                         'deltaNeutralContract':
-                                            lambda x: None if x == '' else x
+                                            lambda x: None if x == '' else x,
+                                        'originalLastTradeDate': lambda x: x
                                         })
 
     ###########################################################################
     # load_contract_details
     ###########################################################################
     def load_contract_details(self) -> None:
-        """Load the contracts DataFrame.
-
-        """
+        """Load the contracts DataFrame."""
         #######################################################################
         # if contract_details data set exists, load it and reset the index
         #######################################################################
@@ -429,7 +424,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                             header=0,
                             index_col=0,
                             converters={'contract':
-                                            lambda x: None if x == '' else x,
+                                        lambda x: None if x == '' else x,
                                         'marketName': lambda x: x,
                                         'orderTypes': lambda x: x,
                                         'validExchanges': lambda x: x,
@@ -466,9 +461,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     # save_contracts
     ###########################################################################
     def save_contracts(self) -> None:
-        """Save the contracts DataFrame.
-
-        """
+        """Save the contracts DataFrame."""
         #######################################################################
         # Get the contracts path
         #######################################################################
@@ -491,9 +484,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     # save_contract_details
     ###########################################################################
     def save_contract_details(self) -> None:
-        """Save the contract_details DataFrame.
-
-        """
+        """Save the contract_details DataFrame."""
         #######################################################################
         # get the contract_details path
         #######################################################################
@@ -569,18 +560,18 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                                                  'derivativeSecTypes':
                                                      lambda x: eval(x)})
         #######################################################################
-        # load or create the symbols_status_df
+        # load or create the symbols_status
         #######################################################################
-        symbols_status_path = self.ds_catalog.get_path('symbols_status_df')
+        symbols_status_path = self.ds_catalog.get_path('symbols_status')
         logger.info('symbols_status_path: %s', symbols_status_path)
 
         if symbols_status_path.exists():
-            self.symbols_status_df = pd.read_csv(symbols_status_path,
-                                                 header=0,
-                                                 index_col=0,
-                                                 parse_dates=True)
+            self.symbols_status = pd.read_csv(symbols_status_path,
+                                              header=0,
+                                              index_col=0,
+                                              parse_dates=True)
         else:
-            self.symbols_status_df = \
+            self.symbols_status = \
                 pd.DataFrame(list(string.ascii_uppercase),
                              columns=['AlphaChar'],
                              index=pd.date_range("20000101",
@@ -590,7 +581,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # Get the next single uppercase letter and do the search.
         # The response from ib is handled by symbolSamples wrapper method
         #######################################################################
-        search_char = self.symbols_status_df.iloc[0].AlphaChar
+        search_char = self.symbols_status.iloc[0].AlphaChar
         self.get_symbols_recursive(search_char)
 
         #######################################################################
@@ -620,16 +611,16 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.stock_symbols.to_csv(stock_symbols_path)
 
         #######################################################################
-        # Update and save symbols_status_df DataFrame to csv. The timestamp
+        # Update and save symbols_status DataFrame to csv. The timestamp
         # is updated to 'now' for the letter we just searched and then the ds
         # is sorted to put that entry last and move the next letter to
         # processed into the first slot for next time we call this method.
         #######################################################################
-        self.symbols_status_df.index = [pd.Timestamp.now()] \
-            + self.symbols_status_df.index.to_list()[1:]
-        self.symbols_status_df.sort_index(inplace=True)
-        logger.info('saving symbols_status_df DataFrame to csv')
-        self.symbols_status_df.to_csv(symbols_status_path)
+        self.symbols_status.index = [pd.Timestamp.now()] \
+                                    + self.symbols_status.index.to_list()[1:]
+        self.symbols_status.sort_index(inplace=True)
+        logger.info('saving symbols_status DataFrame to csv')
+        self.symbols_status.to_csv(symbols_status_path)
 
     ###########################################################################
     # get_symbols_recursive

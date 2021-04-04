@@ -1,21 +1,25 @@
 """Mappings of various classes used in the AlgoApp class."""
 
-import pandas as pd
-from typing import Dict
+import pandas as pd  # type: ignore
+from typing import Any, Dict
 
 from ibapi.contract import ComboLeg, Contract, ContractDetails  # type: ignore
-from ibapi.contract import DeltaNeutralContract  # type: ignore
+from ibapi.contract import DeltaNeutralContract
 from ibapi.tag_value import TagValue  # type: ignore
 
 
 ###############################################################################
 # get TagValue dictionary/obj
 ###############################################################################
-def get_tag_value_dict(tag_value: TagValue) -> Dict:
+def get_tag_value_dict(tag_value: TagValue) -> Dict[str, Any]:
     """Get dictionary to be used for DataFrame entry.
 
     Args:
         tag_value: instance of TagValue class
+
+    Returns:
+        dictionary of tag_value object
+
     """
     return tag_value.__dict__
 
@@ -34,16 +38,22 @@ def get_tag_value_obj(tag_value_dict: Dict) -> TagValue:
     tag_value.__dict__ = tag_value_dict
     return tag_value
 
+
 ###############################################################################
 # get ComboLeg dictionary/obj
 ###############################################################################
-def get_combo_leg_dict(combo_leg: ComboLeg) -> Dict:
+def get_combo_leg_dict(combo_leg: ComboLeg) -> Dict[str, Any]:
     """Get dictionary to be used for DataFrame entry.
 
     Args:
         combo_leg: instance of ComboLeg class
+
+    Returns:
+        dictionary of combo_leg object
+
     """
     return combo_leg.__dict__
+
 
 def get_combo_leg_obj(combo_leg_dict: Dict) -> ComboLeg:
     """Get object from dictionary.
@@ -59,15 +69,19 @@ def get_combo_leg_obj(combo_leg_dict: Dict) -> ComboLeg:
     combo_leg.__dict__ = combo_leg_dict
     return combo_leg
 
+
 ###############################################################################
 # get DeltaNeutralContract dictionary
 ###############################################################################
 def get_delta_neutral_contract_dict(delta_neutral_contract:
-                                    DeltaNeutralContract) -> Dict:
+                                    DeltaNeutralContract) -> Dict[str, Any]:
     """Get dictionary to be used for DataFrame entry.
 
     Args:
         delta_neutral_contract: instance of DeltaNeutralContract class
+        
+    Returns:
+        dictionary of delta_neutral_contract object        
     """
     return delta_neutral_contract.__dict__
 
@@ -92,11 +106,15 @@ def get_delta_neutral_contract_obj(delta_neutral_contract_dict: Dict
 ###############################################################################
 # get Contract dictionary/obj
 ###############################################################################
-def get_contract_dict(contract: Contract) -> Dict:
+def get_contract_dict(contract: Contract) -> Dict[str, Any]:
     """Get dictionary to be used for DataFrame entry.
 
     Args:
         contract: instance of Contract class
+
+    Returns:
+        dictionary of contract object
+
     """
     ret_dict = contract.__dict__
 
@@ -116,6 +134,11 @@ def get_contract_dict(contract: Contract) -> Dict:
     # Convert string date to Timestamp.
     # We want Timestamps in the DataFrame for analysis,
     # and we want string dates in the contract for ib requests
+    # We save the original so we can restore what it was in case
+    # we need to add the day for the shortened FUT date which has
+    # only year and month
+    ret_dict['originalLastTradeDate'] = \
+        ret_dict['lastTradeDateOrContractMonth']
     if ret_dict['lastTradeDateOrContractMonth']:  # if not empty
         # if year and month only (secType of FUT)
         if len(ret_dict['lastTradeDateOrContractMonth']) == 6:
@@ -156,13 +179,20 @@ def get_contract_obj(contract_dict: Dict) -> Contract:
 
     # Convert Timestamp back to string date.
     # We want Timestamps in the DataFrame for analysis,
-    # and we want string dates in the contract for ib requests
-    if contract_dict['lastTradeDateOrContractMonth'] is pd.NaT:
-        contract_dict['lastTradeDateOrContractMonth'] = ""
-    else:
-        contract_dict['lastTradeDateOrContractMonth'] = \
-            contract_dict['lastTradeDateOrContractMonth'].strftime('%Y%m%d')
-        # $$$ should we get back to a 6 char string for FUT?
+    # and we want string dates in the contract for ib requests.
+    # We can simply copy back the original that we had saved earlier
+    # when we created the dictionary in get_contract_dict. Note that
+    # we need to convert the original to a string since it was
+    # originally str but to_csv converts it to an int
+    contract_dict['lastTradeDateOrContractMonth'] = \
+        str(contract_dict.pop('originalLastTradeDate'))
+
+    # if contract_dict['lastTradeDateOrContractMonth'] is pd.NaT:
+    #     contract_dict['lastTradeDateOrContractMonth'] = ""
+    # else:
+    #     contract_dict['lastTradeDateOrContractMonth'] = \
+    #         contract_dict['lastTradeDateOrContractMonth'].strftime('%Y%m%d')
+    #     # $$$ should we get back to a 6 char string for FUT?
 
     contract.__dict__ = contract_dict
 
@@ -172,11 +202,15 @@ def get_contract_obj(contract_dict: Dict) -> Contract:
 ###############################################################################
 # get ContractDetails dictionary
 ###############################################################################
-def get_contract_details_dict(contract_details: ContractDetails) -> Dict:
+def get_contract_details_dict(contract_details: ContractDetails) -> Dict[str, Any]:
     """Get dictionary to be used for DataFrame entry.
 
     Args:
         contract_details: instance of ContractDetails class
+
+    Returns:
+        dictionary of contract_details object
+
     """
     ret_dict = contract_details.__dict__
     if contract_details.contract:
