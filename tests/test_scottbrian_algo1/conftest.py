@@ -17,7 +17,7 @@ from ibapi.errors import FAIL_CREATE_SOCK
 
 from scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_utils.file_catalog import FileCatalog
-from scottbrian_utils.diag_msg import diag_msg
+# from scottbrian_utils.diag_msg import diag_msg
 
 import queue
 from pathlib import Path

@@ -8,19 +8,14 @@ import numpy as np
 import pandas as pd  # type: ignore
 import string
 import math
-import pickle
-
 
 from typing import Any, List, NamedTuple
 # from typing_extensions import Final
 
-from ibapi.tag_value import TagValue
-from ibapi.contract import ComboLeg  # typedef: ignore
-from ibapi.contract import DeltaNeutralContract  # typedef: ignore
-from ibapi.contract import Contract, ContractDetails  # typedef: ignore
-
-
-
+from ibapi.tag_value import TagValue  # type: ignore
+from ibapi.contract import ComboLeg  # type: ignore
+from ibapi.contract import DeltaNeutralContract
+from ibapi.contract import Contract, ContractDetails
 
 from scottbrian_algo1.algo_api import AlgoApp, AlreadyConnected, \
     DisconnectLockHeld, ConnectTimeout, RequestTimeout, DisconnectDuringRequest
@@ -1060,129 +1055,78 @@ def verify_contract_details(contract: "Contract",
             assert compare_contract_details(contract_details1,
                                             contract_details2)
 
-            # print('test_contract_details2:\n', test_contract_details2)
-            # print('test_contract_details2.__dict__:\n',
-            #       test_contract_details2.__dict__)
-            # diag_msg('test_contract_details\n', test_contract_details)
-            # diag_msg('test_contract_details.contract.conId:\n',
-            #          test_contract_details.contract.conId)
-            # diag_msg('test_contract_details.contract.symbol:\n',
-            #          test_contract_details.contract.symbol)
-            #
-            # diag_msg('test_contract_details2\n', test_contract_details2)
-            # diag_msg('test_contract_details2.contract.conId:\n',
-            #          test_contract_details2.contract.conId)
-            # diag_msg('test_contract_details2.contract.symbol:\n',
-            #          test_contract_details2.contract.symbol)
+            contract_details3 = get_contract_details_from_mock_desc(match_desc)
 
-            # assert (test_contract_details.contract.conId
-            #         == test_contract_details2.contract.conId
-            #         == conId)
-            #
-            # assert (test_contract_details.contract.symbol
-            #         == test_contract_details2.contract.symbol
-            #         == match_desc.symbol[0])
-            #
-            # assert (test_contract_details.contract.secType
-            #         == test_contract_details2.contract.secType
-            #         == match_desc.secType[0])
-            #
-            # assert (test_contract_details.contract.
-            #         lastTradeDateOrContractMonth
-            #         == test_contract_details2.contract
-            #         .lastTradeDateOrContractMonth
-            #         == '01012022')
-            #
-            # assert (test_contract_details.contract.strike
-            #         == test_contract_details2.contract.strike
-            #         == 0.0)
-            #
-            # assert (test_contract_details.contract.right
-            #         == test_contract_details2.contract.right
-            #         == "P")
-            #
-            # assert (test_contract_details.contract.multiplier
-            #         == test_contract_details2.contract.multiplier
-            #         == "2")
-            #
-            # assert (test_contract_details.contract.exchange
-            #         == test_contract_details2.contract.exchange
-            #         == 'SMART')
-            #
-            # assert (test_contract_details.contract.primaryExchange
-            #         == test_contract_details2.contract.primaryExchange
-            #         == match_desc.primaryExchange[0])
-            #
-            # assert (test_contract_details.contract.currency
-            #         == test_contract_details2.contract.currency
-            #         == match_desc.currency[0])
-            #
-            # assert (test_contract_details.contract.localSymbol
-            #         == test_contract_details2.contract.localSymbol
-            #         == match_desc.symbol[0])
-            #
-            # assert (test_contract_details.contract.tradingClass
-            #         == test_contract_details2.contract.tradingClass
-            #         == 'TradingClass' + str(conId))
-            #
-            # assert (test_contract_details.contract.includeExpired
-            #         == test_contract_details2.contract.includeExpired
-            #         is False)
-            #
-            # assert (test_contract_details.contract.secIdType
-            #         == test_contract_details2.contract.secIdType
-            #         == "")
-            #
-            # assert (test_contract_details.contract.secId
-            #         == test_contract_details2.contract.secId
-            #         == "")
-            #
-            # # combos
-            # assert (test_contract_details.contract.comboLegsDescrip
-            #         == test_contract_details2.contract.comboLegsDescrip
-            #         == "")
-            #
-            # assert (test_contract_details.contract.comboLegs
-            #         == test_contract_details2.contract.comboLegs
-            #         is None)
-            #
-            # assert (test_contract_details.contract.deltaNeutralContract
-            #         == test_contract_details2.contract.deltaNeutralContract
-            #         is None)
-            #
-            # ############################################################
-            # # details
-            # ############################################################
-            # assert (test_contract_details.marketName
-            #         == test_contract_details2.marketName
-            #         == 'MarketName' + str(conId))
-            #
-            # assert (test_contract_details.minTick
-            #         == test_contract_details2.minTick
-            #         == 0.01)
-            #
-            # assert (test_contract_details.orderTypes
-            #         == test_contract_details2.orderTypes
-            #         == 'OrderTypes' + str(conId))
-            #
-            # assert (len(test_contract_details.secIdList)
-            #         == len(test_contract_details2.secIdList)
-            #         == 5)
-            # for i in range(len(test_contract_details.secIdList)):
-            #     assert (test_contract_details.secIdList[i].tag
-            #             == test_contract_details2.secIdList[i].tag
-            #             == 'tag' + str(i))
-            #
-            #     assert (test_contract_details.secIdList[i].value
-            #             == test_contract_details2.secIdList[i].value
-            #             == 'value' + str(i))
+            assert compare_contract_details(contract_details1,
+                                            contract_details3)
+
+
+def get_contract_details_from_mock_desc(mock_desc: Any) -> ContractDetails:
+    """Build and return a contract_details from the mock description.
+
+    Args:
+        mock_desc: DataFrame with values for contract_details
+
+    Returns:
+          ContractDetails with fields from input mock_desc
+
+    """
+    ret_con = ContractDetails()
+    ret_con.contract = None
+    ret_con.marketName = mock_desc.marketName[0]
+    ret_con.minTick = mock_desc.minTick[0]
+    ret_con.orderTypes = mock_desc.orderTypes[0]
+    ret_con.validExchanges = mock_desc.validExchanges[0]
+    ret_con.priceMagnifier = mock_desc.priceMagnifier[0]
+    ret_con.underConId = mock_desc.underConId[0]
+    ret_con.longName = mock_desc.longName[0]
+    ret_con.contractMonth = mock_desc.contractMonth[0]
+    ret_con.industry = mock_desc.industry[0]
+    ret_con.category = mock_desc.category[0]
+    ret_con.subcategory = mock_desc.subcategory[0]
+    ret_con.timeZoneId = mock_desc.timeZoneId[0]
+    ret_con.tradingHours = mock_desc.tradingHours[0]
+    ret_con.liquidHours = mock_desc.liquidHours[0]
+    ret_con.evRule = mock_desc.evRule[0]
+    ret_con.evMultiplier = mock_desc.evMultiplier[0]
+    ret_con.mdSizeMultiplier = mock_desc.mdSizeMultiplier[0]
+    ret_con.aggGroup = mock_desc.aggGroup[0]
+    ret_con.underSymbol = mock_desc.underSymbol[0]
+    ret_con.underSecType = mock_desc.underSecType[0]
+    ret_con.marketRuleIds = mock_desc.marketRuleIds[0]
+
+    secIdList = mock_desc.secIdList[0][0]
+    new_secIdList = []
+    for j in range(0, 2 * mock_desc.secIdListCount[0], 2):
+        tag = secIdList[j]
+        value = secIdList[j+1]
+        tag_value = TagValue(tag, value)
+        new_secIdList.append(tag_value)
+    ret_con.secIdList = new_secIdList
+
+    ret_con.realExpirationDate = mock_desc.realExpirationDate[0]
+    # ret_con.lastTradeTime = mock_desc.lastTradeTime[0]
+    ret_con.stockType = mock_desc.stockType[0]
+
+    return ret_con
+
 
 def get_contract_from_mock_desc(mock_desc: Any) -> Contract:
+    """Build and return a contract from the mock description.
+
+    Args:
+        mock_desc: DataFrame with values for contract
+
+    Returns:
+          Contract with fields from input mock_desc
+
+    """
     ret_con = Contract()
     ret_con.conId = mock_desc.conId[0]
     ret_con.symbol = mock_desc.symbol[0]
     ret_con.secType = mock_desc.secType[0]
-    ret_con.lastTradeDateOrContractMonth = mock_desc.lastTradeDateOrContractMonth[0]
+    ret_con.lastTradeDateOrContractMonth = \
+        mock_desc.lastTradeDateOrContractMonth[0]
     ret_con.strike = mock_desc.strike[0]
     ret_con.right = mock_desc.right[0]
     ret_con.multiplier = mock_desc.multiplier[0]
@@ -1195,12 +1139,13 @@ def get_contract_from_mock_desc(mock_desc: Any) -> Contract:
     # ret_con.secIdType = mock_desc.secIdType[0]
     # ret_con.secId = mock_desc.secId[0]
 
-        #combos
+    # combos
     # ret_con.comboLegsDescrip = mock_desc.comboLegsDescrip[0]
     # ret_con.comboLegs = mock_desc.comboLegs[0]
     # ret_con.deltaNeutralContract = mock_desc.deltaNeutralContract[0]
 
     return ret_con
+
 
 def compare_tag_value(tag_value1: TagValue,
                       tag_value2: TagValue
@@ -1215,9 +1160,12 @@ def compare_tag_value(tag_value1: TagValue,
           True is they are equal, False otherwise
 
     """
-    if tag_value1.tag != tag_value2.tag: return False
-    if tag_value1.value  != tag_value2.value: return False
+    if tag_value1.tag != tag_value2.tag:
+        return False
+    if tag_value1.value != tag_value2.value:
+        return False
     return True
+
 
 def compare_combo_legs(cl1: ComboLeg,
                        cl2: ComboLeg
@@ -1232,15 +1180,25 @@ def compare_combo_legs(cl1: ComboLeg,
           True is they are equal, False otherwise
 
     """
-    if cl1.conId != cl2.conId: return False
-    if cl1.ratio != cl2.ratio: return False
-    if cl1.action != cl2.action: return False
-    if cl1.exchange != cl2.exchange: return False
-    if cl1.openClose != cl2.openClose: return False
-    if cl1.shortSaleSlot != cl2.shortSaleSlot: return False
-    if cl1.designatedLocation != cl2.designatedLocation: return False
-    if cl1.exemptCode != cl2.exemptCode: return False
+    if cl1.conId != cl2.conId:
+        return False
+    if cl1.ratio != cl2.ratio:
+        return False
+    if cl1.action != cl2.action:
+        return False
+    if cl1.exchange != cl2.exchange:
+        return False
+    if cl1.openClose != cl2.openClose:
+        return False
+    if cl1.shortSaleSlot != cl2.shortSaleSlot:
+        return False
+    if cl1.designatedLocation != cl2.designatedLocation:
+        return False
+    if cl1.exemptCode != cl2.exemptCode:
+        return False
+
     return True
+
 
 def compare_delta_neutral_contracts(con1: DeltaNeutralContract,
                                     con2: DeltaNeutralContract
@@ -1255,10 +1213,15 @@ def compare_delta_neutral_contracts(con1: DeltaNeutralContract,
           True is they are equal, False otherwise
 
     """
-    if con1.conId != con2.conId: return False
-    if con1.delta != con2.delta: return False
-    if con1.price != con2.price: return False
+    if con1.conId != con2.conId:
+        return False
+    if con1.delta != con2.delta:
+        return False
+    if con1.price != con2.price:
+        return False
+
     return True
+
 
 def compare_contracts(con1: Contract, con2: Contract) -> bool:
     """Compare two contracts for equality.
@@ -1271,28 +1234,44 @@ def compare_contracts(con1: Contract, con2: Contract) -> bool:
           True is they are equal, False otherwise
 
     """
-    if con1.conId != con2.conId: return False
-    if con1.symbol != con2.symbol: return False
-    if con1.secType != con2.secType: return False
+    if con1.conId != con2.conId:
+        return False
+    if con1.symbol != con2.symbol:
+        return False
+    if con1.secType != con2.secType:
+        return False
     if con1.lastTradeDateOrContractMonth != con2.lastTradeDateOrContractMonth:
         return False
-    if con1.strike != con2.strike: return False
-    if con1.right != con2.right: return False
-    if con1.multiplier != con2.multiplier: return False
-    if con1.exchange != con2.exchange: return False
-    if con1.primaryExchange != con2.primaryExchange: return False
-    if con1.currency != con2.currency: return False
-    if con1.localSymbol != con2.localSymbol: return False
-    if con1.tradingClass != con2.tradingClass: return False
-    if con1.includeExpired != con2.includeExpired: return False
-    if con1.secIdType != con2.secIdType: return False
-    if con1.secId != con2.secId: return False
+    if con1.strike != con2.strike:
+        return False
+    if con1.right != con2.right:
+        return False
+    if con1.multiplier != con2.multiplier:
+        return False
+    if con1.exchange != con2.exchange:
+        return False
+    if con1.primaryExchange != con2.primaryExchange:
+        return False
+    if con1.currency != con2.currency:
+        return False
+    if con1.localSymbol != con2.localSymbol:
+        return False
+    if con1.tradingClass != con2.tradingClass:
+        return False
+    if con1.includeExpired != con2.includeExpired:
+        return False
+    if con1.secIdType != con2.secIdType:
+        return False
+    if con1.secId != con2.secId:
+        return False
 
     # combos
-    if con1.comboLegsDescrip != con2.comboLegsDescrip: return False
+    if con1.comboLegsDescrip != con2.comboLegsDescrip:
+        return False
 
     if con1.comboLegs and con2.comboLegs:
-        if len(con1.comboLegs) != len(con2.comboLegs): return False
+        if len(con1.comboLegs) != len(con2.comboLegs):
+            return False
         for i in range(len(con1.comboLegs)):
             if not compare_combo_legs(con1.comboLegs[i],
                                       con2.comboLegs[i]):
@@ -1308,6 +1287,7 @@ def compare_contracts(con1: Contract, con2: Contract) -> bool:
         return False  # one contract has it and one does not
 
     return True
+
 
 def compare_contract_details(con1: ContractDetails, con2: ContractDetails
                              ) -> bool:
@@ -1327,57 +1307,98 @@ def compare_contract_details(con1: ContractDetails, con2: ContractDetails
     elif con1.contract or con2.contract:
         return False  # one contract has it, one does not
 
-    if con1.marketName != con2.marketName: return False
-    if con1.minTick != con2.minTick: return False
-    if con1.orderTypes != con2.orderTypes: return False
-    if con1.validExchanges != con2.validExchanges: return False
-    if con1.priceMagnifier != con2.priceMagnifier: return False
-    if con1.underConId != con2.underConId: return False
-    if con1.longName != con2.longName: return False
-    if con1.contractMonth != con2.contractMonth: return False
-    if con1.industry != con2.industry: return False
-    if con1.category != con2.category: return False
-    if con1.subcategory != con2.subcategory: return False
-    if con1.timeZoneId != con2.timeZoneId: return False
-    if con1.tradingHours != con2.tradingHours: return False
-    if con1.liquidHours != con2.liquidHours: return False
-    if con1.evRule != con2.evRule: return False
-    if con1.evMultiplier != con2.evMultiplier: return False
-    if con1.mdSizeMultiplier != con2.mdSizeMultiplier: return False
-    if con1.aggGroup != con2.aggGroup: return False
-    if con1.underSymbol != con2.underSymbol: return False
-    if con1.underSecType != con2.underSecType: return False
-    if con1.marketRuleIds != con2.marketRuleIds: return False
+    if con1.marketName != con2.marketName:
+        return False
+    if con1.minTick != con2.minTick:
+        return False
+    if con1.orderTypes != con2.orderTypes:
+        return False
+    if con1.validExchanges != con2.validExchanges:
+        return False
+    if con1.priceMagnifier != con2.priceMagnifier:
+        return False
+    if con1.underConId != con2.underConId:
+        return False
+    if con1.longName != con2.longName:
+        return False
+    if con1.contractMonth != con2.contractMonth:
+        return False
+    if con1.industry != con2.industry:
+        return False
+    if con1.category != con2.category:
+        return False
+    if con1.subcategory != con2.subcategory:
+        return False
+    if con1.timeZoneId != con2.timeZoneId:
+        return False
+    if con1.tradingHours != con2.tradingHours:
+        return False
+    if con1.liquidHours != con2.liquidHours:
+        return False
+    if con1.evRule != con2.evRule:
+        return False
+    if con1.evMultiplier != con2.evMultiplier:
+        return False
+    if con1.mdSizeMultiplier != con2.mdSizeMultiplier:
+        return False
+    if con1.aggGroup != con2.aggGroup:
+        return False
+    if con1.underSymbol != con2.underSymbol:
+        return False
+    if con1.underSecType != con2.underSecType:
+        return False
+    if con1.marketRuleIds != con2.marketRuleIds:
+        return False
 
     if con1.secIdList and con2.secIdList:
-        if len(con1.secIdList) != len(con2.secIdList): return False
+        if len(con1.secIdList) != len(con2.secIdList):
+            return False
         for i in range(len(con1.secIdList)):
             if not compare_tag_value(con1.secIdList[i], con2.secIdList[i]):
                 return False
     elif con1.secIdList or con2.secIdList:
         return False  # one contract has it, one does not
 
-    if con1.realExpirationDate != con2.realExpirationDate: return False
-    if con1.lastTradeTime != con2.lastTradeTime: return False
-    if con1.stockType != con2.stockType: return False
+    if con1.realExpirationDate != con2.realExpirationDate:
+        return False
+    if con1.lastTradeTime != con2.lastTradeTime:
+        return False
+    if con1.stockType != con2.stockType:
+        return False
     # BOND values
-    if con1.cusip != con2.cusip: return False
-    if con1.ratings != con2.ratings: return False
-    if con1.descAppend != con2.descAppend: return False
-    if con1.bondType != con2.bondType: return False
-    if con1.couponType != con2.couponType: return False
-    if con1.callable != con2.callable: return False
-    if con1.putable != con2.putable: return False
-    if con1.coupon != con2.coupon: return False
-    if con1.convertible != con2.convertible: return False
-    if con1.maturity != con2.maturity: return False
-    if con1.issueDate != con2.issueDate: return False
-    if con1.nextOptionDate != con2.nextOptionDate: return False
-    if con1.nextOptionType != con2.nextOptionType: return False
-    if con1.nextOptionPartial != con2.nextOptionPartial: return False
-    if con1.notes != con2.notes: return False
+    if con1.cusip != con2.cusip:
+        return False
+    if con1.ratings != con2.ratings:
+        return False
+    if con1.descAppend != con2.descAppend:
+        return False
+    if con1.bondType != con2.bondType:
+        return False
+    if con1.couponType != con2.couponType:
+        return False
+    if con1.callable != con2.callable:
+        return False
+    if con1.putable != con2.putable:
+        return False
+    if con1.coupon != con2.coupon:
+        return False
+    if con1.convertible != con2.convertible:
+        return False
+    if con1.maturity != con2.maturity:
+        return False
+    if con1.issueDate != con2.issueDate:
+        return False
+    if con1.nextOptionDate != con2.nextOptionDate:
+        return False
+    if con1.nextOptionType != con2.nextOptionType:
+        return False
+    if con1.nextOptionPartial != con2.nextOptionPartial:
+        return False
+    if con1.notes != con2.notes:
+        return False
 
     return True
+
 
 ###############################################################################
 # fundamental data

@@ -21,10 +21,11 @@ def get_tag_value_dict(tag_value: TagValue) -> Dict[str, Any]:
         dictionary of tag_value object
 
     """
-    return tag_value.__dict__
+    ret_dict: Dict[str, Any] = tag_value.__dict__
+    return ret_dict
 
 
-def get_tag_value_obj(tag_value_dict: Dict) -> TagValue:
+def get_tag_value_obj(tag_value_dict: Dict[str, Any]) -> TagValue:
     """Get object from dictionary.
 
     Args:
@@ -52,10 +53,11 @@ def get_combo_leg_dict(combo_leg: ComboLeg) -> Dict[str, Any]:
         dictionary of combo_leg object
 
     """
-    return combo_leg.__dict__
+    ret_dict: Dict[str, Any] = combo_leg.__dict__
+    return ret_dict
 
 
-def get_combo_leg_obj(combo_leg_dict: Dict) -> ComboLeg:
+def get_combo_leg_obj(combo_leg_dict: Dict[str, Any]) -> ComboLeg:
     """Get object from dictionary.
 
     Args:
@@ -79,14 +81,16 @@ def get_delta_neutral_contract_dict(delta_neutral_contract:
 
     Args:
         delta_neutral_contract: instance of DeltaNeutralContract class
-        
+
     Returns:
-        dictionary of delta_neutral_contract object        
+        dictionary of delta_neutral_contract object
+
     """
-    return delta_neutral_contract.__dict__
+    ret_dict: Dict[str, Any] = delta_neutral_contract.__dict__
+    return ret_dict
 
 
-def get_delta_neutral_contract_obj(delta_neutral_contract_dict: Dict
+def get_delta_neutral_contract_obj(delta_neutral_contract_dict: Dict[str, Any]
                                    ) -> DeltaNeutralContract:
     """Get object from dictionary.
 
@@ -116,7 +120,7 @@ def get_contract_dict(contract: Contract) -> Dict[str, Any]:
         dictionary of contract object
 
     """
-    ret_dict = contract.__dict__
+    ret_dict: Dict[str, Any] = contract.__dict__
 
     # Handle comboLegs
     if contract.comboLegs:
@@ -153,7 +157,7 @@ def get_contract_dict(contract: Contract) -> Dict[str, Any]:
     return ret_dict
 
 
-def get_contract_obj(contract_dict: Dict) -> Contract:
+def get_contract_obj(contract_dict: Dict[str, Any]) -> Contract:
     """Get object from dictionary.
 
     Args:
@@ -202,7 +206,8 @@ def get_contract_obj(contract_dict: Dict) -> Contract:
 ###############################################################################
 # get ContractDetails dictionary
 ###############################################################################
-def get_contract_details_dict(contract_details: ContractDetails) -> Dict[str, Any]:
+def get_contract_details_dict(contract_details: ContractDetails
+                              ) -> Dict[str, Any]:
     """Get dictionary to be used for DataFrame entry.
 
     Args:
@@ -212,7 +217,7 @@ def get_contract_details_dict(contract_details: ContractDetails) -> Dict[str, An
         dictionary of contract_details object
 
     """
-    ret_dict = contract_details.__dict__
+    ret_dict: Dict[str, Any] = contract_details.__dict__
     if contract_details.contract:
         contract_dict = get_contract_dict(contract_details.contract)
         ret_dict['contract'] = str(contract_dict)
@@ -226,7 +231,8 @@ def get_contract_details_dict(contract_details: ContractDetails) -> Dict[str, An
     return ret_dict
 
 
-def get_contract_details_obj(contract_details_dict: Dict) -> ContractDetails:
+def get_contract_details_obj(contract_details_dict: Dict[str, Any]
+                             ) -> ContractDetails:
     """Get object from dictionary.
 
     Args:

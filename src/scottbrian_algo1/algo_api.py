@@ -113,7 +113,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     PORT_FOR_PAPER_TRADING = 7497
 
     REQUEST_TIMEOUT_SECONDS = 60
-    REQUEST_THROTTLE_SECONDS = 1
+    REQUEST_THROTTLE_SECONDS = 1.0
 
     ###########################################################################
     # __init__
@@ -617,7 +617,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # processed into the first slot for next time we call this method.
         #######################################################################
         self.symbols_status.index = [pd.Timestamp.now()] \
-                                    + self.symbols_status.index.to_list()[1:]
+            + self.symbols_status.index.to_list()[1:]
         self.symbols_status.sort_index(inplace=True)
         logger.info('saving symbols_status DataFrame to csv')
         self.symbols_status.to_csv(symbols_status_path)
