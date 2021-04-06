@@ -11,7 +11,7 @@ trades.
 
 import pandas as pd  # type: ignore
 from threading import Event, get_ident, get_native_id, Thread, Lock
-# from pathlib import Path
+from pathlib import Path
 
 import time
 
@@ -34,12 +34,13 @@ from ibapi.contract import Contract, ContractDetails  # type: ignore
 #
 # from ibapi.account_summary_tags import *
 
-from typing import Type, TYPE_CHECKING
+from typing import Any, Type, TYPE_CHECKING
 import string
 
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
 from scottbrian_utils.time_hdr import time_box
+# from scottbrian_utils.diag_msg import diag_msg
 
 # from scottbrian_algo1.algo_maps import AlgoTagValue, AlgoComboLeg
 # from scottbrian_algo1.algo_maps import AlgoDeltaNeutralContract
@@ -374,38 +375,73 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     ###########################################################################
     # load_contracts
     ###########################################################################
-    def load_contracts(self) -> None:
-        """Load the contracts DataFrame."""
-        #######################################################################
-        # if contracts data set exists, load it and reset the index
-        #######################################################################
-        contracts_path = self.ds_catalog.get_path('contracts')
-        logger.info('contracts path: %s', contracts_path)
+    @staticmethod
+    def load_contracts(path: Path) -> Any:
+        """Load the contracts DataFrame.
 
-        if contracts_path.exists():
-            self.contracts = \
-                pd.read_csv(contracts_path,
-                            header=0,
-                            index_col=0,
-                            parse_dates=['lastTradeDateOrContractMonth'],
-                            converters={'symbol': lambda x: x,
-                                        'secType': lambda x: x,
-                                        'right': lambda x: x,
-                                        'multiplier': lambda x: x,
-                                        'exchange': lambda x: x,
-                                        'primaryExchange': lambda x: x,
-                                        'currency': lambda x: x,
-                                        'localSymbol': lambda x: x,
-                                        'tradingClass': lambda x: x,
-                                        'secIdType': lambda x: x,
-                                        'secId': lambda x: x,
-                                        'comboLegsDescrip': lambda x: x,
-                                        'comboLegs':
-                                            lambda x: None if x == '' else x,
-                                        'deltaNeutralContract':
-                                            lambda x: None if x == '' else x,
-                                        'originalLastTradeDate': lambda x: x
-                                        })
+        Args:
+            path: where to find the dataframe to load
+
+        Returns:
+              a dataframe of contracts
+        """
+
+        ret_df = pd.read_csv(path,
+                             header=0,
+                             index_col=0,
+                             parse_dates=['lastTradeDateOrContractMonth'],
+                             converters={'symbol': lambda x: x,
+                                         'secType': lambda x: x,
+                                         'right': lambda x: x,
+                                         'multiplier': lambda x: x,
+                                         'exchange': lambda x: x,
+                                         'primaryExchange': lambda x: x,
+                                         'currency': lambda x: x,
+                                         'localSymbol': lambda x: x,
+                                         'tradingClass': lambda x: x,
+                                         'secIdType': lambda x: x,
+                                         'secId': lambda x: x,
+                                         'comboLegsDescrip': lambda x: x,
+                                         'comboLegs':
+                                             lambda x: None if x == '' else x,
+                                         'deltaNeutralContract':
+                                             lambda x: None if x == '' else x,
+                                         'originalLastTradeDate': lambda x: x
+                                         })
+        return ret_df
+
+    # def load_contracts(self) -> None:
+    #     """Load the contracts DataFrame."""
+    #     #######################################################################
+    #     # if contracts data set exists, load it and reset the index
+    #     #######################################################################
+    #     contracts_path = self.ds_catalog.get_path('contracts')
+    #     logger.info('contracts path: %s', contracts_path)
+    #
+    #     if contracts_path.exists():
+    #         self.contracts = \
+    #             pd.read_csv(contracts_path,
+    #                         header=0,
+    #                         index_col=0,
+    #                         parse_dates=['lastTradeDateOrContractMonth'],
+    #                         converters={'symbol': lambda x: x,
+    #                                     'secType': lambda x: x,
+    #                                     'right': lambda x: x,
+    #                                     'multiplier': lambda x: x,
+    #                                     'exchange': lambda x: x,
+    #                                     'primaryExchange': lambda x: x,
+    #                                     'currency': lambda x: x,
+    #                                     'localSymbol': lambda x: x,
+    #                                     'tradingClass': lambda x: x,
+    #                                     'secIdType': lambda x: x,
+    #                                     'secId': lambda x: x,
+    #                                     'comboLegsDescrip': lambda x: x,
+    #                                     'comboLegs':
+    #                                         lambda x: None if x == '' else x,
+    #                                     'deltaNeutralContract':
+    #                                         lambda x: None if x == '' else x,
+    #                                     'originalLastTradeDate': lambda x: x
+    #                                     })
 
     ###########################################################################
     # load_contract_details
@@ -765,7 +801,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # later and we want to restore an entry to its class instance, the
         # DataFrame entry is converted to a dictionary which is then used to
         # set into the class instance dictionary. When the dictionary contains
-        # strings of tuples of dictionary of imbeded class instances, they
+        # strings of tuples of dictionary of embedded class instances, they
         # need to be converted back to a list of those instances. The details
         # of this are handled by get_obj methods.
         #
@@ -774,7 +810,12 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         ################################################################
         # load the contracts and contract_details DataFrames
         ################################################################
-        self.load_contracts()
+        contracts_path = self.ds_catalog.get_path('contracts')
+        logger.info('contracts path: %s', contracts_path)
+
+        if contracts_path.exists():
+            self.contracts = self.load_contracts(contracts_path)
+
         self.load_contract_details()
 
         ################################################################
@@ -836,7 +877,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                                    errors='ignore')
 
         # remove the contract from the contract_details
-        contract_details.contract = None
+        # contract_details.contract = None
 
         # add the contract details to the DataFrame
         contract_details_dict = get_contract_details_dict(contract_details)

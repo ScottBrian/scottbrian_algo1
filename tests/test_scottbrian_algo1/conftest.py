@@ -177,11 +177,14 @@ def algo_app(monkeypatch: Any,
     symbol_status_path = d / "symbol_status.csv"
     contracts_path = d / "contracts.csv"
     contract_details_path = d / "contract_details.csv"
+    extra_contract_path = d / "extra_contract.csv"
     catalog = FileCatalog({'symbols': symbols_path,
                            'stock_symbols': stock_symbols_path,
                            'symbols_status': symbol_status_path,
                            'contracts': contracts_path,
-                           'contract_details': contract_details_path})
+                           'contract_details': contract_details_path,
+                           'extra_contract': extra_contract_path
+                           })
 
     a_algo_app = AlgoApp(catalog)
     return a_algo_app
@@ -389,9 +392,8 @@ class MockIB:
                     + make_field(match_descs.iloc[i].evMultiplier) \
                     + make_field(match_descs.iloc[i].secIdListCount)
 
-                secIdList = match_descs.iloc[i].secIdList[0]
-                for j in range(2*match_descs.iloc[i].secIdListCount):
-                    build_msg += make_field(secIdList[j])
+                for tv in match_descs.iloc[i].secIdList:
+                    build_msg += make_field(tv)
 
                 build_msg += make_field(match_descs.iloc[i].aggGroup) \
                     + make_field(match_descs.iloc[i].underSymbol) \
@@ -535,7 +537,7 @@ class MockIB:
                 cd_dict['liquidHours'] = 'LiquidHours70'
                 cd_dict['realExpirationDate'] = ''
 
-            cd_dict['strike'] = ((self.next_conId % 5) + 1) * 100
+            cd_dict['strike'] = ((self.next_conId % 5) + 1) * 100.0
 
             if self.next_conId % 4 == 0:
                 cd_dict['exchange'] = 'SMART'
@@ -610,6 +612,22 @@ class MockIB:
             cd_dict['marketRuleIds'] = 'MarketRuleIds' + str(self.next_conId)
 
             cd_dict['stockType'] = 'StockType' + str((self.next_conId % 9) + 1)
+
+            # ComboLegs
+            cd_dict['cl_conId'] = self.next_conId
+            cd_dict['cl_ratio'] = self.next_conId % 7
+
+            combo_leg_action = ('BUY', 'SELL', 'SSHORT')
+            combo_leg_exchange = ('EX0', 'EX1', 'EX2', 'EX3')
+            cd_dict['cl_action'] = combo_leg_action[self.next_conId % 3]
+            cd_dict['cl_exchange'] = combo_leg_exchange[self.next_conId % 4]
+            cd_dict['cl_openClose'] = self.next_conId % 4
+            # for stock legs when doing short sale
+            cd_dict['cl_shortSaleSlot'] = self.next_conId % 6
+            combo_leg_designated_location = ('DL0', 'DL1', 'DL2', 'DL3', 'DL4')
+            cd_dict['cl_designatedLocation'] = \
+                combo_leg_designated_location[self.next_conId % 5]
+            cd_dict['cl_exemptCode'] = (self.next_conId % 7) - 1
 
             self.contract_descriptions = self.contract_descriptions.append(
                             pd.DataFrame(cd_dict))

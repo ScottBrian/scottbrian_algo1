@@ -1,12 +1,25 @@
 """Mappings of various classes used in the AlgoApp class."""
 
 import pandas as pd  # type: ignore
+
+# Function get_contract_details_obj evals a string containing Nat or Timestamp
+# and this causes an interpreter message about these being unknown. To solve
+# that, we simply include the pandas Timestamp and NaT, but then the linter
+# fails to see these being used since they are not visible inside the string
+# (which is in a variable, so even we can't see it). The noqa F401 comments
+# are used to suppress the linter messages.
+from pandas import Timestamp  # noqa F401
+from pandas import NaT  # noqa F401
+import copy
+
 from typing import Any, Dict
+
 
 from ibapi.contract import ComboLeg, Contract, ContractDetails  # type: ignore
 from ibapi.contract import DeltaNeutralContract
 from ibapi.tag_value import TagValue  # type: ignore
 
+from scottbrian_utils.diag_msg import diag_msg
 
 ###############################################################################
 # get TagValue dictionary/obj
@@ -21,7 +34,7 @@ def get_tag_value_dict(tag_value: TagValue) -> Dict[str, Any]:
         dictionary of tag_value object
 
     """
-    ret_dict: Dict[str, Any] = tag_value.__dict__
+    ret_dict: Dict[str, Any] = copy.deepcopy(tag_value.__dict__)
     return ret_dict
 
 
@@ -36,7 +49,7 @@ def get_tag_value_obj(tag_value_dict: Dict[str, Any]) -> TagValue:
 
     """
     tag_value = TagValue()
-    tag_value.__dict__ = tag_value_dict
+    tag_value.__dict__ = copy.deepcopy(tag_value_dict)
     return tag_value
 
 
@@ -53,7 +66,8 @@ def get_combo_leg_dict(combo_leg: ComboLeg) -> Dict[str, Any]:
         dictionary of combo_leg object
 
     """
-    ret_dict: Dict[str, Any] = combo_leg.__dict__
+    # diag_msg('\combo_leg.__dict__\n', combo_leg.__dict__)
+    ret_dict: Dict[str, Any] = copy.deepcopy(combo_leg.__dict__)
     return ret_dict
 
 
@@ -68,7 +82,7 @@ def get_combo_leg_obj(combo_leg_dict: Dict[str, Any]) -> ComboLeg:
 
     """
     combo_leg = ComboLeg()
-    combo_leg.__dict__ = combo_leg_dict
+    combo_leg.__dict__ = copy.deepcopy(combo_leg_dict)
     return combo_leg
 
 
@@ -86,7 +100,7 @@ def get_delta_neutral_contract_dict(delta_neutral_contract:
         dictionary of delta_neutral_contract object
 
     """
-    ret_dict: Dict[str, Any] = delta_neutral_contract.__dict__
+    ret_dict: Dict[str, Any] = copy.deepcopy(delta_neutral_contract.__dict__)
     return ret_dict
 
 
@@ -103,7 +117,8 @@ def get_delta_neutral_contract_obj(delta_neutral_contract_dict: Dict[str, Any]
 
     """
     delta_neutral_contract = DeltaNeutralContract()
-    delta_neutral_contract.__dict__ = delta_neutral_contract_dict
+    delta_neutral_contract.__dict__ = \
+        copy.deepcopy(delta_neutral_contract_dict)
     return delta_neutral_contract
 
 
@@ -120,14 +135,24 @@ def get_contract_dict(contract: Contract) -> Dict[str, Any]:
         dictionary of contract object
 
     """
-    ret_dict: Dict[str, Any] = contract.__dict__
-
+    # We must make a copy of the contract dictionary because we are
+    # going to modify it when we change the string date into a Timestamp
+    # and add a new field to retain the string date. If we don't make
+    # a copy, the contract will be changed as well when we change its
+    # dictionary.
+    ret_dict: Dict[str, Any] = copy.deepcopy(contract.__dict__)
+    # diag_msg("\nret_dict\n", ret_dict)
     # Handle comboLegs
     if contract.comboLegs:
+        a_combo_leg = contract.comboLegs[0]
+        # diag_msg('\na_combo_leg\n', str(a_combo_leg))
         combo_leg_list = []
         for combo_leg in contract.comboLegs:
+            # diag_msg('\ncombo_leg\n', combo_leg)
+            # diag_msg('\ncombo_leg.__dict__\n', combo_leg.__dict__)
             combo_leg_list.append(get_combo_leg_dict(combo_leg))
         ret_dict['comboLegs'] = str(tuple(combo_leg_list))
+        # diag_msg("\nret_dict['comboLegs']\n", ret_dict['comboLegs'])
 
     # Handle deltaNeutralContract
     if contract.deltaNeutralContract:
@@ -167,38 +192,36 @@ def get_contract_obj(contract_dict: Dict[str, Any]) -> Contract:
           An instance of Contract
 
     """
+    work_contract_dict = copy.deepcopy(contract_dict)
     contract = Contract()  # start with a default contract
 
     # Handle comboLegs
-    if contract_dict['comboLegs']:
-        combo_leg = get_combo_leg_obj(eval(contract_dict['comboLegs']))
-        contract_dict['comboLegs'] = combo_leg
+    if work_contract_dict['comboLegs']:
+        # diag_msg("\nwork_contract_dict['comboLegs']\n",
+        #          work_contract_dict['comboLegs'])
+        combo_leg_list = []
+        for combo_leg_dict in eval(work_contract_dict['comboLegs']):
+            combo_leg_list.append(get_combo_leg_obj(combo_leg_dict))
+        work_contract_dict['comboLegs'] = combo_leg_list
 
     # Handle deltaNeutralContract
-    if contract_dict['deltaNeutralContract']:
+    if work_contract_dict['deltaNeutralContract']:
         delta_neutral_contract = \
             get_delta_neutral_contract_obj(
-                eval(contract_dict['deltaNeutralContract']))
-        contract_dict['deltaNeutralContract'] = delta_neutral_contract
+                eval(work_contract_dict['deltaNeutralContract']))
+        work_contract_dict['deltaNeutralContract'] = delta_neutral_contract
 
     # Convert Timestamp back to string date.
     # We want Timestamps in the DataFrame for analysis,
     # and we want string dates in the contract for ib requests.
     # We can simply copy back the original that we had saved earlier
     # when we created the dictionary in get_contract_dict. Note that
-    # we need to convert the original to a string since it was
-    # originally str but to_csv converts it to an int
-    contract_dict['lastTradeDateOrContractMonth'] = \
-        str(contract_dict.pop('originalLastTradeDate'))
+    # read_csv converts the string to a fixed unless we have a conversion
+    # routine to make sure it is read as a string (and we do).
+    work_contract_dict['lastTradeDateOrContractMonth'] = \
+        str(work_contract_dict.pop('originalLastTradeDate'))
 
-    # if contract_dict['lastTradeDateOrContractMonth'] is pd.NaT:
-    #     contract_dict['lastTradeDateOrContractMonth'] = ""
-    # else:
-    #     contract_dict['lastTradeDateOrContractMonth'] = \
-    #         contract_dict['lastTradeDateOrContractMonth'].strftime('%Y%m%d')
-    #     # $$$ should we get back to a 6 char string for FUT?
-
-    contract.__dict__ = contract_dict
+    contract.__dict__ = work_contract_dict
 
     return contract
 
@@ -217,7 +240,7 @@ def get_contract_details_dict(contract_details: ContractDetails
         dictionary of contract_details object
 
     """
-    ret_dict: Dict[str, Any] = contract_details.__dict__
+    ret_dict: Dict[str, Any] = copy.deepcopy(contract_details.__dict__)
     if contract_details.contract:
         contract_dict = get_contract_dict(contract_details.contract)
         ret_dict['contract'] = str(contract_dict)
@@ -243,19 +266,20 @@ def get_contract_details_obj(contract_details_dict: Dict[str, Any]
           An instance of contract_details
 
     """
+    work_con_det_dict = copy.deepcopy(contract_details_dict)
     contract_details = ContractDetails()
-    if contract_details_dict['contract']:
-        contract = get_contract_obj(eval(contract_details_dict['contract']))
-        contract_details_dict['contract'] = contract
+    if work_con_det_dict['contract']:
+        contract = get_contract_obj(eval(work_con_det_dict['contract']))
+        work_con_det_dict['contract'] = contract
 
-    if contract_details_dict['secIdList']:
-        secId_tuple = eval(contract_details_dict['secIdList'])
+    if work_con_det_dict['secIdList']:
+        secId_tuple = eval(work_con_det_dict['secIdList'])
         secIdList = []
         for tag_value_dict in secId_tuple:
             secIdList.append(get_tag_value_obj(tag_value_dict))
-        contract_details_dict['secIdList'] = secIdList
+        work_con_det_dict['secIdList'] = secIdList
 
-    contract_details.__dict__ = contract_details_dict
+    contract_details.__dict__ = work_con_det_dict
 
     return contract_details
 ###############################################################################
