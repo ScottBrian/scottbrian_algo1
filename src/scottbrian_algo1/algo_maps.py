@@ -19,7 +19,8 @@ from ibapi.contract import ComboLeg, Contract, ContractDetails  # type: ignore
 from ibapi.contract import DeltaNeutralContract
 from ibapi.tag_value import TagValue  # type: ignore
 
-from scottbrian_utils.diag_msg import diag_msg
+# from scottbrian_utils.diag_msg import diag_msg
+
 
 ###############################################################################
 # get TagValue dictionary/obj
@@ -144,8 +145,6 @@ def get_contract_dict(contract: Contract) -> Dict[str, Any]:
     # diag_msg("\nret_dict\n", ret_dict)
     # Handle comboLegs
     if contract.comboLegs:
-        a_combo_leg = contract.comboLegs[0]
-        # diag_msg('\na_combo_leg\n', str(a_combo_leg))
         combo_leg_list = []
         for combo_leg in contract.comboLegs:
             # diag_msg('\ncombo_leg\n', combo_leg)

@@ -385,7 +385,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         Returns:
               a dataframe of contracts
         """
-
         ret_df = pd.read_csv(path,
                              header=0,
                              index_col=0,

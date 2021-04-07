@@ -17,7 +17,7 @@ from ibapi.errors import FAIL_CREATE_SOCK
 
 from scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_utils.file_catalog import FileCatalog
-# from scottbrian_utils.diag_msg import diag_msg
+from scottbrian_utils.diag_msg import diag_msg
 
 import queue
 from pathlib import Path
@@ -208,9 +208,11 @@ class MockIB:
         self.reqId_timeout = False
         self.simulate_request_disconnect = False
         self.simulate_request_timeout = False
-        self.next_conId = 7000
+        self.next_conId: int = 7000
         self.MAX_CONTRACT_DESCS_RETURNED = 16
         self.contract_descriptions = pd.DataFrame()
+        self.combo_legs = pd.DataFrame()
+        self.delta_neutral_contract = pd.DataFrame()
 
         self.build_contract_descriptions()
 
@@ -509,8 +511,11 @@ class MockIB:
                        'currency': combo[2],
                        'derivativeSecTypes': [combo[3]]
                        }
+            lastTradeDates = ('20220202', '202203', '')
+            cd_dict['lastTradeDateOrContractMonth'] = lastTradeDates[
+                self.next_conId % 3]
+
             if self.next_conId % 3 == 0:
-                cd_dict['lastTradeDateOrContractMonth'] = '20220202'
                 cd_dict['right'] = 'C'
                 cd_dict['mdSizeMultiplier'] = 1
                 cd_dict['validExchanges'] = 'ABC'
@@ -519,7 +524,6 @@ class MockIB:
                 cd_dict['liquidHours'] = 'LiquidHours50'
                 cd_dict['realExpirationDate'] = '20220203'
             elif self.next_conId % 3 == 1:
-                cd_dict['lastTradeDateOrContractMonth'] = '202203'
                 cd_dict['right'] = 'P'
                 cd_dict['mdSizeMultiplier'] = 2
                 cd_dict['validExchanges'] = 'DEFXYZ'
@@ -528,7 +532,6 @@ class MockIB:
                 cd_dict['liquidHours'] = 'LiquidHours60'
                 cd_dict['realExpirationDate'] = '20220202'
             else:
-                cd_dict['lastTradeDateOrContractMonth'] = ''
                 cd_dict['right'] = ['']
                 cd_dict['mdSizeMultiplier'] = 3
                 cd_dict['validExchanges'] = 'WXYZ'
@@ -569,9 +572,19 @@ class MockIB:
                 cd_dict['evRule'] = 'EvRuleZ'
 
             cd_dict['localSymbol'] = symbol + str(self.next_conId)
+            cd_dict['tradingClass'] = 'TradingClass' + str(self.next_conId)
+            cd_dict['includeExpired'] = bool(self.next_conId % 2)
+
+            secIdTypes = ('CUSIP', 'SEDOL', 'ISIN', 'RIC')
+            cd_dict['secIdType'] = secIdTypes[self.next_conId % 4]
+
+            cd_dict['secId'] = 'SecId' + str(self.next_conId)
+
+            cd_dict['comboLegsDescrip'] = ('ComboLegsDescrip'
+                                           + str(self.next_conId))
 
             cd_dict['marketName'] = 'MarketName' + str(self.next_conId)
-            cd_dict['tradingClass'] = 'TradingClass' + str(self.next_conId)
+
 
             cd_dict['orderTypes'] = 'OrdType' + str(self.next_conId)
 
@@ -613,28 +626,56 @@ class MockIB:
 
             cd_dict['stockType'] = 'StockType' + str((self.next_conId % 9) + 1)
 
-            # ComboLegs
-            cd_dict['cl_conId'] = self.next_conId
-            cd_dict['cl_ratio'] = self.next_conId % 7
-
-            combo_leg_action = ('BUY', 'SELL', 'SSHORT')
-            combo_leg_exchange = ('EX0', 'EX1', 'EX2', 'EX3')
-            cd_dict['cl_action'] = combo_leg_action[self.next_conId % 3]
-            cd_dict['cl_exchange'] = combo_leg_exchange[self.next_conId % 4]
-            cd_dict['cl_openClose'] = self.next_conId % 4
-            # for stock legs when doing short sale
-            cd_dict['cl_shortSaleSlot'] = self.next_conId % 6
-            combo_leg_designated_location = ('DL0', 'DL1', 'DL2', 'DL3', 'DL4')
-            cd_dict['cl_designatedLocation'] = \
-                combo_leg_designated_location[self.next_conId % 5]
-            cd_dict['cl_exemptCode'] = (self.next_conId % 7) - 1
-
             self.contract_descriptions = self.contract_descriptions.append(
                             pd.DataFrame(cd_dict))
 
-            # if self.next_conId < 7050:
-            #     diag_msg('self.contract_descriptions:\n',
-            #              self.contract_descriptions)
+            # ComboLegs
+            cl_dict = {'cl_conId': self.next_conId}
+
+            cl_dict['cl_ratio'] = self.next_conId % 7
+
+            combo_leg_action = ('BUY', 'SELL', 'SSHORT')
+            combo_leg_exchange = ('EX0', 'EX1', 'EX2', 'EX3')
+            cl_dict['cl_action'] = combo_leg_action[self.next_conId % 3]
+            cl_dict['cl_exchange'] = combo_leg_exchange[self.next_conId % 4]
+            cl_dict['cl_openClose'] = self.next_conId % 4
+            # for stock legs when doing short sale
+            cl_dict['cl_shortSaleSlot'] = self.next_conId % 6
+            combo_leg_designated_location = ('DL0', 'DL1', 'DL2', 'DL3', 'DL4')
+            cl_dict['cl_designatedLocation'] = \
+                combo_leg_designated_location[self.next_conId % 5]
+            cl_dict['cl_exemptCode'] = (self.next_conId % 7) - 1
+
+            self.combo_legs = self.combo_legs.append(
+                pd.DataFrame(cl_dict, index=[0]))
+
+            ############################################################
+            # build DeltaNeutralContract
+            ############################################################
+            # if self.next_conId == 7001:
+            #     diag_msg('\nself.next_conId before:', self.next_conId)
+            #     diag_msg('\ntype(self.next_conId) before:', type(self.next_conId))
+            dn_dict = {'conId': self.next_conId}
+
+            # if self.next_conId == 7001:
+            #     diag_msg('\nself.next_conId after:', self.next_conId)
+            #     diag_msg('\ntype(self.next_conId) after:', type(self.next_conId))
+            #
+            #     diag_msg('\ndn_dict["conId"] after:', dn_dict["conId"])
+            #     diag_msg('\ntype(dn_dict["conId"]) after:', type(dn_dict["conId"]))
+
+            dn_dict['delta'] = round(self.next_conId/.25, 4)
+            dn_dict['price'] = round(self.next_conId/.33, 4)
+
+            self.delta_neutral_contract = self.delta_neutral_contract.append(
+                pd.DataFrame(dn_dict, index=[0]))
+
+            # if self.next_conId == 7001:
+            #     diag_msg('\nself.delta_neutral_contract\n',
+            #              self.delta_neutral_contract)
+            #     diag_msg('\nself.delta_neutral_contract.info()\n',
+            #              self.delta_neutral_contract.info())
+
     def build_contract_descriptions(self):
         """Build the set of contract descriptions to use for testing."""
         contract_descs_path = self.test_cat.get_path('mock_contract_descs')

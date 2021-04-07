@@ -547,7 +547,9 @@ def verify_match_symbols(algo_app: "AlgoApp",
          startswith(pattern))
         & (mock_ib.contract_descriptions['secType'] == 'STK')
         & (mock_ib.contract_descriptions['currency'] == 'USD')
-        & (if_opt_in_derivativeSecTypes(mock_ib.contract_descriptions))
+        & (if_opt_in_derivativeSecTypes(mock_ib.contract_descriptions)),
+        ['conId', 'symbol', 'secType', 'primaryExchange', 'currency',
+         'derivativeSecTypes']
         ]
 
     sym_match_descs = mock_ib.contract_descriptions.loc[
@@ -556,7 +558,9 @@ def verify_match_symbols(algo_app: "AlgoApp",
         & ((mock_ib.contract_descriptions['secType'] != 'STK')
             | (mock_ib.contract_descriptions['currency'] != 'USD')
             | if_opt_not_in_derivativeSecTypes(mock_ib.contract_descriptions)
-           )
+           ),
+        ['conId', 'symbol', 'secType', 'primaryExchange', 'currency',
+         'derivativeSecTypes']
         ]
 
     logger.debug("verifying results counts")
@@ -730,32 +734,34 @@ def verify_get_symbols(letter: str,
              mock_ib.contract_descriptions)
     logger.debug("getting stock_sym_match_descs for %s", letter)
     stock_sym_match_descs = mock_ib.contract_descriptions.loc[
-        (mock_ib.contract_descriptions['symbol'].str.
-         startswith(letter))
+        (mock_ib.contract_descriptions['symbol'].str.startswith(letter))
         & (mock_ib.contract_descriptions['secType'] == 'STK')
         & (mock_ib.contract_descriptions['currency'] == 'USD')
         & (if_opt_in_derivativeSecTypes(
-            mock_ib.contract_descriptions))
+            mock_ib.contract_descriptions)),
+        ['conId', 'symbol', 'secType', 'primaryExchange', 'currency',
+         'derivativeSecTypes']
         ]
 
     sym_match_descs = mock_ib.contract_descriptions.loc[
-        (mock_ib.contract_descriptions['symbol'].str.
-         startswith(letter))
+        (mock_ib.contract_descriptions['symbol'].str.startswith(letter))
         & ((mock_ib.contract_descriptions['secType'] != 'STK')
            | (mock_ib.contract_descriptions['currency'] != 'USD')
            | if_opt_not_in_derivativeSecTypes(mock_ib.contract_descriptions)
-           )
+           ),
+        ['conId', 'symbol', 'secType', 'primaryExchange', 'currency',
+         'derivativeSecTypes']
         ]
     # we expect the stock_symbols to accumulate and grow, so the
     # number should now be what was there from the previous
-    # iteration of this loop and what we just now added
+    # iteration of this loop plus what we just now added
     assert len(stock_sym_match_descs) == exp_counts.stock_sym_recursive
-    assert len(algo_app.stock_symbols) == exp_counts.stock_sym_recursive \
-           + len(sym_dfs.stock_sym_df)
+    assert len(algo_app.stock_symbols) == (
+            exp_counts.stock_sym_recursive + len(sym_dfs.stock_sym_df))
 
     assert len(sym_match_descs) == exp_counts.sym_recursive
-    assert len(algo_app.symbols) == exp_counts.sym_recursive \
-           + len(sym_dfs.sym_df)
+    assert len(algo_app.symbols) == (
+            exp_counts.sym_recursive + len(sym_dfs.sym_df))
 
     # diag_msg('algo_app.stock_symbols:\n', algo_app.stock_symbols)
 
@@ -767,8 +773,7 @@ def verify_get_symbols(letter: str,
         sym_dfs.mock_stock_sym_df.sort_index(inplace=True)
 
         # check the data set
-        stock_symbols_path = \
-            algo_app.ds_catalog.get_path('stock_symbols')
+        stock_symbols_path = algo_app.ds_catalog.get_path('stock_symbols')
         logger.info('stock_symbols_path: %s', stock_symbols_path)
 
         sym_dfs.stock_sym_df = pd.read_csv(stock_symbols_path,
@@ -778,6 +783,9 @@ def verify_get_symbols(letter: str,
                                                'derivativeSecTypes':
                                                    lambda x: eval(x)})
         comp_df = algo_app.stock_symbols.compare(sym_dfs.stock_sym_df)
+        assert comp_df.empty
+
+        comp_df = algo_app.stock_symbols.compare(sym_dfs.mock_stock_sym_df)
         assert comp_df.empty
 
     if exp_counts.sym_recursive > 0:
@@ -801,6 +809,10 @@ def verify_get_symbols(letter: str,
 
         comp_df = algo_app.symbols.compare(sym_dfs.sym_df)
         assert comp_df.empty
+
+        comp_df = algo_app.symbols.compare(sym_dfs.mock_sym_df)
+        assert comp_df.empty
+
     return sym_dfs
 
 
@@ -1013,7 +1025,9 @@ def verify_contract_details(contract: "Contract",
         # so we can test that they were saved and restored
         # correctly (i.e., we will compare them against
         # what we just loaded)
-        algo_app.load_contracts()
+        contracts_path = algo_app.ds_catalog.get_path('contracts')
+        logger.info('contracts_path: %s', contracts_path)
+        algo_app.contracts = algo_app.load_contracts(contracts_path)
         algo_app.load_contract_details()
 
         # print('contract_details_ds:\n', contract_details_ds)
@@ -1022,8 +1036,12 @@ def verify_contract_details(contract: "Contract",
 
         for conId in conId_list:
             match_desc = mock_ib.contract_descriptions.loc[
-                mock_ib.contract_descriptions['conId'] == conId][0]
-            # diag_msg('match_desc\n', match_desc)
+                mock_ib.contract_descriptions['conId'] == conId]
+
+            diag_msg('match_desc\n', match_desc)
+
+            match_desc = match_desc.iloc[0]
+            diag_msg('match_desc2\n', match_desc)
             # diag_msg('match_desc.conId[0]\n', match_desc.conId[0])
             # diag_msg('match_desc.symbol[0]\n', match_desc.symbol[0])
 
@@ -1077,7 +1095,7 @@ class TestExtraContractFields:
             mock_ib: pytest fixture of contract_descriptions
 
         """
-        num_contracts = 30
+        num_contracts = 3
         contract_list = []
         contract_df = pd.DataFrame()
         # get the path for saving/loading the combo legs contract df
@@ -1087,7 +1105,10 @@ class TestExtraContractFields:
 
         for i in range(num_contracts):
             mock_desc = mock_ib.contract_descriptions.iloc[i]
-            contract = get_contract_from_mock_desc(mock_desc)
+
+            mock_dnc = mock_ib.delta_neutral_contract.iloc[i]
+
+            contract = get_contract_from_mock_desc(i, mock_desc, mock_dnc)
 
             # add combo legs
             combo_leg_list = build_combo_legs(i, algo_app, mock_ib)
@@ -1113,18 +1134,19 @@ class TestExtraContractFields:
             contract_dict2 = contract_df2.iloc[i].to_dict()
             contract2 = get_contract_obj(contract_dict2)
 
-            assert compare_contracts(contract1,
-                                     contract2)
+            compare_contracts(contract1, contract2)
+
 
 ###############################################################################
 # build_combo_legs
 ###############################################################################
 def build_combo_legs(idx,
                      algo_app: "AlgoApp",
-                     mock_ib: Any) -> List[Type[ComboLeg]]:
+                     mock_ib: Any) -> List[ComboLeg]:
     """Build the combo leg list for a contract.
 
     Args:
+        idx: the index of the entry being built
         algo_app: pytest fixture instance of AlgoApp (see conftest.py)
         mock_ib: pytest fixture of contract_descriptions
 
@@ -1137,21 +1159,21 @@ def build_combo_legs(idx,
     for j in range(num_combo_legs):
         combo_leg = ComboLeg()
         combo_leg.conId = \
-            mock_ib.contract_descriptions.iloc[idx + j].cl_conId
+            mock_ib.combo_legs.iloc[idx + j].cl_conId
         combo_leg.ratio = \
-            mock_ib.contract_descriptions.iloc[idx + j].cl_ratio
+            mock_ib.combo_legs.iloc[idx + j].cl_ratio
         combo_leg.action = \
-            mock_ib.contract_descriptions.iloc[idx + j].cl_action
+            mock_ib.combo_legs.iloc[idx + j].cl_action
         combo_leg.exchange = \
-            mock_ib.contract_descriptions.iloc[idx + j].cl_exchange
+            mock_ib.combo_legs.iloc[idx + j].cl_exchange
         combo_leg.openClose = \
-            mock_ib.contract_descriptions.iloc[idx + j].cl_openClose
+            mock_ib.combo_legs.iloc[idx + j].cl_openClose
         combo_leg.shortSaleSlot = \
-            mock_ib.contract_descriptions.iloc[idx + j].cl_shortSaleSlot
+            mock_ib.combo_legs.iloc[idx + j].cl_shortSaleSlot
         combo_leg.designatedLocation = \
-            mock_ib.contract_descriptions.iloc[idx + j].cl_designatedLocation
+            mock_ib.combo_legs.iloc[idx + j].cl_designatedLocation
         combo_leg.exemptCode = \
-            mock_ib.contract_descriptions.iloc[idx + j].cl_exemptCode
+            mock_ib.combo_legs.iloc[idx + j].cl_exemptCode
 
         combo_leg_list.append(combo_leg)
 
@@ -1211,7 +1233,9 @@ def get_contract_details_from_mock_desc(mock_desc: Any) -> ContractDetails:
     return ret_con
 
 
-def get_contract_from_mock_desc(mock_desc: Any) -> Contract:
+def get_contract_from_mock_desc(idx: int,
+                                mock_desc: Any,
+                                mock_dnc: Any) -> Contract:
     """Build and return a contract from the mock description.
 
     Args:
@@ -1235,304 +1259,350 @@ def get_contract_from_mock_desc(mock_desc: Any) -> Contract:
     ret_con.currency = mock_desc.currency
     ret_con.localSymbol = mock_desc.localSymbol
     ret_con.tradingClass = mock_desc.tradingClass
-    # ret_con.includeExpired = mock_desc.includeExpired
-    # ret_con.secIdType = mock_desc.secIdType
-    # ret_con.secId = mock_desc.secId
+    ret_con.includeExpired = mock_desc.includeExpired
+    ret_con.secIdType = mock_desc.secIdType
+    ret_con.secId = mock_desc.secId
 
     # combos
-    # ret_con.comboLegsDescrip = mock_desc.comboLegsDescrip
+    ret_con.comboLegsDescrip = mock_desc.comboLegsDescrip
     # ret_con.comboLegs = mock_desc.comboLegs
-    # ret_con.deltaNeutralContract = mock_desc.deltaNeutralContract
+
+    if (idx % 3) == 0:
+        delta_neutral_contract = DeltaNeutralContract()
+        delta_neutral_contract.conId = int(mock_dnc.conId)
+        delta_neutral_contract.delta = mock_dnc.delta
+        delta_neutral_contract.price = mock_dnc.price
+
+        ret_con.deltaNeutralContract = delta_neutral_contract
 
     return ret_con
 
 
 def compare_tag_value(tag_value1: TagValue,
                       tag_value2: TagValue
-                      ) -> bool:
+                      ) -> None:
     """Compare two tag_value objects for equality.
 
     Args:
         tag_value1: tag_value 1
         tag_value2: tag_value 2
 
-    Returns:
-          True is they are equal, False otherwise
-
     """
-    if ((tag_value1.tag != tag_value2.tag)
-            or (type(tag_value1.tag) != type(tag_value2.tag))):
-        return False
-    if ((tag_value1.value != tag_value2.value)
-            or (type(tag_value1.value) != type(tag_value2.value))):
-        return False
-    return True
+    assert tag_value1.tag == tag_value2.tag
+
+    assert isinstance(tag_value1.tag, str)
+
+    assert isinstance(tag_value2.tag, str)
+
+
+    assert tag_value1.value == tag_value2.value
+
+    assert isinstance(tag_value1.value, str)
+
+    assert isinstance(tag_value2.value, str)
 
 
 def compare_combo_legs(cl1: ComboLeg,
                        cl2: ComboLeg
-                       ) -> bool:
+                       ) -> None:
     """Compare two combo leg objects for equality.
 
     Args:
         cl1: combo leg 1
         cl2: combo leg 2
 
-    Returns:
-          True is they are equal, False otherwise
-
     """
-    if cl1.conId != cl2.conId:
-        return False
-    if cl1.ratio != cl2.ratio:
-        return False
-    if cl1.action != cl2.action:
-        return False
-    if cl1.exchange != cl2.exchange:
-        return False
-    if cl1.openClose != cl2.openClose:
-        return False
-    if cl1.shortSaleSlot != cl2.shortSaleSlot:
-        return False
-    if cl1.designatedLocation != cl2.designatedLocation:
-        return False
-    if cl1.exemptCode != cl2.exemptCode:
-        return False
+    assert cl1.conId == cl2.conId
 
-    return True
+    assert cl1.ratio == cl2.ratio
+
+    assert cl1.action == cl2.action
+
+    assert cl1.exchange == cl2.exchange
+
+    assert cl1.openClose == cl2.openClose
+
+    assert cl1.shortSaleSlot == cl2.shortSaleSlot
+
+    assert cl1.designatedLocation == cl2.designatedLocation
+
+    assert cl1.exemptCode == cl2.exemptCode
 
 
 def compare_delta_neutral_contracts(con1: DeltaNeutralContract,
                                     con2: DeltaNeutralContract
-                                    ) -> bool:
+                                    ) -> None:
     """Compare two delta neutral contracts for equality.
 
     Args:
         con1: contract 1
         con2: contract 2
 
-    Returns:
-          True is they are equal, False otherwise
-
     """
-    if con1.conId != con2.conId:
-        return False
-    if con1.delta != con2.delta:
-        return False
-    if con1.price != con2.price:
-        return False
+    assert con1.conId == con2.conId
 
-    return True
+    assert isinstance(con1.conId, int)
+
+    assert isinstance(con2.conId, int)
+
+    assert con1.delta == con2.delta
+
+    assert isinstance(con1.delta, float)
+
+    assert isinstance(con2.delta, float)
+
+    assert con1.price == con2.price
+
+    assert isinstance(con1.price, float)
+
+    assert isinstance(con2.price, float)
 
 
-def compare_contracts(con1: Contract, con2: Contract) -> bool:
+def compare_contracts(con1: Contract, con2: Contract) -> None:
     """Compare two contracts for equality.
 
     Args:
         con1: contract 1
         con2: contract 2
 
-    Returns:
-          True is they are equal, False otherwise
-
     """
-    if con1.conId != con2.conId:
-        return False
-    if con1.symbol != con2.symbol:
-        return False
-    if con1.secType != con2.secType:
-        return False
-    if con1.lastTradeDateOrContractMonth != con2.lastTradeDateOrContractMonth:
-        return False
-    if con1.strike != con2.strike:
-        return False
-    if con1.right != con2.right:
-        return False
-    if con1.multiplier != con2.multiplier:
-        return False
-    if con1.exchange != con2.exchange:
-        return False
-    if con1.primaryExchange != con2.primaryExchange:
-        return False
-    if con1.currency != con2.currency:
-        return False
-    if con1.localSymbol != con2.localSymbol:
-        return False
-    if con1.tradingClass != con2.tradingClass:
-        return False
-    if con1.includeExpired != con2.includeExpired:
-        return False
-    if con1.secIdType != con2.secIdType:
-        return False
-    if con1.secId != con2.secId:
-        return False
+    assert con1.conId == con2.conId
+
+    assert con1.symbol == con2.symbol
+
+    assert con1.secType == con2.secType
+
+    assert (con1.lastTradeDateOrContractMonth
+           == con2.lastTradeDateOrContractMonth)
+
+    assert con1.strike == con2.strike
+
+    assert con1.right == con2.right
+
+    assert con1.multiplier == con2.multiplier
+
+    assert con1.exchange == con2.exchange
+
+    assert con1.primaryExchange == con2.primaryExchange
+
+    assert con1.currency == con2.currency
+
+    assert con1.localSymbol == con2.localSymbol
+
+    assert con1.tradingClass == con2.tradingClass
+
+    assert con1.includeExpired == con2.includeExpired
+
+    assert con1.secIdType == con2.secIdType
+
+    assert con1.secId == con2.secId
 
     # combos
-    if con1.comboLegsDescrip != con2.comboLegsDescrip:
-        return False
+    assert con1.comboLegsDescrip == con2.comboLegsDescrip
 
     if con1.comboLegs and con2.comboLegs:
-        if len(con1.comboLegs) != len(con2.comboLegs):
-            return False
+        assert len(con1.comboLegs) == len(con2.comboLegs)
+
         for i in range(len(con1.comboLegs)):
-            if not compare_combo_legs(con1.comboLegs[i],
-                                      con2.comboLegs[i]):
-                return False
-    elif con1.comboLegs or con2.comboLegs:
-        return False  # one contract has it and the other does not
+            compare_combo_legs(con1.comboLegs[i],
+                               con2.comboLegs[i])
+    else:  # check whether one contract has it and the other does not
+        assert not (con1.comboLegs or con2.comboLegs)
 
     if con1.deltaNeutralContract and con2.deltaNeutralContract:
-        if not compare_delta_neutral_contracts(con1.deltaNeutralContract,
-                                               con2.deltaNeutralContract):
-            return False
-    elif con1.deltaNeutralContract or con2.deltaNeutralContract:
-        return False  # one contract has it and one does not
+        compare_delta_neutral_contracts(con1.deltaNeutralContract,
+                                        con2.deltaNeutralContract)
+    else:  # check whether one contract has it and one does not
+        assert not (con1.deltaNeutralContract or con2.deltaNeutralContract)
 
-    return True
+    # verify_contract_types(con1)
+    # verify_contract_types(con2)
 
 
-def compare_contract_details(con1: ContractDetails, con2: ContractDetails
-                             ) -> bool:
-    """Compare two contract_detials for equality.
+def verify_contract_types(contract: Contract) -> None:
+    """Verify that contracct fields are correct type.
+
+    Args:
+        contract: contract to verify
+
+    """
+    assert isinstance(contract.conId, int)
+
+    assert isinstance(contract.symbol, str)
+
+    assert isinstance(contract.secType, str)
+
+    assert isinstance(contract.lastTradeDateOrContractMonth, str)
+
+    assert isinstance(contract.strike, float)
+
+    assert isinstance(contract.right, str)
+
+    assert isinstance(contract.multiplier, str)
+
+    assert isinstance(contract.exchange, str)
+
+    assert isinstance(contract.primaryExchange, str)
+
+    assert isinstance(contract.currency, str)
+
+    assert isinstance(contract.localSymbol, str)
+
+    assert isinstance(contract.tradingClass, str)
+
+    assert isinstance(contract.includeExpired, bool)
+
+    assert isinstance(contract.secIdType, str)
+
+    assert isinstance(contract.secId, str)
+
+    # combos
+    assert isinstance(contract.comboLegsDescrip, str)
+
+    assert isinstance(contract.comboLegs, (list, type(None)))
+
+    for combo_leg in contract.comboLegs:
+        assert isinstance(combo_leg, ComboLeg)
+
+    assert isinstance(contract.deltaNeutralContract,
+                      (DeltaNeutralContract, type(None)))
+
+
+def compare_contract_details(con1: ContractDetails,
+                             con2: ContractDetails
+                             ) -> None:
+    """Compare two contract_details for equality.
 
     Args:
         con1: contract_details 1
         con2: contract_details 2
 
-    Returns:
-          True is they are equal, False otherwise
-
     """
     if con1.contract and con2.contract:
-        if not compare_contracts(con1.contract, con2.contract):
-            return False
-    elif con1.contract or con2.contract:
-        return False  # one contract has it, one does not
+        compare_contracts(con1.contract, con2.contract)
 
-    if con1.marketName != con2.marketName:
-        return False
-    if con1.minTick != con2.minTick:
-        return False
-    if con1.orderTypes != con2.orderTypes:
-        return False
-    if con1.validExchanges != con2.validExchanges:
-        return False
-    if con1.priceMagnifier != con2.priceMagnifier:
-        return False
-    if con1.underConId != con2.underConId:
-        return False
-    if con1.longName != con2.longName:
-        return False
-    if con1.contractMonth != con2.contractMonth:
-        return False
-    if con1.industry != con2.industry:
-        return False
-    if con1.category != con2.category:
-        return False
-    if con1.subcategory != con2.subcategory:
-        return False
-    if con1.timeZoneId != con2.timeZoneId:
-        return False
-    if con1.tradingHours != con2.tradingHours:
-        return False
-    if con1.liquidHours != con2.liquidHours:
-        return False
-    if con1.evRule != con2.evRule:
-        return False
-    if con1.evMultiplier != con2.evMultiplier:
-        return False
-    if con1.mdSizeMultiplier != con2.mdSizeMultiplier:
-        return False
-    if con1.aggGroup != con2.aggGroup:
-        return False
-    if con1.underSymbol != con2.underSymbol:
-        return False
-    if con1.underSecType != con2.underSecType:
-        return False
-    if con1.marketRuleIds != con2.marketRuleIds:
-        return False
+    else:  # check whether one contract_details has it, one does not
+        assert not (con1.contract or con2.contract)
+
+    assert con1.marketName == con2.marketName
+
+    assert con1.minTick == con2.minTick
+
+    assert con1.orderTypes == con2.orderTypes
+
+    assert con1.validExchanges == con2.validExchanges
+
+    assert con1.priceMagnifier == con2.priceMagnifier
+
+    assert con1.underConId == con2.underConId
+
+    assert con1.longName == con2.longName
+
+    assert con1.contractMonth == con2.contractMonth
+
+    assert con1.industry == con2.industry
+
+    assert con1.category == con2.category
+
+    assert con1.subcategory == con2.subcategory
+
+    assert con1.timeZoneId == con2.timeZoneId
+
+    assert con1.tradingHours == con2.tradingHours
+
+    assert con1.liquidHours == con2.liquidHours
+
+    assert con1.evRule == con2.evRule
+
+    assert con1.evMultiplier == con2.evMultiplier
+
+    assert con1.mdSizeMultiplier == con2.mdSizeMultiplier
+
+    assert con1.aggGroup == con2.aggGroup
+
+    assert con1.underSymbol == con2.underSymbol
+
+    assert con1.underSecType == con2.underSecType
+
+    assert con1.marketRuleIds == con2.marketRuleIds
+
 
     if con1.secIdList and con2.secIdList:
-        if len(con1.secIdList) != len(con2.secIdList):
-            return False
+        assert len(con1.secIdList) == len(con2.secIdList)
         for i in range(len(con1.secIdList)):
-            if not compare_tag_value(con1.secIdList[i], con2.secIdList[i]):
-                return False
-    elif con1.secIdList or con2.secIdList:
-        return False  # one contract has it, one does not
+            compare_tag_value(con1.secIdList[i], con2.secIdList[i])
+    else:  # check whether one contract_details has it, one does not
+        assert not (con1.secIdList or con2.secIdList)
 
-    if con1.realExpirationDate != con2.realExpirationDate:
-        return False
-    if con1.lastTradeTime != con2.lastTradeTime:
-        return False
-    if con1.stockType != con2.stockType:
-        return False
+    assert con1.realExpirationDate == con2.realExpirationDate
+
+    assert con1.lastTradeTime == con2.lastTradeTime
+
+    assert con1.stockType == con2.stockType
+
     # BOND values
-    if con1.cusip != con2.cusip:
-        return False
-    if con1.ratings != con2.ratings:
-        return False
-    if con1.descAppend != con2.descAppend:
-        return False
-    if con1.bondType != con2.bondType:
-        return False
-    if con1.couponType != con2.couponType:
-        return False
-    if con1.callable != con2.callable:
-        return False
-    if con1.putable != con2.putable:
-        return False
-    if con1.coupon != con2.coupon:
-        return False
-    if con1.convertible != con2.convertible:
-        return False
-    if con1.maturity != con2.maturity:
-        return False
-    if con1.issueDate != con2.issueDate:
-        return False
-    if con1.nextOptionDate != con2.nextOptionDate:
-        return False
-    if con1.nextOptionType != con2.nextOptionType:
-        return False
-    if con1.nextOptionPartial != con2.nextOptionPartial:
-        return False
-    if con1.notes != con2.notes:
-        return False
+    assert con1.cusip == con2.cusip
 
-    return True
+    assert con1.ratings == con2.ratings
+
+    assert con1.descAppend == con2.descAppend
+
+    assert con1.bondType == con2.bondType
+
+    assert con1.couponType == con2.couponType
+
+    assert con1.callable == con2.callable
+
+    assert con1.putable == con2.putable
+
+    assert con1.coupon == con2.coupon
+
+    assert con1.convertible == con2.convertible
+
+    assert con1.maturity == con2.maturity
+
+    assert con1.issueDate == con2.issueDate
+
+    assert con1.nextOptionDate == con2.nextOptionDate
+
+    assert con1.nextOptionType == con2.nextOptionType
+
+    assert con1.nextOptionPartial == con2.nextOptionPartial
+
+    assert con1.notes == con2.notes
 
 
 ###############################################################################
 # fundamental data
 ###############################################################################
-class TestAlgoAppFundamentalData:
-    """TestAlgoAppContractDetails class."""
-
-    def test_get_contract_details_0_entries(self,
-                                            algo_app: "AlgoApp",
-                                            mock_ib: Any
-                                            ) -> None:
-        """Test contract details for non-existent conId.
-
-        Args:
-            algo_app: pytest fixture instance of AlgoApp (see conftest.py)
-            mock_ib: pytest fixture of contract_descriptions
-
-        """
-        verify_algo_app_initialized(algo_app)
-
-        logger.debug("about to connect")
-        algo_app.connect_to_ib("127.0.0.1",
-                               algo_app.PORT_FOR_LIVE_TRADING,
-                               client_id=0)
-
-        # verify that algo_app is connected and alive with a valid reqId
-        verify_algo_app_connected(algo_app)
-
-        contract = Contract()  # create an empty contract with conId of 0
-        algo_app.get_contract_details(contract)
-
-        verify_contract_details(contract, algo_app, mock_ib, [0])
-
-        algo_app.disconnect_from_ib()
-        verify_algo_app_disconnected(algo_app)
+# class TestAlgoAppFundamentalData:
+#     """TestAlgoAppContractDetails class."""
+#
+#     def test_get_contract_details_0_entries(self,
+#                                             algo_app: "AlgoApp",
+#                                             mock_ib: Any
+#                                             ) -> None:
+#         """Test contract details for non-existent conId.
+#
+#         Args:
+#             algo_app: pytest fixture instance of AlgoApp (see conftest.py)
+#             mock_ib: pytest fixture of contract_descriptions
+#
+#         """
+#         verify_algo_app_initialized(algo_app)
+#
+#         logger.debug("about to connect")
+#         algo_app.connect_to_ib("127.0.0.1",
+#                                algo_app.PORT_FOR_LIVE_TRADING,
+#                                client_id=0)
+#
+#         # verify that algo_app is connected and alive with a valid reqId
+#         verify_algo_app_connected(algo_app)
+#
+#         contract = Contract()  # create an empty contract with conId of 0
+#         algo_app.get_contract_details(contract)
+#
+#         verify_contract_details(contract, algo_app, mock_ib, [0])
+#
+#         algo_app.disconnect_from_ib()
+#         verify_algo_app_disconnected(algo_app)
