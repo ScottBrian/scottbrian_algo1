@@ -1032,8 +1032,8 @@ def verify_contract_details(contract: "Contract",
             idx = conId - 7001  # $$$ bypass for now
             contract3 = get_contract_from_mock_desc(idx, mock_ib)
 
-            assert compare_contracts(contract1,
-                                     contract3)
+            compare_contracts(contract1,
+                              contract3)
 
             contract_details1 = get_contract_details_obj(
                 algo_app.contract_details.loc[conId].to_dict())
@@ -1062,10 +1062,10 @@ class TestExtraContractFields:
     ###########################################################################
     # test_contract_combo_legs
     ###########################################################################
-    def test_contract_combo_legs(self,
-                                 algo_app: "AlgoApp",
-                                 mock_ib: Any
-                                 ) -> None:
+    def test_contract_extra_fields(self,
+                                   algo_app: "AlgoApp",
+                                   mock_ib: Any
+                                   ) -> None:
         """Test combo legs in contract.
 
         Args:
@@ -1082,10 +1082,12 @@ class TestExtraContractFields:
         logger.info('extra_contract_path: %s', extra_contract_path)
 
         for i in range(num_contracts):
-            contract = get_contract_from_mock_desc(i, mock_ib)
+            contract = get_contract_from_mock_desc(i,
+                                                   mock_ib,
+                                                   include_extra_details=True)
 
             # add combo legs
-            combo_leg_list = build_combo_legs(i, algo_app, mock_ib)
+            combo_leg_list = build_combo_legs(i, mock_ib)
             if combo_leg_list:
                 contract.comboLegs = combo_leg_list
             elif i % 2 == 1:  # empty list
@@ -1115,13 +1117,11 @@ class TestExtraContractFields:
 # build_combo_legs
 ###############################################################################
 def build_combo_legs(idx: int,
-                     algo_app: "AlgoApp",
                      mock_ib: Any) -> List[ComboLeg]:
     """Build the combo leg list for a contract.
 
     Args:
         idx: the index of the entry being built
-        algo_app: pytest fixture instance of AlgoApp (see conftest.py)
         mock_ib: pytest fixture of contract_descriptions
 
     Returns:
@@ -1158,54 +1158,67 @@ def build_combo_legs(idx: int,
 # get_contract_from_mock_desc
 ###############################################################################
 def get_contract_from_mock_desc(idx: int,
-                                mock_ib: Any) -> Contract:
+                                mock_ib: Any,
+                                include_extra_details: bool = False
+                                ) -> Contract:
     """Build and return a contract from the mock description.
 
     Args:
         idx: index of mock_desc and mock_dnc to use
         mock_ib: contains contract data frames
+        include_extra_details: include more details beyond what is
+                                 return for reqContractDetails
 
     Returns:
           Contract with fields from input mock_desc and mock_dnc
 
     """
     ret_con = Contract()
-    ret_con.conId = mock_ib.contract_descriptions.conId.iloc[idx]
-    ret_con.symbol = mock_ib.contract_descriptions.symbol.iloc[idx]
-    ret_con.secType = mock_ib.contract_descriptions.secType.iloc[idx]
+    ret_con.conId = mock_ib.contract_descriptions.conId.iloc[idx]  # cd
+    ret_con.symbol = mock_ib.contract_descriptions.symbol.iloc[idx]  # cd
+    ret_con.secType = mock_ib.contract_descriptions.secType.iloc[idx]  # cd
     ret_con.lastTradeDateOrContractMonth = \
-        mock_ib.contract_descriptions.lastTradeDateOrContractMonth.iloc[idx]
-    ret_con.strike = mock_ib.contract_descriptions.strike.iloc[idx]
-    ret_con.right = mock_ib.contract_descriptions.right.iloc[idx]
-    ret_con.multiplier = mock_ib.contract_descriptions.multiplier.iloc[idx]
-    ret_con.exchange = mock_ib.contract_descriptions.exchange.iloc[idx]
+        mock_ib.contract_descriptions.lastTradeDateOrContractMonth.iloc[
+            idx]  # cd
+    ret_con.strike = mock_ib.contract_descriptions.strike.iloc[idx]  # cd
+    ret_con.right = mock_ib.contract_descriptions.right.iloc[idx]  # cd
+    ret_con.multiplier = \
+        mock_ib.contract_descriptions.multiplier.iloc[idx]  # cd
+    ret_con.exchange = mock_ib.contract_descriptions.exchange.iloc[idx]  # cd
     ret_con.primaryExchange = \
-        mock_ib.contract_descriptions.primaryExchange.iloc[idx]
-    ret_con.currency = mock_ib.contract_descriptions.currency.iloc[idx]
-    ret_con.localSymbol = mock_ib.contract_descriptions.localSymbol.iloc[idx]
-    ret_con.tradingClass = mock_ib.contract_descriptions.tradingClass.iloc[idx]
-    ret_con.includeExpired = \
-        mock_ib.contract_descriptions.includeExpired.iloc[idx]
-    ret_con.secIdType = mock_ib.contract_descriptions.secIdType.iloc[idx]
-    ret_con.secId = mock_ib.contract_descriptions.secId.iloc[idx]
+        mock_ib.contract_descriptions.primaryExchange.iloc[idx]  # cd
+    ret_con.currency = mock_ib.contract_descriptions.currency.iloc[idx]  # cd
+    ret_con.localSymbol = \
+        mock_ib.contract_descriptions.localSymbol.iloc[idx]  # cd
+    ret_con.tradingClass = \
+        mock_ib.contract_descriptions.tradingClass.iloc[idx]  # cd
 
-    # combos
-    ret_con.comboLegsDescrip = \
-        mock_ib.contract_descriptions.comboLegsDescrip.iloc[idx]
-    # ret_con.comboLegs = mock_ib.contract_descriptions.comboLegs
+    ###########################################################################
+    # following fields are not included as with reqContractDetails
+    ###########################################################################
+    if include_extra_details:
+        ret_con.includeExpired = \
+            mock_ib.contract_descriptions.includeExpired.iloc[idx]
+        ret_con.secIdType = mock_ib.contract_descriptions.secIdType.iloc[idx]
+        ret_con.secId = mock_ib.contract_descriptions.secId.iloc[idx]
 
-    # build a delta_neutral_contract every third time
-    if (idx % 3) == 0:
-        delta_neutral_contract = DeltaNeutralContract()
-        # item() is used to convert numpy.int64 to python int
-        delta_neutral_contract.conId = \
-            mock_ib.delta_neutral_contract.conId.iloc[0]
-        delta_neutral_contract.delta = \
-            mock_ib.delta_neutral_contract.delta.iloc[0]
-        delta_neutral_contract.price = \
-            mock_ib.delta_neutral_contract.price.iloc[0]
+        # combos
+        ret_con.comboLegsDescrip = \
+            mock_ib.contract_descriptions.comboLegsDescrip.iloc[idx]
+        # ret_con.comboLegs = mock_ib.contract_descriptions.comboLegs
 
-        ret_con.deltaNeutralContract = delta_neutral_contract
+        # build a delta_neutral_contract every third time
+        if (idx % 3) == 0:
+            delta_neutral_contract = DeltaNeutralContract()
+            # item() is used to convert numpy.int64 to python int
+            delta_neutral_contract.conId = \
+                mock_ib.delta_neutral_contract.conId.iloc[0]
+            delta_neutral_contract.delta = \
+                mock_ib.delta_neutral_contract.delta.iloc[0]
+            delta_neutral_contract.price = \
+                mock_ib.delta_neutral_contract.price.iloc[0]
+
+            ret_con.deltaNeutralContract = delta_neutral_contract
 
     return ret_con
 
@@ -1213,7 +1226,9 @@ def get_contract_from_mock_desc(idx: int,
 ###############################################################################
 # get_contract_details_from_mock_desc
 ###############################################################################
-def get_contract_details_from_mock_desc(idx, mock_ib: Any) -> ContractDetails:
+def get_contract_details_from_mock_desc(idx: int,
+                                        mock_ib: Any
+                                        ) -> ContractDetails:
     """Build and return a contract_details from the mock description.
 
     Args:
@@ -1226,32 +1241,42 @@ def get_contract_details_from_mock_desc(idx, mock_ib: Any) -> ContractDetails:
     """
     ret_con = ContractDetails()
     ret_con.contract = get_contract_from_mock_desc(idx, mock_ib)
-    ret_con.marketName = mock_ib.contract_descriptions.marketName.iloc[idx]
-    ret_con.minTick = mock_ib.contract_descriptions.minTick.iloc[idx]
-    ret_con.orderTypes = mock_ib.contract_descriptions.orderTypes.iloc[idx]
+    ret_con.marketName = \
+        mock_ib.contract_descriptions.marketName.iloc[idx]  # cd
+    ret_con.minTick = mock_ib.contract_descriptions.minTick.iloc[idx]  # cd
+    ret_con.orderTypes = \
+        mock_ib.contract_descriptions.orderTypes.iloc[idx]  # cd
     ret_con.validExchanges = \
-        mock_ib.contract_descriptions.validExchanges.iloc[idx]
+        mock_ib.contract_descriptions.validExchanges.iloc[idx]  # cd
     ret_con.priceMagnifier = \
-        mock_ib.contract_descriptions.priceMagnifier.iloc[idx]
-    ret_con.underConId = mock_ib.contract_descriptions.underConId.iloc[idx]
-    ret_con.longName = mock_ib.contract_descriptions.longName.iloc[idx]
+        mock_ib.contract_descriptions.priceMagnifier.iloc[idx]  # cd
+    ret_con.underConId = \
+        mock_ib.contract_descriptions.underConId.iloc[idx]  # cd
+    ret_con.longName = mock_ib.contract_descriptions.longName.iloc[idx]  # cd
     ret_con.contractMonth = \
-        mock_ib.contract_descriptions.contractMonth.iloc[idx]
-    ret_con.industry = mock_ib.contract_descriptions.industry.iloc[idx]
-    ret_con.category = mock_ib.contract_descriptions.category.iloc[idx]
-    ret_con.subcategory = mock_ib.contract_descriptions.subcategory.iloc[idx]
-    ret_con.timeZoneId = mock_ib.contract_descriptions.timeZoneId.iloc[idx]
-    ret_con.tradingHours = mock_ib.contract_descriptions.tradingHours.iloc[idx]
-    ret_con.liquidHours = mock_ib.contract_descriptions.liquidHours.iloc[idx]
-    ret_con.evRule = mock_ib.contract_descriptions.evRule.iloc[idx]
-    ret_con.evMultiplier = mock_ib.contract_descriptions.evMultiplier.iloc[idx]
+        mock_ib.contract_descriptions.contractMonth.iloc[idx]  # cd
+    ret_con.industry = mock_ib.contract_descriptions.industry.iloc[idx]  # cd
+    ret_con.category = mock_ib.contract_descriptions.category.iloc[idx]  # cd
+    ret_con.subcategory = \
+        mock_ib.contract_descriptions.subcategory.iloc[idx]  # cd
+    ret_con.timeZoneId = \
+        mock_ib.contract_descriptions.timeZoneId.iloc[idx]  # cd
+    ret_con.tradingHours = \
+        mock_ib.contract_descriptions.tradingHours.iloc[idx]  # cd
+    ret_con.liquidHours = \
+        mock_ib.contract_descriptions.liquidHours.iloc[idx]  # cd
+    ret_con.evRule = mock_ib.contract_descriptions.evRule.iloc[idx]  # cd
+    ret_con.evMultiplier = \
+        mock_ib.contract_descriptions.evMultiplier.iloc[idx]  # cd
     ret_con.mdSizeMultiplier = \
-        mock_ib.contract_descriptions.mdSizeMultiplier.iloc[idx]
-    ret_con.aggGroup = mock_ib.contract_descriptions.aggGroup.iloc[idx]
-    ret_con.underSymbol = mock_ib.contract_descriptions.underSymbol.iloc[idx]
-    ret_con.underSecType = mock_ib.contract_descriptions.underSecType.iloc[idx]
+        mock_ib.contract_descriptions.mdSizeMultiplier.iloc[idx]  # cd
+    ret_con.aggGroup = mock_ib.contract_descriptions.aggGroup.iloc[idx]  # cd
+    ret_con.underSymbol = \
+        mock_ib.contract_descriptions.underSymbol.iloc[idx]  # cd
+    ret_con.underSecType = \
+        mock_ib.contract_descriptions.underSecType.iloc[idx]  # cd
     ret_con.marketRuleIds = \
-        mock_ib.contract_descriptions.marketRuleIds.iloc[idx]
+        mock_ib.contract_descriptions.marketRuleIds.iloc[idx]  # cd
 
     secIdList = mock_ib.contract_descriptions.secIdList.iloc[idx]
     new_secIdList = []
@@ -1262,12 +1287,14 @@ def get_contract_details_from_mock_desc(idx, mock_ib: Any) -> ContractDetails:
         value = secIdList[j+1]
         tag_value = TagValue(tag, value)
         new_secIdList.append(tag_value)
-    ret_con.secIdList = new_secIdList
+    ret_con.secIdList = new_secIdList  # cd
 
     ret_con.realExpirationDate = \
-        mock_ib.contract_descriptions.realExpirationDate
+        mock_ib.contract_descriptions.realExpirationDate.iloc[idx]  # cd
+
+    # last trade time come from lastTradeDate as 'date time' (i.e., 2 items)
     # ret_con.lastTradeTime = mock_ib.contract_descriptions.lastTradeTime
-    ret_con.stockType = mock_ib.contract_descriptions.stockType
+    ret_con.stockType = mock_ib.contract_descriptions.stockType.iloc[idx]  # cd
 
     return ret_con
 

@@ -14,6 +14,7 @@ from threading import Event, get_ident, get_native_id, Thread, Lock
 from pathlib import Path
 
 import time
+import ast
 
 from ibapi.wrapper import EWrapper  # type: ignore
 # from ibapi import utils
@@ -580,7 +581,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                                        index_col=0,
                                        converters={
                                            'derivativeSecTypes':
-                                               lambda x: eval(x)})
+                                               lambda x: ast.literal_eval(x)})
         #######################################################################
         # if stock_symbols data set exists, load it and reset the index
         #######################################################################
@@ -593,7 +594,8 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                                              index_col=0,
                                              converters={
                                                  'derivativeSecTypes':
-                                                     lambda x: eval(x)})
+                                                     lambda x:
+                                                     ast.literal_eval(x)})
         #######################################################################
         # load or create the symbols_status
         #######################################################################

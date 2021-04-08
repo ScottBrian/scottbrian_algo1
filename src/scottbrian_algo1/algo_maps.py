@@ -11,6 +11,7 @@ import pandas as pd  # type: ignore
 from pandas import Timestamp  # noqa F401
 from pandas import NaT  # noqa F401
 import copy
+import ast
 
 from typing import Any, Dict
 
@@ -197,7 +198,8 @@ def get_contract_obj(contract_dict: Dict[str, Any]) -> Contract:
         # diag_msg("\nwork_contract_dict['comboLegs']\n",
         #          work_contract_dict['comboLegs'])
         combo_leg_list = []
-        for combo_leg_dict in eval(work_contract_dict['comboLegs']):
+        for combo_leg_dict in \
+                ast.literal_eval(work_contract_dict['comboLegs']):
             combo_leg_list.append(get_combo_leg_obj(combo_leg_dict))
         work_contract_dict['comboLegs'] = combo_leg_list
 
@@ -205,7 +207,7 @@ def get_contract_obj(contract_dict: Dict[str, Any]) -> Contract:
     if work_contract_dict['deltaNeutralContract']:
         delta_neutral_contract = \
             get_delta_neutral_contract_obj(
-                eval(work_contract_dict['deltaNeutralContract']))
+                ast.literal_eval(work_contract_dict['deltaNeutralContract']))
         work_contract_dict['deltaNeutralContract'] = delta_neutral_contract
 
     # Convert Timestamp back to string date.
@@ -266,11 +268,12 @@ def get_contract_details_obj(contract_details_dict: Dict[str, Any]
     work_con_det_dict = copy.deepcopy(contract_details_dict)
     contract_details = ContractDetails()
     if work_con_det_dict['contract']:
-        contract = get_contract_obj(eval(work_con_det_dict['contract']))
+        contract = \
+            get_contract_obj(ast.literal_eval(work_con_det_dict['contract']))
         work_con_det_dict['contract'] = contract
 
     if work_con_det_dict['secIdList']:
-        secId_tuple = eval(work_con_det_dict['secIdList'])
+        secId_tuple = ast.literal_eval(work_con_det_dict['secIdList'])
         secIdList = []
         for tag_value_dict in secId_tuple:
             secIdList.append(get_tag_value_obj(tag_value_dict))
