@@ -147,8 +147,6 @@ def get_contract_dict(contract: Contract) -> Dict[str, Any]:
     if contract.comboLegs:
         combo_leg_list = []
         for combo_leg in contract.comboLegs:
-            # diag_msg('\ncombo_leg\n', combo_leg)
-            # diag_msg('\ncombo_leg.__dict__\n', combo_leg.__dict__)
             combo_leg_list.append(get_combo_leg_dict(combo_leg))
         ret_dict['comboLegs'] = str(tuple(combo_leg_list))
         # diag_msg("\nret_dict['comboLegs']\n", ret_dict['comboLegs'])

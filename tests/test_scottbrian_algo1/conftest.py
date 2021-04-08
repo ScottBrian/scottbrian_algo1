@@ -17,7 +17,7 @@ from ibapi.errors import FAIL_CREATE_SOCK
 
 from scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_utils.file_catalog import FileCatalog
-from scottbrian_utils.diag_msg import diag_msg
+# from scottbrian_utils.diag_msg import diag_msg
 
 import queue
 from pathlib import Path
@@ -34,6 +34,9 @@ test_cat = \
                  })
 
 
+###############################################################################
+# algo_app
+###############################################################################
 @pytest.fixture(scope='function')
 def algo_app(monkeypatch: Any,
              tmp_path: Any,
@@ -48,6 +51,9 @@ def algo_app(monkeypatch: Any,
     Returns:
         An instance of AlgoApp
     """
+    ###########################################################################
+    # algo_app: mock_connection_connect
+    ###########################################################################
     def mock_connection_connect(self) -> None:
         """Mock connect routine.
 
@@ -85,6 +91,9 @@ def algo_app(monkeypatch: Any,
 
     monkeypatch.setattr(Connection, "connect", mock_connection_connect)
 
+    ###########################################################################
+    # algo_app: mock_connection_disconnect
+    ###########################################################################
     def mock_connection_disconnect(self) -> None:
         """Mock disconnect routine.
 
@@ -105,6 +114,9 @@ def algo_app(monkeypatch: Any,
 
     monkeypatch.setattr(Connection, "disconnect", mock_connection_disconnect)
 
+    ###########################################################################
+    # algo_app: mock_connection_send_msg
+    ###########################################################################
     def mock_connection_send_msg(self, msg: bytes) -> int:
         """Mock sendMsg routine.
 
@@ -143,6 +155,9 @@ def algo_app(monkeypatch: Any,
 
     monkeypatch.setattr(Connection, "sendMsg", mock_connection_send_msg)
 
+    ###########################################################################
+    # algo_app: mock_connection_recv_msg
+    ###########################################################################
     def mock_connection_recv_msg(self) -> bytes:
         """Mock recvMsg routine.
 
@@ -190,6 +205,9 @@ def algo_app(monkeypatch: Any,
     return a_algo_app
 
 
+###############################################################################
+# MockIB class
+###############################################################################
 class MockIB:
     """Class provides simulation data and methods for testing with ibapi."""
 
@@ -197,6 +215,9 @@ class MockIB:
     PORT_FOR_SIMULATE_REQUEST_DISCONNECT = 9002
     PORT_FOR_SIMULATE_REQUEST_TIMEOUT = 9003
 
+    ###########################################################################
+    # MockIB: __init__
+    ###########################################################################
     def __init__(self, test_cat):
         """Initialize the MockIB instance.
 
@@ -216,6 +237,9 @@ class MockIB:
 
         self.build_contract_descriptions()
 
+    ###########################################################################
+    # MockIB: send_msg
+    ###########################################################################
     def send_msg(self, msg):
         """Mock send to ib by interpreting and placing on receive queue.
 
@@ -322,44 +346,6 @@ class MockIB:
             match_descs = self.contract_descriptions.loc[
                 self.contract_descriptions['conId'] == conId]
 
-            # last_trade_date = '20220101'  # for now
-            # strike = 0  # for now
-            # right = 'P'  # for now
-            # exchange = 'SMART'  # for now
-            # market_name = 'MarketName' + str(conId)
-            # trading_class = 'TradingClass' + str(conId)
-            # min_tick = 0.01
-            # md_size_multiplier = 1
-            # multiplier = "2"
-            # order_types = 'OrderTypes' + str(conId)
-            # valid_exchanges = 'ValidExchanges' + str(conId)
-            # price_magnifier = 3
-            # under_conid = 12345
-            # long_name = 'LongName' + str(conId)
-            #
-            # contract_month = 'ContractMonth'
-            # industry = 'Industry'
-            # category = 'Category'
-            # subcategory = 'SubCategory'
-            # time_zone_id = 'TimeZoneId'
-            # trading_hours = 'TradingHours'
-            # liquid_hours = 'LiquidHours'
-            # ev_rule = 'EvRule'
-            # ev_multiplier = 4
-            # sec_id_list_count = 5   # will also need to try 0, 1, 2 for test
-            # sec_id_list = ['tag0', 'value0',
-            #                'tag1', 'value1',
-            #                'tag2', 'value2',
-            #                'tag3', 'value3',
-            #                'tag4', 'value4']
-            #
-            # agg_group = 6
-            # under_symbol = 'UnderSymbol'
-            # under_sec_type = 'UnderSecType'
-            # market_rule_ids = 'MarketRuleIds'
-            # real_expiration_date = 'RealExpirationDate'
-            # stock_type = 'StockType' + str(conId)
-
             for i in range(len(match_descs)):
                 build_msg = start_msg \
                     + make_field(match_descs.iloc[i].symbol) \
@@ -417,6 +403,9 @@ class MockIB:
         #######################################################################
         self.msg_rcv_q.put(recv_msg, timeout=5)
 
+    ###########################################################################
+    # MockIB: recv_msg
+    ###########################################################################
     def recv_msg(self) -> bytes:
         """Mock receive message from ib by getting it from the receive queue.
 
@@ -440,6 +429,8 @@ class MockIB:
     #  4) symbols starting with one char and going up to 6 chars, and
     #     enough of each to drive the recursion code to 6 char exact names
     ###########################################################################
+    # MockIB: search_patterns
+    ###########################################################################
     @staticmethod
     def search_patterns():
         """Generator for search pattern strings.
@@ -457,6 +448,9 @@ class MockIB:
                     for char4 in string.ascii_uppercase[3:5] + '.':  # D-E
                         yield f'{char1}{char2}{char3}{char4}'
 
+    ###########################################################################
+    # MockIB: no_find_search_patterns
+    ###########################################################################
     @staticmethod
     def no_find_search_patterns():
         """Generator for search patterns that will not find symbols.
@@ -495,6 +489,9 @@ class MockIB:
                         for char5 in string.ascii_uppercase[0:2]:  # 'AB'
                             yield f'{char1}{char2}{char3}{char4}{char5}'
 
+    ###########################################################################
+    # MockIB: build_desc
+    ###########################################################################
     def build_desc(self, symbol):
         """Build the mock contract_descriptions.
 
@@ -585,7 +582,6 @@ class MockIB:
 
             cd_dict['marketName'] = 'MarketName' + str(self.next_conId)
 
-
             cd_dict['orderTypes'] = 'OrdType' + str(self.next_conId)
 
             cd_dict['underConId'] = self.next_conId - 1000
@@ -652,30 +648,16 @@ class MockIB:
             ############################################################
             # build DeltaNeutralContract
             ############################################################
-            # if self.next_conId == 7001:
-            #     diag_msg('\nself.next_conId before:', self.next_conId)
-            #     diag_msg('\ntype(self.next_conId) before:', type(self.next_conId))
             dn_dict = {'conId': self.next_conId}
-
-            # if self.next_conId == 7001:
-            #     diag_msg('\nself.next_conId after:', self.next_conId)
-            #     diag_msg('\ntype(self.next_conId) after:', type(self.next_conId))
-            #
-            #     diag_msg('\ndn_dict["conId"] after:', dn_dict["conId"])
-            #     diag_msg('\ntype(dn_dict["conId"]) after:', type(dn_dict["conId"]))
-
             dn_dict['delta'] = round(self.next_conId/.25, 4)
             dn_dict['price'] = round(self.next_conId/.33, 4)
 
             self.delta_neutral_contract = self.delta_neutral_contract.append(
                 pd.DataFrame(dn_dict, index=[0]))
 
-            # if self.next_conId == 7001:
-            #     diag_msg('\nself.delta_neutral_contract\n',
-            #              self.delta_neutral_contract)
-            #     diag_msg('\nself.delta_neutral_contract.info()\n',
-            #              self.delta_neutral_contract.info())
-
+    ###########################################################################
+    # MockIB: build_contract_descriptions
+    ###########################################################################
     def build_contract_descriptions(self):
         """Build the set of contract descriptions to use for testing."""
         contract_descs_path = self.test_cat.get_path('mock_contract_descs')
@@ -689,6 +671,9 @@ class MockIB:
         logger.info('built mock_con_descs DataFrame with %d entries',
                     len(self.contract_descriptions))
 
+    ###########################################################################
+    # MockIB: get_combos
+    ###########################################################################
     @staticmethod
     def get_combos(symbol: str
                    ) -> Tuple[Tuple[str, str, str, Tuple[str, ...]]]:
@@ -741,6 +726,9 @@ class MockIB:
         return combos[first_char]
 
 
+###############################################################################
+# mock_ib
+###############################################################################
 @pytest.fixture(scope='session')
 def mock_ib() -> "MockIB":
     """Provide data and methods for testing with ib.

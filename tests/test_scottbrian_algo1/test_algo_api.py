@@ -9,7 +9,7 @@ import pandas as pd  # type: ignore
 import string
 import math
 
-from typing import Any, List, NamedTuple, Type
+from typing import Any, List, NamedTuple
 # from typing_extensions import Final
 
 from ibapi.tag_value import TagValue  # type: ignore
@@ -23,25 +23,16 @@ from scottbrian_algo1.algo_api import AlgoApp, AlreadyConnected, \
 from scottbrian_algo1.algo_maps import get_contract_dict, get_contract_obj
 from scottbrian_algo1.algo_maps import get_contract_details_obj
 
-from scottbrian_utils.diag_msg import diag_msg
+# from scottbrian_utils.diag_msg import diag_msg
 # from scottbrian_utils.file_catalog import FileCatalog
-# from datetime import datetime
+
 import logging
 
 logger = logging.getLogger(__name__)
 
-# class ErrorTstTimeHdr(Exception):
-#     """Base class for exception in this module."""
-#     pass
-#
-#
-# class InvalidRouteNum(ErrorTstTimeHdr):
-#     """InvalidRouteNum exception class."""
-#     pass
-
 
 ###############################################################################
-# connect and disconnect
+# TestAlgoAppConnect class
 ###############################################################################
 class TestAlgoAppConnect:
     """TestAlgoAppConnect class."""
@@ -565,10 +556,6 @@ def verify_match_symbols(algo_app: "AlgoApp",
 
     logger.debug("verifying results counts")
 
-    # diag_msg('len(algo_app.symbols):', len(algo_app.symbols))
-    # diag_msg(algo_app.symbols)
-    # diag_msg('len(sym_match_descs):', len(sym_match_descs))
-    # diag_msg(sym_match_descs)
     if req_type == 1:
         assert len(algo_app.stock_symbols) \
                == exp_counts.stock_sym_non_recursive
@@ -588,9 +575,6 @@ def verify_match_symbols(algo_app: "AlgoApp",
                           0:exp_counts.stock_sym_non_recursive]
         stock_sym_match_descs = stock_sym_match_descs.set_index(
             ['conId']).sort_index()
-        # diag_msg('len(stock_sym_match_descs) 2:',
-        #          len(stock_sym_match_descs))
-        # diag_msg(stock_sym_match_descs)
 
         algo_app.stock_symbols.sort_index(inplace=True)
         comp_df = algo_app.stock_symbols.compare(stock_sym_match_descs)
@@ -730,8 +714,7 @@ def verify_get_symbols(letter: str,
     logger.debug("about to get_symbols for %s", letter)
     algo_app.get_symbols()
     assert algo_app.request_id >= 2
-    diag_msg('mock_ib.contract_descriptions:\n',
-             mock_ib.contract_descriptions)
+
     logger.debug("getting stock_sym_match_descs for %s", letter)
     stock_sym_match_descs = mock_ib.contract_descriptions.loc[
         (mock_ib.contract_descriptions['symbol'].str.startswith(letter))
@@ -762,8 +745,6 @@ def verify_get_symbols(letter: str,
     assert len(sym_match_descs) == exp_counts.sym_recursive
     assert len(algo_app.symbols) == (
             exp_counts.sym_recursive + len(sym_dfs.sym_df))
-
-    # diag_msg('algo_app.stock_symbols:\n', algo_app.stock_symbols)
 
     if exp_counts.stock_sym_recursive > 0:
         stock_sym_match_descs = stock_sym_match_descs.set_index(
@@ -1035,25 +1016,21 @@ def verify_contract_details(contract: "Contract",
         #       contract_details_ds.__dict__)
 
         for conId in conId_list:
-            match_desc = mock_ib.contract_descriptions.loc[
-                mock_ib.contract_descriptions['conId'] == conId]
+            # match_desc = mock_ib.contract_descriptions.loc[
+            #     mock_ib.contract_descriptions['conId'] == conId]
 
-            diag_msg('match_desc\n', match_desc)
-
-            match_desc = match_desc.iloc[0]
-            diag_msg('match_desc2\n', match_desc)
-            # diag_msg('match_desc.conId[0]\n', match_desc.conId[0])
-            # diag_msg('match_desc.symbol[0]\n', match_desc.symbol[0])
+            # match_desc = match_desc.iloc[0]
 
             contract1 = get_contract_obj(
                 algo_app.contracts.loc[conId].to_dict())
 
             contract2 = get_contract_obj(contracts_ds.loc[conId].to_dict())
 
-            assert compare_contracts(contract1,
-                                     contract2)
+            compare_contracts(contract1,
+                              contract2)
 
-            contract3 = get_contract_from_mock_desc(match_desc)
+            idx = conId - 7001  # $$$ bypass for now
+            contract3 = get_contract_from_mock_desc(idx, mock_ib)
 
             assert compare_contracts(contract1,
                                      contract3)
@@ -1064,13 +1041,14 @@ def verify_contract_details(contract: "Contract",
             contract_details2 = get_contract_details_obj(
                 contract_details_ds.loc[conId].to_dict())
 
-            assert compare_contract_details(contract_details1,
-                                            contract_details2)
+            compare_contract_details(contract_details1,
+                                     contract_details2)
 
-            contract_details3 = get_contract_details_from_mock_desc(match_desc)
+            contract_details3 = \
+                get_contract_details_from_mock_desc(idx, mock_ib)
 
-            assert compare_contract_details(contract_details1,
-                                            contract_details3)
+            compare_contract_details(contract_details1,
+                                     contract_details3)
 
 
 ###############################################################################
@@ -1095,7 +1073,7 @@ class TestExtraContractFields:
             mock_ib: pytest fixture of contract_descriptions
 
         """
-        num_contracts = 3
+        num_contracts = 5
         contract_list = []
         contract_df = pd.DataFrame()
         # get the path for saving/loading the combo legs contract df
@@ -1104,11 +1082,7 @@ class TestExtraContractFields:
         logger.info('extra_contract_path: %s', extra_contract_path)
 
         for i in range(num_contracts):
-            mock_desc = mock_ib.contract_descriptions.iloc[i]
-
-            mock_dnc = mock_ib.delta_neutral_contract.iloc[i]
-
-            contract = get_contract_from_mock_desc(i, mock_desc, mock_dnc)
+            contract = get_contract_from_mock_desc(i, mock_ib)
 
             # add combo legs
             combo_leg_list = build_combo_legs(i, algo_app, mock_ib)
@@ -1140,7 +1114,7 @@ class TestExtraContractFields:
 ###############################################################################
 # build_combo_legs
 ###############################################################################
-def build_combo_legs(idx,
+def build_combo_legs(idx: int,
                      algo_app: "AlgoApp",
                      mock_ib: Any) -> List[ComboLeg]:
     """Build the combo leg list for a contract.
@@ -1159,21 +1133,21 @@ def build_combo_legs(idx,
     for j in range(num_combo_legs):
         combo_leg = ComboLeg()
         combo_leg.conId = \
-            mock_ib.combo_legs.iloc[idx + j].cl_conId
+            mock_ib.combo_legs.cl_conId.iloc[idx + j]
         combo_leg.ratio = \
-            mock_ib.combo_legs.iloc[idx + j].cl_ratio
+            mock_ib.combo_legs.cl_ratio.iloc[idx + j]
         combo_leg.action = \
-            mock_ib.combo_legs.iloc[idx + j].cl_action
+            mock_ib.combo_legs.cl_action.iloc[idx + j]
         combo_leg.exchange = \
-            mock_ib.combo_legs.iloc[idx + j].cl_exchange
+            mock_ib.combo_legs.cl_exchange.iloc[idx + j]
         combo_leg.openClose = \
-            mock_ib.combo_legs.iloc[idx + j].cl_openClose
+            mock_ib.combo_legs.cl_openClose.iloc[idx + j]
         combo_leg.shortSaleSlot = \
-            mock_ib.combo_legs.iloc[idx + j].cl_shortSaleSlot
+            mock_ib.combo_legs.cl_shortSaleSlot.iloc[idx + j]
         combo_leg.designatedLocation = \
-            mock_ib.combo_legs.iloc[idx + j].cl_designatedLocation
+            mock_ib.combo_legs.cl_designatedLocation.iloc[idx + j]
         combo_leg.exemptCode = \
-            mock_ib.combo_legs.iloc[idx + j].cl_exemptCode
+            mock_ib.combo_legs.cl_exemptCode.iloc[idx + j]
 
         combo_leg_list.append(combo_leg)
 
@@ -1181,103 +1155,126 @@ def build_combo_legs(idx,
 
 
 ###############################################################################
-# get_contract_details_from_mock_desc
+# get_contract_from_mock_desc
 ###############################################################################
-def get_contract_details_from_mock_desc(mock_desc: Any) -> ContractDetails:
-    """Build and return a contract_details from the mock description.
-
-    Args:
-        mock_desc: DataFrame with values for contract_details
-
-    Returns:
-          ContractDetails with fields from input mock_desc
-
-    """
-    ret_con = ContractDetails()
-    ret_con.contract = get_contract_from_mock_desc(mock_desc)
-    ret_con.marketName = mock_desc.marketName
-    ret_con.minTick = mock_desc.minTick
-    ret_con.orderTypes = mock_desc.orderTypes
-    ret_con.validExchanges = mock_desc.validExchanges
-    ret_con.priceMagnifier = mock_desc.priceMagnifier
-    ret_con.underConId = mock_desc.underConId
-    ret_con.longName = mock_desc.longName
-    ret_con.contractMonth = mock_desc.contractMonth
-    ret_con.industry = mock_desc.industry
-    ret_con.category = mock_desc.category
-    ret_con.subcategory = mock_desc.subcategory
-    ret_con.timeZoneId = mock_desc.timeZoneId
-    ret_con.tradingHours = mock_desc.tradingHours
-    ret_con.liquidHours = mock_desc.liquidHours
-    ret_con.evRule = mock_desc.evRule
-    ret_con.evMultiplier = mock_desc.evMultiplier
-    ret_con.mdSizeMultiplier = mock_desc.mdSizeMultiplier
-    ret_con.aggGroup = mock_desc.aggGroup
-    ret_con.underSymbol = mock_desc.underSymbol
-    ret_con.underSecType = mock_desc.underSecType
-    ret_con.marketRuleIds = mock_desc.marketRuleIds
-
-    secIdList = mock_desc.secIdList
-    new_secIdList = []
-    for j in range(0, 2 * mock_desc.secIdListCount, 2):
-        tag = secIdList[j]
-        value = secIdList[j+1]
-        tag_value = TagValue(tag, value)
-        new_secIdList.append(tag_value)
-    ret_con.secIdList = new_secIdList
-
-    ret_con.realExpirationDate = mock_desc.realExpirationDate
-    # ret_con.lastTradeTime = mock_desc.lastTradeTime
-    ret_con.stockType = mock_desc.stockType
-
-    return ret_con
-
-
 def get_contract_from_mock_desc(idx: int,
-                                mock_desc: Any,
-                                mock_dnc: Any) -> Contract:
+                                mock_ib: Any) -> Contract:
     """Build and return a contract from the mock description.
 
     Args:
-        mock_desc: DataFrame with values for contract
+        idx: index of mock_desc and mock_dnc to use
+        mock_ib: contains contract data frames
 
     Returns:
-          Contract with fields from input mock_desc
+          Contract with fields from input mock_desc and mock_dnc
 
     """
     ret_con = Contract()
-    ret_con.conId = mock_desc.conId
-    ret_con.symbol = mock_desc.symbol
-    ret_con.secType = mock_desc.secType
+    ret_con.conId = mock_ib.contract_descriptions.conId.iloc[idx]
+    ret_con.symbol = mock_ib.contract_descriptions.symbol.iloc[idx]
+    ret_con.secType = mock_ib.contract_descriptions.secType.iloc[idx]
     ret_con.lastTradeDateOrContractMonth = \
-        mock_desc.lastTradeDateOrContractMonth
-    ret_con.strike = mock_desc.strike
-    ret_con.right = mock_desc.right
-    ret_con.multiplier = mock_desc.multiplier
-    ret_con.exchange = mock_desc.exchange
-    ret_con.primaryExchange = mock_desc.primaryExchange
-    ret_con.currency = mock_desc.currency
-    ret_con.localSymbol = mock_desc.localSymbol
-    ret_con.tradingClass = mock_desc.tradingClass
-    ret_con.includeExpired = mock_desc.includeExpired
-    ret_con.secIdType = mock_desc.secIdType
-    ret_con.secId = mock_desc.secId
+        mock_ib.contract_descriptions.lastTradeDateOrContractMonth.iloc[idx]
+    ret_con.strike = mock_ib.contract_descriptions.strike.iloc[idx]
+    ret_con.right = mock_ib.contract_descriptions.right.iloc[idx]
+    ret_con.multiplier = mock_ib.contract_descriptions.multiplier.iloc[idx]
+    ret_con.exchange = mock_ib.contract_descriptions.exchange.iloc[idx]
+    ret_con.primaryExchange = \
+        mock_ib.contract_descriptions.primaryExchange.iloc[idx]
+    ret_con.currency = mock_ib.contract_descriptions.currency.iloc[idx]
+    ret_con.localSymbol = mock_ib.contract_descriptions.localSymbol.iloc[idx]
+    ret_con.tradingClass = mock_ib.contract_descriptions.tradingClass.iloc[idx]
+    ret_con.includeExpired = \
+        mock_ib.contract_descriptions.includeExpired.iloc[idx]
+    ret_con.secIdType = mock_ib.contract_descriptions.secIdType.iloc[idx]
+    ret_con.secId = mock_ib.contract_descriptions.secId.iloc[idx]
 
     # combos
-    ret_con.comboLegsDescrip = mock_desc.comboLegsDescrip
-    # ret_con.comboLegs = mock_desc.comboLegs
+    ret_con.comboLegsDescrip = \
+        mock_ib.contract_descriptions.comboLegsDescrip.iloc[idx]
+    # ret_con.comboLegs = mock_ib.contract_descriptions.comboLegs
 
+    # build a delta_neutral_contract every third time
     if (idx % 3) == 0:
         delta_neutral_contract = DeltaNeutralContract()
-        delta_neutral_contract.conId = int(mock_dnc.conId)
-        delta_neutral_contract.delta = mock_dnc.delta
-        delta_neutral_contract.price = mock_dnc.price
+        # item() is used to convert numpy.int64 to python int
+        delta_neutral_contract.conId = \
+            mock_ib.delta_neutral_contract.conId.iloc[0]
+        delta_neutral_contract.delta = \
+            mock_ib.delta_neutral_contract.delta.iloc[0]
+        delta_neutral_contract.price = \
+            mock_ib.delta_neutral_contract.price.iloc[0]
 
         ret_con.deltaNeutralContract = delta_neutral_contract
 
     return ret_con
 
 
+###############################################################################
+# get_contract_details_from_mock_desc
+###############################################################################
+def get_contract_details_from_mock_desc(idx, mock_ib: Any) -> ContractDetails:
+    """Build and return a contract_details from the mock description.
+
+    Args:
+        idx: index of entry to use
+        mock_ib: DataFrame with values for contract_details
+
+    Returns:
+          ContractDetails with fields from input mock_desc
+
+    """
+    ret_con = ContractDetails()
+    ret_con.contract = get_contract_from_mock_desc(idx, mock_ib)
+    ret_con.marketName = mock_ib.contract_descriptions.marketName.iloc[idx]
+    ret_con.minTick = mock_ib.contract_descriptions.minTick.iloc[idx]
+    ret_con.orderTypes = mock_ib.contract_descriptions.orderTypes.iloc[idx]
+    ret_con.validExchanges = \
+        mock_ib.contract_descriptions.validExchanges.iloc[idx]
+    ret_con.priceMagnifier = \
+        mock_ib.contract_descriptions.priceMagnifier.iloc[idx]
+    ret_con.underConId = mock_ib.contract_descriptions.underConId.iloc[idx]
+    ret_con.longName = mock_ib.contract_descriptions.longName.iloc[idx]
+    ret_con.contractMonth = \
+        mock_ib.contract_descriptions.contractMonth.iloc[idx]
+    ret_con.industry = mock_ib.contract_descriptions.industry.iloc[idx]
+    ret_con.category = mock_ib.contract_descriptions.category.iloc[idx]
+    ret_con.subcategory = mock_ib.contract_descriptions.subcategory.iloc[idx]
+    ret_con.timeZoneId = mock_ib.contract_descriptions.timeZoneId.iloc[idx]
+    ret_con.tradingHours = mock_ib.contract_descriptions.tradingHours.iloc[idx]
+    ret_con.liquidHours = mock_ib.contract_descriptions.liquidHours.iloc[idx]
+    ret_con.evRule = mock_ib.contract_descriptions.evRule.iloc[idx]
+    ret_con.evMultiplier = mock_ib.contract_descriptions.evMultiplier.iloc[idx]
+    ret_con.mdSizeMultiplier = \
+        mock_ib.contract_descriptions.mdSizeMultiplier.iloc[idx]
+    ret_con.aggGroup = mock_ib.contract_descriptions.aggGroup.iloc[idx]
+    ret_con.underSymbol = mock_ib.contract_descriptions.underSymbol.iloc[idx]
+    ret_con.underSecType = mock_ib.contract_descriptions.underSecType.iloc[idx]
+    ret_con.marketRuleIds = \
+        mock_ib.contract_descriptions.marketRuleIds.iloc[idx]
+
+    secIdList = mock_ib.contract_descriptions.secIdList.iloc[idx]
+    new_secIdList = []
+    for j in range(0,
+                   2 * mock_ib.contract_descriptions.secIdListCount.iloc[idx],
+                   2):
+        tag = secIdList[j]
+        value = secIdList[j+1]
+        tag_value = TagValue(tag, value)
+        new_secIdList.append(tag_value)
+    ret_con.secIdList = new_secIdList
+
+    ret_con.realExpirationDate = \
+        mock_ib.contract_descriptions.realExpirationDate
+    # ret_con.lastTradeTime = mock_ib.contract_descriptions.lastTradeTime
+    ret_con.stockType = mock_ib.contract_descriptions.stockType
+
+    return ret_con
+
+
+###############################################################################
+# compare_tag_value
+###############################################################################
 def compare_tag_value(tag_value1: TagValue,
                       tag_value2: TagValue
                       ) -> None:
@@ -1294,7 +1291,6 @@ def compare_tag_value(tag_value1: TagValue,
 
     assert isinstance(tag_value2.tag, str)
 
-
     assert tag_value1.value == tag_value2.value
 
     assert isinstance(tag_value1.value, str)
@@ -1302,6 +1298,9 @@ def compare_tag_value(tag_value1: TagValue,
     assert isinstance(tag_value2.value, str)
 
 
+###############################################################################
+# compare_combo_legs
+###############################################################################
 def compare_combo_legs(cl1: ComboLeg,
                        cl2: ComboLeg
                        ) -> None:
@@ -1328,7 +1327,40 @@ def compare_combo_legs(cl1: ComboLeg,
 
     assert cl1.exemptCode == cl2.exemptCode
 
+    verify_combo_leg_types(cl1)
+    verify_combo_leg_types(cl1)
 
+
+###############################################################################
+# verify_combo_leg_types
+###############################################################################
+def verify_combo_leg_types(combo_leg: ComboLeg) -> None:
+    """Verify that combo_leg fields are correct type.
+
+    Args:
+        combo_leg: combo_leg to verify
+
+    """
+    assert isinstance(combo_leg.conId, (int, np.int64))
+
+    assert isinstance(combo_leg.ratio, (int, np.int64))
+
+    assert isinstance(combo_leg.action, str)
+
+    assert isinstance(combo_leg.exchange, str)
+
+    assert isinstance(combo_leg.openClose, (int, np.int64))
+
+    assert isinstance(combo_leg.shortSaleSlot, (int, np.int64))
+
+    assert isinstance(combo_leg.designatedLocation, str)
+
+    assert isinstance(combo_leg.exemptCode, (int, np.int64))
+
+
+###############################################################################
+# compare_delta_neutral_contracts
+###############################################################################
 def compare_delta_neutral_contracts(con1: DeltaNeutralContract,
                                     con2: DeltaNeutralContract
                                     ) -> None:
@@ -1341,7 +1373,7 @@ def compare_delta_neutral_contracts(con1: DeltaNeutralContract,
     """
     assert con1.conId == con2.conId
 
-    assert isinstance(con1.conId, int)
+    assert isinstance(con1.conId, (int, np.int64))
 
     assert isinstance(con2.conId, int)
 
@@ -1358,6 +1390,9 @@ def compare_delta_neutral_contracts(con1: DeltaNeutralContract,
     assert isinstance(con2.price, float)
 
 
+###############################################################################
+# compare_contracts
+###############################################################################
 def compare_contracts(con1: Contract, con2: Contract) -> None:
     """Compare two contracts for equality.
 
@@ -1415,18 +1450,21 @@ def compare_contracts(con1: Contract, con2: Contract) -> None:
     else:  # check whether one contract has it and one does not
         assert not (con1.deltaNeutralContract or con2.deltaNeutralContract)
 
-    # verify_contract_types(con1)
-    # verify_contract_types(con2)
+    verify_contract_types(con1)
+    verify_contract_types(con2)
 
 
+###############################################################################
+# verify_contract_types
+###############################################################################
 def verify_contract_types(contract: Contract) -> None:
-    """Verify that contracct fields are correct type.
+    """Verify that contract fields are correct type.
 
     Args:
         contract: contract to verify
 
     """
-    assert isinstance(contract.conId, int)
+    assert isinstance(contract.conId, (int, np.int64))
 
     assert isinstance(contract.symbol, str)
 
@@ -1450,7 +1488,7 @@ def verify_contract_types(contract: Contract) -> None:
 
     assert isinstance(contract.tradingClass, str)
 
-    assert isinstance(contract.includeExpired, bool)
+    assert isinstance(contract.includeExpired, (bool, np.bool_))
 
     assert isinstance(contract.secIdType, str)
 
@@ -1461,13 +1499,17 @@ def verify_contract_types(contract: Contract) -> None:
 
     assert isinstance(contract.comboLegs, (list, type(None)))
 
-    for combo_leg in contract.comboLegs:
-        assert isinstance(combo_leg, ComboLeg)
+    if contract.comboLegs:
+        for combo_leg in contract.comboLegs:
+            assert isinstance(combo_leg, ComboLeg)
 
     assert isinstance(contract.deltaNeutralContract,
                       (DeltaNeutralContract, type(None)))
 
 
+###############################################################################
+# compare_contract_details
+###############################################################################
 def compare_contract_details(con1: ContractDetails,
                              con2: ContractDetails
                              ) -> None:
@@ -1525,7 +1567,6 @@ def compare_contract_details(con1: ContractDetails,
     assert con1.underSecType == con2.underSecType
 
     assert con1.marketRuleIds == con2.marketRuleIds
-
 
     if con1.secIdList and con2.secIdList:
         assert len(con1.secIdList) == len(con2.secIdList)
