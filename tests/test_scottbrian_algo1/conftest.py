@@ -501,6 +501,10 @@ class MockIB:
         combos = self.get_combos(symbol)
         for combo in combos:
             self.next_conId += 1
+            sel3 = self.next_conId % 3
+            sel4 = self.next_conId % 4
+            sel5 = self.next_conId % 5
+
             cd_dict = {'conId': self.next_conId,
                        'symbol': symbol,
                        'secType': combo[0],
@@ -508,34 +512,17 @@ class MockIB:
                        'currency': combo[2],
                        'derivativeSecTypes': [combo[3]]
                        }
-            lastTradeDates = ('20220202', '202203', '')
-            cd_dict['lastTradeDateOrContractMonth'] = lastTradeDates[
-                self.next_conId % 3]
 
-            if self.next_conId % 3 == 0:
-                cd_dict['right'] = 'C'
-                cd_dict['mdSizeMultiplier'] = 1
-                cd_dict['validExchanges'] = 'ABC'
-                cd_dict['industry'] = 'Industry1'
-                cd_dict['subcategory'] = 'SubCategoryA'
-                cd_dict['liquidHours'] = 'LiquidHours50'
-                cd_dict['realExpirationDate'] = '20220203'
-            elif self.next_conId % 3 == 1:
-                cd_dict['right'] = 'P'
-                cd_dict['mdSizeMultiplier'] = 2
-                cd_dict['validExchanges'] = 'DEFXYZ'
-                cd_dict['industry'] = 'Industry2'
-                cd_dict['subcategory'] = 'SubCategoryB'
-                cd_dict['liquidHours'] = 'LiquidHours60'
-                cd_dict['realExpirationDate'] = '20220202'
-            else:
-                cd_dict['right'] = ['']
-                cd_dict['mdSizeMultiplier'] = 3
-                cd_dict['validExchanges'] = 'WXYZ'
-                cd_dict['industry'] = 'Industry2'
-                cd_dict['subcategory'] = 'SubCategoryC'
-                cd_dict['liquidHours'] = 'LiquidHours70'
-                cd_dict['realExpirationDate'] = ''
+            cd_dict['lastTradeDateOrContractMonth'] = \
+                ('20220202', '202203', '', '20220303 12:34:56')[sel4]
+
+            cd_dict['right'] = ('C', 'P', [''])[sel3]
+            cd_dict['mdSizeMultiplier'] = sel3 + 1
+            cd_dict['validExchanges'] = ('ABC', 'DEFXYZ', 'WXYZ')[sel3]
+            cd_dict['industry'] = 'Industry' + str(sel3 + 1)
+            cd_dict['subcategory'] = 'SubCategory' + ('A', 'B', 'C')[sel3]
+            cd_dict['liquidHours'] = 'LiquidHours' + str((sel3 * 10) + 50)
+            cd_dict['realExpirationDate'] = ('20220203', '20220202', '')[sel3]
 
             cd_dict['strike'] = ((self.next_conId % 5) + 1) * 100.0
 

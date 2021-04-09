@@ -978,6 +978,43 @@ class TestAlgoAppContractDetails:
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
+    def test_get_contract_details_many_entries(self,
+                                               algo_app: "AlgoApp",
+                                               mock_ib: Any
+                                               ) -> None:
+        """Test contract details for many entries.
+
+        Args:
+            algo_app: pytest fixture instance of AlgoApp (see conftest.py)
+            mock_ib: pytest fixture of contract_descriptions
+
+        """
+        verify_algo_app_initialized(algo_app)
+
+        logger.debug("about to connect")
+        algo_app.connect_to_ib("127.0.0.1",
+                               algo_app.PORT_FOR_LIVE_TRADING,
+                               client_id=0)
+
+        # verify that algo_app is connected and alive with a valid reqId
+        verify_algo_app_connected(algo_app)
+
+        try:
+            conId_list = []
+            for conId in range(7001, 7033):
+                contract = Contract()  # create an empty contract
+                contract.conId = conId
+                conId_list.append(conId)
+                algo_app.get_contract_details(contract)
+
+                verify_contract_details(contract,
+                                        algo_app,
+                                        mock_ib,
+                                        conId_list)
+        finally:
+            algo_app.disconnect_from_ib()
+            verify_algo_app_disconnected(algo_app)
+
 
 ###############################################################################
 # contract details verification
@@ -1177,9 +1214,15 @@ def get_contract_from_mock_desc(idx: int,
     ret_con.conId = mock_ib.contract_descriptions.conId.iloc[idx]  # cd
     ret_con.symbol = mock_ib.contract_descriptions.symbol.iloc[idx]  # cd
     ret_con.secType = mock_ib.contract_descriptions.secType.iloc[idx]  # cd
-    ret_con.lastTradeDateOrContractMonth = \
-        mock_ib.contract_descriptions.lastTradeDateOrContractMonth.iloc[
-            idx]  # cd
+
+    if mock_ib.contract_descriptions.lastTradeDateOrContractMonth.iloc[
+            idx]:
+        split_date = \
+            mock_ib.contract_descriptions.lastTradeDateOrContractMonth.iloc[
+                idx].split()
+        if len(split_date) > 0:  # very well better be!
+            ret_con.lastTradeDateOrContractMonth = split_date[0]
+
     ret_con.strike = mock_ib.contract_descriptions.strike.iloc[idx]  # cd
     ret_con.right = mock_ib.contract_descriptions.right.iloc[idx]  # cd
     ret_con.multiplier = \
@@ -1293,7 +1336,13 @@ def get_contract_details_from_mock_desc(idx: int,
         mock_ib.contract_descriptions.realExpirationDate.iloc[idx]  # cd
 
     # last trade time come from lastTradeDate as 'date time' (i.e., 2 items)
-    # ret_con.lastTradeTime = mock_ib.contract_descriptions.lastTradeTime
+    if mock_ib.contract_descriptions.lastTradeDateOrContractMonth.iloc[
+            idx]:
+        split_date = \
+            mock_ib.contract_descriptions.lastTradeDateOrContractMonth.iloc[
+                idx].split()
+        if len(split_date) > 1:
+            ret_con.lastTradeTime = split_date[1]
     ret_con.stockType = mock_ib.contract_descriptions.stockType.iloc[idx]  # cd
 
     return ret_con

@@ -242,6 +242,10 @@ def get_contract_details_dict(contract_details: ContractDetails
     ret_dict: Dict[str, Any] = copy.deepcopy(contract_details.__dict__)
     if contract_details.contract:
         contract_dict = get_contract_dict(contract_details.contract)
+        # the following code is a bypass needed to prevent the error
+        # raised by ast.literal_eval when it sees the Timestamp
+        contract_dict['lastTradeDateOrContractMonth'] = \
+            contract_dict['originalLastTradeDate']
         ret_dict['contract'] = str(contract_dict)
 
     if contract_details.secIdList:
