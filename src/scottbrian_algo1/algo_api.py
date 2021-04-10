@@ -40,7 +40,7 @@ import string
 
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
-from scottbrian_utils.time_hdr import time_box
+# from scottbrian_utils.time_hdr import time_box
 # from scottbrian_utils.diag_msg import diag_msg
 
 # from scottbrian_algo1.algo_maps import AlgoTagValue, AlgoComboLeg
@@ -105,6 +105,10 @@ class RequestTimeout(AlgoAppError):
     """Request timed out while waiting on event completion."""
 
 
+class RequestError(AlgoAppError):
+    """Request received an error while waiting on event completion."""
+
+
 ########################################################################
 # AlgoApp
 ########################################################################
@@ -144,6 +148,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.disconnect_lock = Lock()
         self.ds_catalog = ds_catalog
         self.request_id: int = 0
+        self.error_reqId: int = 0
         self.response_complete_event = Event()
         self.nextValidId_event = Event()
         self.run_thread = Thread(target=self.run)
@@ -158,6 +163,9 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # contract details
         self.contracts = pd.DataFrame()
         self.contract_details = pd.DataFrame()
+
+        # fundamental data
+        self.fundamental_data = pd.DataFrame()
 
     ###########################################################################
     # __repr__
@@ -201,6 +209,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.logAnswer(current_fn_name(), vars())
         logger.error("ERROR %s %s %s", reqId, errorCode, errorString)
         print("Error: ", reqId, " ", errorCode, " ", errorString)
+        self.error_reqId = reqId
 
     ###########################################################################
     # nextValidId
@@ -351,12 +360,16 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     ###########################################################################
     # wait_for_request_completion
     ###########################################################################
-    def wait_for_request_completion(self) -> None:
+    def wait_for_request_completion(self, reqId: int) -> None:
         """Wait for the request to complete.
+
+        Args:
+            reqId: the request id
 
         Raises:
             DisconnectDuringRequest: disconnect detected
             RequestTimeout: waited too long
+            RequestError: the error callback method was entered
 
         """
         call_seq = get_formatted_call_sequence()
@@ -367,6 +380,8 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                 logger.error('%s detected disconnect while waiting',
                              call_seq)
                 raise DisconnectDuringRequest
+            if self.error_reqId == reqId:
+                raise RequestError
             if self.response_complete_event.wait(timeout=1):
                 return  # good, event completed w/o timeout
         # if here, we timed out out while still connected
@@ -410,38 +425,23 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                                          })
         return ret_df
 
-    # def load_contracts(self) -> None:
-    #     """Load the contracts DataFrame."""
-    #     #######################################################################
-    #     # if contracts data set exists, load it and reset the index
-    #     #######################################################################
-    #     contracts_path = self.ds_catalog.get_path('contracts')
-    #     logger.info('contracts path: %s', contracts_path)
-    #
-    #     if contracts_path.exists():
-    #         self.contracts = \
-    #             pd.read_csv(contracts_path,
-    #                         header=0,
-    #                         index_col=0,
-    #                         parse_dates=['lastTradeDateOrContractMonth'],
-    #                         converters={'symbol': lambda x: x,
-    #                                     'secType': lambda x: x,
-    #                                     'right': lambda x: x,
-    #                                     'multiplier': lambda x: x,
-    #                                     'exchange': lambda x: x,
-    #                                     'primaryExchange': lambda x: x,
-    #                                     'currency': lambda x: x,
-    #                                     'localSymbol': lambda x: x,
-    #                                     'tradingClass': lambda x: x,
-    #                                     'secIdType': lambda x: x,
-    #                                     'secId': lambda x: x,
-    #                                     'comboLegsDescrip': lambda x: x,
-    #                                     'comboLegs':
-    #                                         lambda x: None if x == '' else x,
-    #                                     'deltaNeutralContract':
-    #                                         lambda x: None if x == '' else x,
-    #                                     'originalLastTradeDate': lambda x: x
-    #                                     })
+    ###########################################################################
+    # load_contracts
+    ###########################################################################
+    @staticmethod
+    def load_fundamental_data(path: Path) -> Any:
+        """Load the fundamental_data DataFrame.
+
+        Args:
+            path: where to find the dataframe to load
+
+        Returns:
+              a dataframe of fundamental data
+        """
+        ret_df = pd.read_csv(path,
+                             header=0,
+                             index_col=0)
+        return ret_df
 
     ###########################################################################
     # load_contract_details
@@ -538,6 +538,29 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         logger.info('saving contract_details DataFrame to csv')
         self.contract_details.to_csv(contract_details_path)
+
+    ###########################################################################
+    # save_fundamental_data
+    ###########################################################################
+    def save_fundamental_data(self) -> None:
+        """Save the fundamental_data DataFrame."""
+        #######################################################################
+        # Get the fundamental_data path
+        #######################################################################
+        fundamental_data_path = self.ds_catalog.get_path('fundamental_data')
+        logger.info('fundamental_data path: %s', fundamental_data_path)
+
+        #######################################################################
+        # Save fundamental_data DataFrame to csv
+        #######################################################################
+        logger.info('Number of fundamental_data entries: %d',
+                    len(self.fundamental_data))
+
+        if not self.fundamental_data.empty:
+            self.fundamental_data.sort_index(inplace=True)
+
+        logger.info('saving fundamental_data DataFrame to csv')
+        self.contracts.to_csv(fundamental_data_path)
 
     ###########################################################################
     ###########################################################################
@@ -692,7 +715,8 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # send request to IB
         #######################################################################
         self.response_complete_event.clear()  # reset the wait bit first
-        self.reqMatchingSymbols(self.get_reqId(), symbol_to_get)
+        reqId = self.get_reqId()  # bump reqId and return it
+        self.reqMatchingSymbols(reqId, symbol_to_get)
         # the following sleep for 1 second is required to avoid
         # overloading IB with requests (they ask for 1 second). Note that we
         # are doing the sleep after the request is made and before we wait
@@ -701,7 +725,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # we sleep, thus helping to reduce the entire wait (as opposed to
         # doing the 1 second wait before making the request).
         time.sleep(self.request_throttle_secs)  # avoid overloading IB
-        self.wait_for_request_completion()
+        self.wait_for_request_completion(reqId)
 
     ###########################################################################
     # symbolSamples - callback
@@ -823,8 +847,9 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # make the request for details
         ################################################################
         self.response_complete_event.clear()
-        self.reqContractDetails(self.get_reqId(), contract)
-        self.wait_for_request_completion()
+        reqId = self.get_reqId()  # bump reqId and return it
+        self.reqContractDetails(reqId, contract)
+        self.wait_for_request_completion(reqId)
 
         #######################################################################
         # Save contracts and contract_details DataFrames
@@ -903,49 +928,176 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         logger.info('entered for request_id %d', request_id)
         self.response_complete_event.set()
 
+    ###########################################################################
+    ###########################################################################
+    # get_fundamental_data
+    ###########################################################################
+    ###########################################################################
+    def get_fundamental_data(self,
+                             contract: Contract,
+                             report_type: str) -> None:
+        """Get fundamental data for one contract.
 
-@time_box
-def main() -> None:
-    """Main routine for quick discovery tests."""
-    from pathlib import Path
-    proj_dir = Path.cwd().resolve().parents[1]  # back two directories
-    ds_catalog = \
-        FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
-                     'mock_contract_descs':
-                         Path(proj_dir / 't_datasets/mock_contract_descs.csv'),
-                     'contract_details':
-                         Path(proj_dir / 't_datasets/contract_details.csv')
-                     })
+        Args:
+            contract: contains the conId used to get fundamental data
+            report_type: ReportSnapshot, ReportsFinSummary, ReportRatios,
+                           ReportFinStatements, RESC
 
-    algo_app = AlgoApp(ds_catalog)
+        """
+        #######################################################################
+        # report_type:
+        # ReportSnapshot: Company overview
+        # ReportsFinSummary: Financial summary
+        # ReportRatios: Financial ratios
+        # ReportsFinStatements: Financial statements
+        # RESC: Analyst estimates
+        #######################################################################
 
-    algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+        ################################################################
+        # load the fundamental_data DataFrame
+        ################################################################
+        fundamental_data_path = self.ds_catalog.get_path('fundamental_data')
+        logger.info('fundamental_data_path: %s', fundamental_data_path)
 
-    print("serverVersion:%s connectionTime:%s" %
-          (algo_app.serverVersion(),
-           algo_app.twsConnectionTime()))
+        if fundamental_data_path.exists():
+            self.fundamental_data = \
+                self.load_fundamental_data(fundamental_data_path)
 
-    # print('SBT get_stock_symbols:main about to call get_symbols')
-    # algo_app.get_symbols(start_char='A', end_char='A')
-    # algo_app.get_symbols(start_char='B', end_char='B')
+        ################################################################
+        # make the request for fundamental data
+        ################################################################
+        self.response_complete_event.clear()
+        reqId = self.get_reqId()  # bump reqId and return it
+        self.reqFundamentalData(reqId, contract, report_type, [])
+        self.wait_for_request_completion(reqId)
 
-    # algo_app.request_symbols('SWKS')
-    #
-    # print('algo_app.stock_symbols\n', algo_app.stock_symbols)
+        #######################################################################
+        # Save fundamental_data DataFrame
+        #######################################################################
+        self.save_fundamental_data()
 
-    contract = Contract()
-    contract.conId = 4726021
-    algo_app.get_contract_details(contract)
+    ###########################################################################
+    # fundamentalData callback method
+    ###########################################################################
+    def fundamentalData(self,
+                        request_id: int,
+                        data: str) -> None:
+        """Receive IB reply for reqFundamentalData request.
 
-    print('algo_app..contract_details\n', algo_app.contract_details)
+        Args:
+            request_id: the id used on the request
+            data: xml string of fundamental data
 
-    my_contract_details = algo_app.contract_details.loc[contract.conId][0]
+        """
+        logger.info('entered for request_id %d', request_id)
 
-    print('my_contract_details\n', my_contract_details)
+        print('\nfundamental data:\n', data)
+        # print('contract_details.__dict__:\n', contract_details.__dict__)
 
-    print('about to disconnect')
-    algo_app.disconnect()
+        # remove the contract if it already exists in the DataFrame
+        # as we want the newest information to replace the old
+        # conId = contract_details.contract.conId
+        # self.contracts.drop(conId,
+        #                     inplace=True,
+        #                     errors='ignore')
+        # get the conId to use as an index
+
+        # Add the contract to the DataFrame using contract dict.
+        # Note that if the contract contains an array for one of the
+        # fields, the DataFrame create will reject it because if the
+        # single item conId for the index. The contract get_dict method
+        # returns a dictionary that can be used to instantiate the
+        # DataFrame item, and any class instances or arrays of class
+        # instances will be returned as a string so that the DataFrame
+        # item will work
+        # contract_dict = get_contract_dict(contract_details.contract)
+        # self.contracts = self.contracts.append(
+        #             pd.DataFrame(contract_dict,
+        #                          index=[conId]))
+
+        # remove the contract_details if it already exists in the DataFrame
+        # as we want the newest information to replace the old
+        # self.contract_details.drop(conId,
+        #                            inplace=True,
+        #                            errors='ignore')
+
+        # remove the contract from the contract_details
+        # contract_details.contract = None
+
+        # add the contract details to the DataFrame
+        # contract_details_dict = get_contract_details_dict(contract_details)
+        # self.contract_details = self.contract_details.append(
+        #             pd.DataFrame(contract_details_dict,
+        #                          index=[conId]))
+
+        # print('self.contract_details:\n', contract_details)
+        # print('self.contract_details.__dict__:\n',
+        #       self.contract_details.__dict__)
 
 
-if __name__ == "__main__":
-    main()
+# @time_box
+# def main() -> None:
+#     """Main routine for quick discovery tests."""
+#     from pathlib import Path
+#     proj_dir = Path.cwd().resolve().parents[1]  # back two directories
+#     ds_catalog = \
+#         FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
+#                      'mock_contract_descs':
+#                          Path(proj_dir
+#                          / 't_datasets/mock_contract_descs.csv'),
+#                      'contracts':
+#                          Path(proj_dir / 't_datasets/contracts.csv'),
+#                      'contract_details':
+#                          Path(proj_dir / 't_datasets/contract_details.csv'),
+#                      'fundamental_data':
+#                          Path(proj_dir / 't_datasets/fundamental_data.csv')
+#                      })
+#
+#     algo_app = AlgoApp(ds_catalog)
+#
+#     algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+#
+#     print("serverVersion:%s connectionTime:%s" %
+#           (algo_app.serverVersion(),
+#            algo_app.twsConnectionTime()))
+#
+#     # print('SBT get_stock_symbols:main about to call get_symbols')
+#     # algo_app.get_symbols(start_char='A', end_char='A')
+#     # algo_app.get_symbols(start_char='B', end_char='B')
+#
+#     # algo_app.request_symbols('SWKS')
+#     #
+#     # print('algo_app.stock_symbols\n', algo_app.stock_symbols)
+#     try:
+#         contract = Contract()
+#         contract.conId = 208813719 # 3691937        #  4726021
+#         contract.symbol = 'GOOGL'
+#         contract.secType = 'STK'
+#         contract.currency = 'USD'
+#         contract.exchange = 'SMART'
+#         contract.primaryExchange = 'NASDAQ'
+#
+#         # algo_app.get_contract_details(contract)
+#         algo_app.get_fundamental_data(contract, 'ReportSnapshot')
+#         # ReportSnapshot: Company overview
+#         # ReportsFinSummary: Financial summary
+#         # ReportRatios: Financial ratios
+#         # ReportsFinStatements: Financial statements
+#         # RESC: Analyst estimates
+#         # print('algo_app.contracts\n', algo_app.contracts)
+#         # print('algo_app.contract_details\n', algo_app.contract_details)
+#         # print('algo_app.contracts.primaryExchange.loc[contract.conId]\n',
+#         #       algo_app.contracts.primaryExchange.loc[contract.conId])
+#         # print('algo_app.contracts.symbol.loc[contract.conId]\n',
+#         #       algo_app.contracts.symbol.loc[contract.conId])
+#         # my_contract_details = algo_app.contract_details.loc[
+#         contract.conId][0]
+#     #
+#         # print('my_contract_details\n', my_contract_details)
+#     finally:
+#         print('about to disconnect')
+#         algo_app.disconnect()
+#
+#
+# if __name__ == "__main__":
+#     main()

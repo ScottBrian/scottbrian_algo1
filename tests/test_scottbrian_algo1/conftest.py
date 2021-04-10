@@ -193,12 +193,15 @@ def algo_app(monkeypatch: Any,
     contracts_path = d / "contracts.csv"
     contract_details_path = d / "contract_details.csv"
     extra_contract_path = d / "extra_contract.csv"
+    fundamental_data_path = d / "fundamental_data.csv"
+
     catalog = FileCatalog({'symbols': symbols_path,
                            'stock_symbols': stock_symbols_path,
                            'symbols_status': symbol_status_path,
                            'contracts': contracts_path,
                            'contract_details': contract_details_path,
-                           'extra_contract': extra_contract_path
+                           'extra_contract': extra_contract_path,
+                           'fundamental_data': fundamental_data_path
                            })
 
     a_algo_app = AlgoApp(catalog)
@@ -501,11 +504,17 @@ class MockIB:
         combos = self.get_combos(symbol)
         for combo in combos:
             self.next_conId += 1
-            sel3 = self.next_conId % 3
-            sel4 = self.next_conId % 4
-            sel5 = self.next_conId % 5
+            conId = self.next_conId
+            sel2 = conId % 2
+            sel3 = conId % 3
+            sel4 = conId % 4
+            sel5 = conId % 5
+            sel6 = conId % 6
+            sel7 = conId % 7
+            sel9 = conId % 9
+            sel12 = conId % 12
 
-            cd_dict = {'conId': self.next_conId,
+            cd_dict = {'conId': conId,
                        'symbol': symbol,
                        'secType': combo[0],
                        'primaryExchange': combo[1],
@@ -519,115 +528,74 @@ class MockIB:
             cd_dict['right'] = ('C', 'P', [''])[sel3]
             cd_dict['mdSizeMultiplier'] = sel3 + 1
             cd_dict['validExchanges'] = ('ABC', 'DEFXYZ', 'WXYZ')[sel3]
-            cd_dict['industry'] = 'Industry' + str(sel3 + 1)
-            cd_dict['subcategory'] = 'SubCategory' + ('A', 'B', 'C')[sel3]
-            cd_dict['liquidHours'] = 'LiquidHours' + str((sel3 * 10) + 50)
+            cd_dict['industry'] = f'Industry{sel3 + 1}'
+            cd_dict['subcategory'] = f'SubCategory{("A", "B", "C")[sel3]}'
+            cd_dict['liquidHours'] = f'LiquidHours{(sel3 * 10) + 50}'
             cd_dict['realExpirationDate'] = ('20220203', '20220202', '')[sel3]
 
-            cd_dict['strike'] = ((self.next_conId % 5) + 1) * 100.0
+            cd_dict['strike'] = (sel5 + 1) * 100.0
+            cd_dict['exchange'] = ('SMART', 'BRIGHT', 'GENIUS', 'WHIZ')[sel4]
+            cd_dict['minTick'] = (sel4 + 1) * 0.01
+            cd_dict['multiplier'] = ("3", "2", "1", "100")[sel4]
+            cd_dict['priceMagnifier'] = (11, 12, 14, 18)[sel4]
+            cd_dict['category'] = f'Category1{"0" * sel4}'
+            cd_dict['evRule'] = 'EvRule' + ('W', 'X', 'Y', 'Z')[sel4]
+            cd_dict['localSymbol'] = f'{symbol}{conId}'
+            cd_dict['tradingClass'] = f'TradingClass{conId}'
+            cd_dict['includeExpired'] = bool(sel2)
+            cd_dict['secIdType'] = ('CUSIP', 'SEDOL', 'ISIN', 'RIC')[sel4]
 
-            if self.next_conId % 4 == 0:
-                cd_dict['exchange'] = 'SMART'
-                cd_dict['minTick'] = 0.01
-                cd_dict['multiplier'] = "3"
-                cd_dict['priceMagnifier'] = 11
-                cd_dict['category'] = 'Category10'
-                cd_dict['evRule'] = 'EvRuleX'
-            elif self.next_conId % 4 == 1:
-                cd_dict['exchange'] = 'BRIGHT'
-                cd_dict['minTick'] = 0.02
-                cd_dict['multiplier'] = "2"
-                cd_dict['priceMagnifier'] = 12
-                cd_dict['category'] = 'Category100'
-                cd_dict['evRule'] = 'EvRuleY'
-            elif self.next_conId % 4 == 2:
-                cd_dict['exchange'] = 'GENIUS'
-                cd_dict['minTick'] = 0.03
-                cd_dict['multiplier'] = "1"
-                cd_dict['priceMagnifier'] = 14
-                cd_dict['category'] = 'Category1000'
-                cd_dict['evRule'] = 'EvRuleW'
-            else:
-                cd_dict['exchange'] = 'WHIZ'
-                cd_dict['minTick'] = 0.04
-                cd_dict['multiplier'] = "100"
-                cd_dict['priceMagnifier'] = 18
-                cd_dict['category'] = 'Category10000'
-                cd_dict['evRule'] = 'EvRuleZ'
+            cd_dict['secId'] = f'SecId{conId}'
 
-            cd_dict['localSymbol'] = symbol + str(self.next_conId)
-            cd_dict['tradingClass'] = 'TradingClass' + str(self.next_conId)
-            cd_dict['includeExpired'] = bool(self.next_conId % 2)
+            cd_dict['comboLegsDescrip'] = f'ComboLegsDescrip{conId}'
 
-            secIdTypes = ('CUSIP', 'SEDOL', 'ISIN', 'RIC')
-            cd_dict['secIdType'] = secIdTypes[self.next_conId % 4]
+            cd_dict['marketName'] = f'MarketName{conId}'
 
-            cd_dict['secId'] = 'SecId' + str(self.next_conId)
+            cd_dict['orderTypes'] = f'OrdType{conId}'
 
-            cd_dict['comboLegsDescrip'] = ('ComboLegsDescrip'
-                                           + str(self.next_conId))
+            cd_dict['underConId'] = conId - 1000
+            cd_dict['longName'] = f'ABC DEF XYZ {conId}'
 
-            cd_dict['marketName'] = 'MarketName' + str(self.next_conId)
+            cd_dict['contractMonth'] = str(sel12 + 1)
 
-            cd_dict['orderTypes'] = 'OrdType' + str(self.next_conId)
+            cd_dict['evMultiplier'] = sel7 + 1
+            cd_dict['timeZoneId'] = ('EST', 'PMT', 'EDT', 'PDT', 'CST')[sel5]
+            cd_dict['tradingHours'] = \
+                'TradingHours' + ('0000', '0200', '0400', '0600', '0800')[sel5]
 
-            cd_dict['underConId'] = self.next_conId - 1000
-            cd_dict['longName'] = 'ABC DEF XYZ ' + str(self.next_conId)
-
-            cd_dict['contractMonth'] = str((self.next_conId % 12) + 1)
-
-            cd_dict['evMultiplier'] = (self.next_conId % 7) + 1
-
-            if self.next_conId % 5 == 0:
-                cd_dict['timeZoneId'] = 'EST'
-                cd_dict['tradingHours'] = 'TradingHours0000'
-            elif self.next_conId % 5 == 1:
-                cd_dict['timeZoneId'] = 'PMT'
-                cd_dict['tradingHours'] = 'TradingHours0200'
-            elif self.next_conId % 5 == 2:
-                cd_dict['timeZoneId'] = 'EDT'
-                cd_dict['tradingHours'] = 'TradingHours0400'
-            elif self.next_conId % 5 == 3:
-                cd_dict['timeZoneId'] = 'PDT'
-                cd_dict['tradingHours'] = 'TradingHours0600'
-            else:
-                cd_dict['timeZoneId'] = 'CST'
-                cd_dict['tradingHours'] = 'TradingHours0800'
-
-            cd_dict['secIdListCount'] = self.next_conId % 5
+            cd_dict['secIdListCount'] = sel5
             secIdList = []
             for i in range(cd_dict['secIdListCount']):
-                secIdList.append('tag' + str(i))
-                secIdList.append('value' + str(i))
+                secIdList.append(f'tag{i}')
+                secIdList.append(f'value{i}')
             cd_dict['secIdList'] = [secIdList]
 
-            cd_dict['aggGroup'] = (self.next_conId % 4) + 1
-            cd_dict['underSymbol'] = 'Under' + symbol
-            cd_dict['underSecType'] = 'Under' + combo[0]
+            cd_dict['aggGroup'] = sel4 + 1
+            cd_dict['underSymbol'] = f'Under{symbol}'
+            cd_dict['underSecType'] = f'Under{combo[0]}'
 
-            cd_dict['marketRuleIds'] = 'MarketRuleIds' + str(self.next_conId)
+            cd_dict['marketRuleIds'] = f'MarketRuleIds{conId}'
 
-            cd_dict['stockType'] = 'StockType' + str((self.next_conId % 9) + 1)
+            cd_dict['stockType'] = f'StockType{sel9 + 1}'
 
             self.contract_descriptions = self.contract_descriptions.append(
                             pd.DataFrame(cd_dict))
 
             # ComboLegs
-            cl_dict = {'cl_conId': self.next_conId}
+            cl_dict = {'cl_conId': conId}
 
-            cl_dict['cl_ratio'] = self.next_conId % 7
+            cl_dict['cl_ratio'] = sel7
 
-            combo_leg_action = ('BUY', 'SELL', 'SSHORT')
-            combo_leg_exchange = ('EX0', 'EX1', 'EX2', 'EX3')
-            cl_dict['cl_action'] = combo_leg_action[self.next_conId % 3]
-            cl_dict['cl_exchange'] = combo_leg_exchange[self.next_conId % 4]
-            cl_dict['cl_openClose'] = self.next_conId % 4
+            cl_dict['cl_action'] = ('BUY', 'SELL', 'SSHORT')[sel3]
+            cl_dict['cl_exchange'] = ('EX0', 'EX1', 'EX2', 'EX3')[sel4]
+            cl_dict['cl_openClose'] = sel4
             # for stock legs when doing short sale
-            cl_dict['cl_shortSaleSlot'] = self.next_conId % 6
-            combo_leg_designated_location = ('DL0', 'DL1', 'DL2', 'DL3', 'DL4')
+            cl_dict['cl_shortSaleSlot'] = sel6
+
             cl_dict['cl_designatedLocation'] = \
-                combo_leg_designated_location[self.next_conId % 5]
-            cl_dict['cl_exemptCode'] = (self.next_conId % 7) - 1
+                ('DL0', 'DL1', 'DL2', 'DL3', 'DL4')[sel5]
+
+            cl_dict['cl_exemptCode'] = sel7 - 1
 
             self.combo_legs = self.combo_legs.append(
                 pd.DataFrame(cl_dict, index=[0]))
@@ -635,9 +603,10 @@ class MockIB:
             ############################################################
             # build DeltaNeutralContract
             ############################################################
-            dn_dict = {'conId': self.next_conId}
-            dn_dict['delta'] = round(self.next_conId/.25, 4)
-            dn_dict['price'] = round(self.next_conId/.33, 4)
+            dn_dict = {'conId': conId,
+                       'delta': round(conId / .25, 4),
+                       'price': round(conId / .33, 4)
+                       }
 
             self.delta_neutral_contract = self.delta_neutral_contract.append(
                 pd.DataFrame(dn_dict, index=[0]))
