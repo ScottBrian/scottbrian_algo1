@@ -17,6 +17,7 @@ from typing import Any, Dict
 
 
 from ibapi.contract import ComboLeg, Contract, ContractDetails  # type: ignore
+from ibapi.contract import ContractDescription
 from ibapi.contract import DeltaNeutralContract
 from ibapi.tag_value import TagValue  # type: ignore
 
@@ -286,95 +287,35 @@ def get_contract_details_obj(contract_details_dict: Dict[str, Any]
     contract_details.__dict__ = work_con_det_dict
 
     return contract_details
+
+
 ###############################################################################
-# AlgoTagValue
+# get ContractDescription dictionary
 ###############################################################################
-# class AlgoTagValue(TagValue):
-#     """Class for AlgoTagValue."""
-#     def __init__(self, tag: str = None, value: str = None) -> None:
-#         """Init method for AlgoTagValue.
-#
-#         Args:
-#             tag: tag to be passed to the TagValue init
-#             value: value to be passed to the TagValue init
-#
-#         """
-#         super().__init__(tag, value)
-#
-#     def get_dict(self) -> Dict:
-#         """Get dictionary to be used for DataFrame entry."""
-#         return self.__dict__
-###############################################################################
-# AlgoComboLeg
-###############################################################################
-# class AlgoComboLeg(ComboLeg):
-#     """Class for AlgoComboLeg."""
-#
-#     def __init__(self):
-#         """Init method for AlgoComboLeg."""
-#         super().__init__()
-#
-#     def get_dict(self) -> Dict:
-#         """Get dictionary to be used for DataFrame entry."""
-#         return self.__dict__
-###############################################################################
-# AlgoDeltaNeutralContract
-###############################################################################
-# class AlgoDeltaNeutralContract(DeltaNeutralContract):
-#     """Class for AlgoDeltaNeutralContract."""
-#
-#     def __init__(self):
-#         """Init method for AlgoDeltaNeutralContract."""
-#         super().__init__()
-#
-#     def get_dict(self) -> Dict:
-#         """Get dictionary to be used for DataFrame entry."""
-#         return self.__dict__
-###############################################################################
-# AlgoContract
-###############################################################################
-# class AlgoContract(Contract):
-#     """Class for AlgoContract."""
-#
-#     def __init__(self):
-#         """Init method for AlgoContract"""
-#         super().__init__()
-#
-#     def get_dict(self) -> Dict:
-#         """Get dictionary to be used for DataFrame entry."""
-#         ret_dict = self.__dict__
-#         if self.comboLegs:
-#             cl_list = []
-#             for cl in self.comboLegs:
-#                 cl_list.append(cl.get_dict())
-#             ret_dict['comboLegs'] = str(tuple(cl_list))
-#
-#         if self.deltaNeutralContract:
-#             dnc_dict = self.deltaNeutralContract.get_dict()
-#             ret_dict['deltaNeutralContract'] = str(dnc_dict)
-#
-#         return ret_dict
-#
-###############################################################################
-# AlgoContractDetails
-###############################################################################
-# class AlgoContractDetails(ContractDetails):
-#     """Class for ib contract details."""
-#
-#     def __init__(self):
-#         """Init method for AlgoContractDetails"""
-#         super().__init__()
-#
-#     def get_dict(self) -> Dict:
-#         """Get dictionary to be used for DataFrame entry."""
-#         ret_dict = self.__dict__
-#         if self.contract:
-#             con_dict = self.contract.get_dict()
-#             ret_dict['contract'] = str(con_dict)
-#
-#         if self.secIdList:
-#             sid_list = []
-#             for sid in self.secIdList:
-#                 sid.append(sid.get_dict())
-#             ret_dict['secIdList'] = str(tuple(sid_list))
-#         return ret_dict
+def get_contract_description_dict(contract_description: ContractDescription,
+                                  df: bool = False
+                                  ) -> Dict[str, Any]:
+    """Get dictionary to be used for DataFrame entry.
+
+    Args:
+        contract_description: instance of ContractDescription class
+        df: Indicates whether to make derivativeSecTypes a list for df append
+
+    Returns:
+        dictionary of contract_description object
+
+    """
+    ret_dict: Dict[str, Any] = \
+        {'symbol': contract_description.contract.symbol,
+         'secType': contract_description.contract.secType,
+         'primaryExchange': contract_description.contract.primaryExchange,
+         'currency': contract_description.contract.currency
+         }
+    if df:
+        ret_dict['derivativeSecTypes'] = \
+            [tuple(contract_description.derivativeSecTypes)]
+    else:
+        ret_dict['derivativeSecTypes'] = \
+            tuple(contract_description.derivativeSecTypes)
+
+    return ret_dict

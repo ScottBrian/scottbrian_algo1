@@ -16,6 +16,9 @@ from pathlib import Path
 import time
 import ast
 
+# import numexpr as ne
+# import bottleneck as bn
+
 from ibapi.wrapper import EWrapper  # type: ignore
 # from ibapi import utils
 from ibapi.client import EClient  # type: ignore
@@ -48,7 +51,7 @@ from scottbrian_utils.diag_msg import get_formatted_call_sequence
 
 from scottbrian_algo1.algo_maps import get_contract_dict
 from scottbrian_algo1.algo_maps import get_contract_details_dict
-
+from scottbrian_algo1.algo_maps import get_contract_description_dict
 
 # from datetime import datetime
 import logging
@@ -755,36 +758,32 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         for desc in contract_descriptions:
             logger.debug('Symbol: {}'.format(desc.contract.symbol))
 
-            desc_to_add_df = pd.DataFrame([[desc.contract.symbol,
-                                            desc.contract.secType,
-                                            desc.contract.primaryExchange,
-                                            desc.contract.currency,
-                                            tuple(desc.derivativeSecTypes)
-                                            ]],
-                                          columns=['symbol',
-                                                   'secType',
-                                                   'primaryExchange',
-                                                   'currency',
-                                                   'derivativeSecTypes'],
-                                          index=[desc.contract.conId])
+            conId = desc.contract.conId
 
             if desc.contract.secType == 'STK' and \
                     desc.contract.currency == 'USD' and \
                     'OPT' in desc.derivativeSecTypes:
-                # remove the descriptor if it already exists in the DataFrame
-                # as we want the newest information to replace the old
-                self.stock_symbols.drop(desc.contract.conId,
-                                        inplace=True,
-                                        errors='ignore')
-                self.stock_symbols = self.stock_symbols.append(desc_to_add_df)
+                if conId in self.stock_symbols.index:
+                    self.stock_symbols.loc[conId] = \
+                        pd.Series(get_contract_description_dict(desc))
+                else:
+                    self.stock_symbols = \
+                        self.stock_symbols.append(
+                            pd.DataFrame(
+                                get_contract_description_dict(desc,
+                                                              df=True),
+                                index=[conId]))
             else:  # all other symbols
-                # remove the descriptor if it already exists in the DataFrame
+                # update the descriptor if it already exists in the DataFrame
                 # as we want the newest information to replace the old
-                self.symbols.drop(desc.contract.conId,
-                                  inplace=True,
-                                  errors='ignore')
-
-                self.symbols = self.symbols.append(desc_to_add_df)
+                if conId in self.symbols.index:
+                    self.symbols.loc[conId] = \
+                        pd.Series(get_contract_description_dict(desc))
+                else:
+                    self.symbols = self.symbols.append(
+                        pd.DataFrame(get_contract_description_dict(desc,
+                                                                   df=True),
+                                     index=[conId]))
 
         self.response_complete_event.set()
 
@@ -875,41 +874,33 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # print('contract_details:\n', contract_details)
         # print('contract_details.__dict__:\n', contract_details.__dict__)
 
-        # remove the contract if it already exists in the DataFrame
-        # as we want the newest information to replace the old
-        conId = contract_details.contract.conId
-        self.contracts.drop(conId,
-                            inplace=True,
-                            errors='ignore')
         # get the conId to use as an index
+        conId = contract_details.contract.conId
 
-        # Add the contract to the DataFrame using contract dict.
-        # Note that if the contract contains an array for one of the
-        # fields, the DataFrame create will reject it because if the
-        # single item conId for the index. The contract get_dict method
-        # returns a dictionary that can be used to instantiate the
-        # DataFrame item, and any class instances or arrays of class
-        # instances will be returned as a string so that the DataFrame
-        # item will work
+        # The contracts and contract_details DataFrames are both indexed by
+        # the conId. If an entry for the conId already exists, we will replace
+        # it with the newest information we just now received. Otherwise, we
+        # will add it. The get_contract_dict and get_contract_details_dict
+        # methods each return a dictionary that can be used to update or add
+        # to the DataFrame. Any class instances or arrays of class
+        # instances will be returned as a string so that the DataFrame can be
+        # stored and retrieved as csv files.
         contract_dict = get_contract_dict(contract_details.contract)
-        self.contracts = self.contracts.append(
-                    pd.DataFrame(contract_dict,
-                                 index=[conId]))
-
-        # remove the contract_details if it already exists in the DataFrame
-        # as we want the newest information to replace the old
-        self.contract_details.drop(conId,
-                                   inplace=True,
-                                   errors='ignore')
-
-        # remove the contract from the contract_details
-        # contract_details.contract = None
+        if conId in self.contracts.index:
+            self.contracts.loc[conId] = pd.Series(contract_dict)
+        else:
+            self.contracts = self.contracts.append(
+                        pd.DataFrame(contract_dict,
+                                     index=[conId]))
 
         # add the contract details to the DataFrame
         contract_details_dict = get_contract_details_dict(contract_details)
-        self.contract_details = self.contract_details.append(
-                    pd.DataFrame(contract_details_dict,
-                                 index=[conId]))
+        if conId in self.contract_details.index:
+            self.contract_details.loc[conId] = pd.Series(contract_details_dict)
+        else:
+            self.contract_details = self.contract_details.append(
+                        pd.DataFrame(contract_details_dict,
+                                     index=[conId]))
 
         # print('self.contract_details:\n', contract_details)
         # print('self.contract_details.__dict__:\n',
@@ -1055,7 +1046,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 #
 #     algo_app = AlgoApp(ds_catalog)
 #
-#     algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+#     # algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
 #
 #     print("serverVersion:%s connectionTime:%s" %
 #           (algo_app.serverVersion(),
@@ -1069,16 +1060,17 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 #     #
 #     # print('algo_app.stock_symbols\n', algo_app.stock_symbols)
 #     try:
-#         contract = Contract()
-#         contract.conId = 208813719 # 3691937        #  4726021
-#         contract.symbol = 'GOOGL'
-#         contract.secType = 'STK'
-#         contract.currency = 'USD'
-#         contract.exchange = 'SMART'
-#         contract.primaryExchange = 'NASDAQ'
+#
+#         # contract = Contract()
+#         # contract.conId = 208813719 # 3691937        #  4726021
+#         # contract.symbol = 'GOOGL'
+#         # contract.secType = 'STK'
+#         # contract.currency = 'USD'
+#         # contract.exchange = 'SMART'
+#         # contract.primaryExchange = 'NASDAQ'
 #
 #         # algo_app.get_contract_details(contract)
-#         algo_app.get_fundamental_data(contract, 'ReportSnapshot')
+#         # algo_app.get_fundamental_data(contract, 'ReportSnapshot')
 #         # ReportSnapshot: Company overview
 #         # ReportsFinSummary: Financial summary
 #         # ReportRatios: Financial ratios
@@ -1091,12 +1083,12 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 #         # print('algo_app.contracts.symbol.loc[contract.conId]\n',
 #         #       algo_app.contracts.symbol.loc[contract.conId])
 #         # my_contract_details = algo_app.contract_details.loc[
-#         contract.conId][0]
+#         # contract.conId][0]
 #     #
 #         # print('my_contract_details\n', my_contract_details)
 #     finally:
 #         print('about to disconnect')
-#         algo_app.disconnect()
+#         # algo_app.disconnect()
 #
 #
 # if __name__ == "__main__":

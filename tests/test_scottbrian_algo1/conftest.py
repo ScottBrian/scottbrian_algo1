@@ -305,9 +305,15 @@ class MockIB:
             build_msg = make_field(IN.SYMBOL_SAMPLES) + make_field(reqId)
 
             # find pattern matches in mock contract descriptions
-            match_descs = self.contract_descriptions.loc[
-                self.contract_descriptions['symbol'].str.
-                startswith(pattern)]
+            symbol_starts_with_pattern = \
+                self.contract_descriptions['symbol'].map(
+                    lambda symbol: symbol.startswith(pattern))
+            match_descs = \
+                self.contract_descriptions[symbol_starts_with_pattern]
+
+            # match_descs = self.contract_descriptions.loc[
+            #     self.contract_descriptions['symbol'].str.
+            #     startswith(pattern)]
 
             # limit the number found as ib does
             num_found = min(self.MAX_CONTRACT_DESCS_RETURNED,
@@ -581,7 +587,9 @@ class MockIB:
             self.contract_descriptions = self.contract_descriptions.append(
                             pd.DataFrame(cd_dict))
 
+            ###################################################################
             # ComboLegs
+            ###################################################################
             cl_dict = {'cl_conId': conId}
 
             cl_dict['cl_ratio'] = sel7
@@ -623,6 +631,17 @@ class MockIB:
 
         for symbol in self.search_patterns():
             self.build_desc(symbol)
+
+        #######################################################################
+        # set and sort index for contract_descriptions, delta_neutral_contract
+        #######################################################################
+        self.contract_descriptions.set_index('conId', drop=False, inplace=True)
+        self.contract_descriptions.sort_index(inplace=True)
+
+        self.delta_neutral_contract.set_index('conId',
+                                              drop=False,
+                                              inplace=True)
+        self.delta_neutral_contract.sort_index(inplace=True)
 
         logger.info('built mock_con_descs DataFrame with %d entries',
                     len(self.contract_descriptions))
