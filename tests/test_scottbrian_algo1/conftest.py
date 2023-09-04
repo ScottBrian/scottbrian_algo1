@@ -23,6 +23,19 @@ import queue
 from pathlib import Path
 import logging
 
+# ###############################################################################
+# # logging
+# ###############################################################################
+# logging.basicConfig(filename='ThreadComm.log',
+#                     filemode='w',
+#                     level=logging.DEBUG,
+#                     format='%(asctime)s '
+#                            '[%(levelname)8s] '
+#                            '%(filename)s:'
+#                            '%(funcName)s:'
+#                            '%(lineno)d '
+#                            '%(message)s')
+
 logger = logging.getLogger(__name__)
 
 proj_dir = Path.cwd().resolve().parents[1]  # back two directories
@@ -261,13 +274,22 @@ class MockIB:
         #######################################################################
         # get version and connect time (special case - not decode able)
         #######################################################################
-        if msg == b'API\x00\x00\x00\x00\tv100..157':
+        # if msg == b'API\x00\x00\x00\x00\tv100..157':
+        # the number at the end of the msg (currently 176) is the
+        # version number - this is set in client.connect. The first line
+        # above in this send_msg method issues a log message which will
+        # show what the client put together as the starting message when
+        # first connecting. The version number must match the version
+        # number if the API message in the following if statement.
+        if msg == b'API\x00\x00\x00\x00\tv100..176':
             current_dt = datetime.now(
                 tz=timezone(offset=timedelta(hours=5))).\
                 strftime('%Y%m%d %H:%M:%S')
 
             # recv_msg = b'\x00\x00\x00\x1a157\x0020210301 23:43:23 EST\x00'
-            recv_msg = b'\x00\x00\x00\x1a157\x00' \
+            # the version number in the following recv_msg must match
+            # the version number above in the API msg (currently 176)
+            recv_msg = b'\x00\x00\x00\x1a176\x00' \
                        + current_dt.encode('utf-8') + b' EST\x00'
 
         #######################################################################

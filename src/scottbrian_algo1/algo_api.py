@@ -4,8 +4,20 @@
 algo_api
 ========
 
-With algo_api you can connect to the IBAPI and request information and make
-trades.
+With algo_api you can connect to the IBAPI to obtain information and
+make trades.
+
+The information that can be obtained includes:
+
+    1) stock symbols used by the IBAPI
+    2) stock prices
+    3) option prices
+    4) current positions held
+    5) current cash balance
+    6) total balance of cash and positions
+
+Much of the information is saved in a MongoDb data base and updated
+periodically.
 
 """
 
@@ -61,7 +73,7 @@ import logging
 ########################################################################
 logging.basicConfig(filename='AlgoApp.log',
                     filemode='w',
-                    level=logging.INFO,
+                    level=logging.DEBUG,
                     format='%(asctime)s '
                            '%(levelname)s '
                            '%(filename)s:'
@@ -191,7 +203,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         """
         if TYPE_CHECKING:
-            __class__: Type[AlgoApp]
+            __class__: Type[AlgoApp]  # noqa: F842
         classname = self.__class__.__name__
         parms = 'ds_catalog'
 

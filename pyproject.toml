@@ -1,0 +1,33 @@
+[project]
+name = "scottbrian_algo1"
+version = "1.0.0"
+description = "Analyze and trade financial instruments"
+readme = "README.rst"
+requires-python = ">=3.11"
+license = {file = "LICENSE.txt"}
+keywords = ["trade", "invest", "ibapi", "stocks", "options"]
+authors = [{name = "Scott Tuttle", email = "sbtuttle@outlook.com"}]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Development Status :: 3 - Alpha",
+    #"Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: Windows"]
+dependencies = [
+    'pandas',
+    'scottbrian_utils']
+
+[project.urls]
+Documentation = "https://scottbrian-algo1.readthedocs.io/en/latest/"
+Source = "https://github.com/ScottBrian/scottbrian_algo1.git"
+
+[build-system]
+requires = [
+    "setuptools >= 68.1.2",
+    "wheel >= 0.41.2"
+]
+build-backend = "setuptools.build_meta"
