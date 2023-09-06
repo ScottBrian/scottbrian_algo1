@@ -23,14 +23,14 @@ import queue
 from pathlib import Path
 import logging
 
-# ###############################################################################
-# # logging
-# ###############################################################################
-# logging.basicConfig(filename='ThreadComm.log',
+########################################################################
+# logging
+########################################################################
+# logging.basicConfig(filename='AlgoApp.log',
 #                     filemode='w',
 #                     level=logging.DEBUG,
 #                     format='%(asctime)s '
-#                            '[%(levelname)8s] '
+#                            '%(levelname)s '
 #                            '%(filename)s:'
 #                            '%(funcName)s:'
 #                            '%(lineno)d '
@@ -40,11 +40,11 @@ logger = logging.getLogger(__name__)
 
 proj_dir = Path.cwd().resolve().parents[1]  # back two directories
 
-test_cat = \
-    FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
-                 'mock_contract_descs':
-                     Path(proj_dir / 't_datasets/mock_contract_descs.csv')
-                 })
+test_cat = FileCatalog(
+    {'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
+     'mock_contract_descs':
+         Path(proj_dir / 't_datasets/mock_contract_descs.csv')
+     })
 
 
 ###############################################################################
@@ -606,8 +606,11 @@ class MockIB:
 
             cd_dict['stockType'] = f'StockType{sel9 + 1}'
 
-            self.contract_descriptions = self.contract_descriptions.append(
-                            pd.DataFrame(cd_dict))
+            # self.contract_descriptions = self.contract_descriptions.append(
+            #                 pd.DataFrame(cd_dict))
+            self.contract_descriptions = pd.concat([
+                self.contract_descriptions,
+                pd.DataFrame(cd_dict)])
 
             ###################################################################
             # ComboLegs
@@ -627,8 +630,11 @@ class MockIB:
 
             cl_dict['cl_exemptCode'] = sel7 - 1
 
-            self.combo_legs = self.combo_legs.append(
-                pd.DataFrame(cl_dict, index=[0]))
+            # self.combo_legs = self.combo_legs.append(
+            #     pd.DataFrame(cl_dict, index=[0]))
+            self.combo_legs = pd.concat([
+                self.combo_legs,
+                pd.DataFrame(cl_dict, index=[0])])
 
             ############################################################
             # build DeltaNeutralContract
@@ -638,8 +644,11 @@ class MockIB:
                        'price': round(conId / .33, 4)
                        }
 
-            self.delta_neutral_contract = self.delta_neutral_contract.append(
-                pd.DataFrame(dn_dict, index=[0]))
+            # self.delta_neutral_contract = self.delta_neutral_contract.append(
+            #     pd.DataFrame(dn_dict, index=[0]))
+            self.delta_neutral_contract = pd.concat([
+                self.delta_neutral_contract.
+                pd.DataFrame(dn_dict, index=[0])])
 
     ###########################################################################
     # MockIB: build_contract_descriptions

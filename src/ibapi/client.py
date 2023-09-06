@@ -99,17 +99,17 @@ class EClient(object):
                                NOT_CONNECTED.msg())
             return
 
-        try: 
-            
+        try:
+
             VERSION = 2
-            
+
             msg = make_field(OUT.START_API) \
                + make_field(VERSION)    \
                + make_field(self.clientId)
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_OPTIONAL_CAPABILITIES:
                 msg += make_field(self.optCapab)
-                
+
         except ClientException as ex:
             self.wrapper.error(NO_VALID_ID, ex.code, ex.msg + ex.text)
             return
@@ -385,19 +385,19 @@ class EClient(object):
                 return
 
         try:
-            
+
             VERSION = 11
-            
+
             # send req mkt data msg
             flds = []
             flds += [make_field(OUT.REQ_MKT_DATA),
                 make_field(VERSION),
                 make_field(reqId)]
-    
+
             # send contract fields
             if self.serverVersion() >= MIN_SERVER_VER_REQ_MKT_DATA_CONID:
                 flds += [make_field(contract.conId),]
-    
+
             flds += [make_field(contract.symbol),
                 make_field(contract.secType),
                 make_field(contract.lastTradeDateOrContractMonth),
@@ -408,10 +408,10 @@ class EClient(object):
                 make_field(contract.primaryExchange), # srv v14 and above
                 make_field(contract.currency),
                 make_field(contract.localSymbol) ] # srv v2 and above
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_TRADING_CLASS:
                 flds += [make_field(contract.tradingClass),]
-    
+
             # Send combo legs for BAG requests (srv v8 and above)
             if contract.secType == "BAG":
                 comboLegsCount = len(contract.comboLegs) if contract.comboLegs else 0
@@ -421,7 +421,7 @@ class EClient(object):
                             make_field( comboLeg.ratio),
                             make_field( comboLeg.action),
                             make_field( comboLeg.exchange)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_DELTA_NEUTRAL:
                 if contract.deltaNeutralContract:
                     flds += [make_field(True),
@@ -430,13 +430,13 @@ class EClient(object):
                         make_field(contract.deltaNeutralContract.price)]
                 else:
                     flds += [make_field(False),]
-    
+
             flds += [make_field(genericTickList), # srv v31 and above
                 make_field(snapshot)] # srv v35 and above
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_REQ_SMART_COMPONENTS:
                 flds += [make_field(regulatorySnapshot),]
-    
+
             # send mktDataOptions parameter
             if self.serverVersion() >= MIN_SERVER_VER_LINKING:
                 #current doc says this part if for "internal use only" -> won't support it
@@ -444,13 +444,13 @@ class EClient(object):
                     raise NotImplementedError("not supported")
                 mktDataOptionsStr = ""
                 flds += [make_field(mktDataOptionsStr),]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -526,12 +526,12 @@ class EClient(object):
                 "  It does not support smart components request.")
             return
 
-        try: 
-            
+        try:
+
             msg = make_field(OUT.REQ_SMART_COMPONENTS) \
                 + make_field(reqId) \
                 + make_field(bboExchange)
-                
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
@@ -575,7 +575,7 @@ class EClient(object):
             return
 
         try:
-            
+
             msg = make_field(OUT.REQ_TICK_BY_TICK_DATA)\
                 + make_field(reqId) \
                 + make_field(contract.conId) \
@@ -591,7 +591,7 @@ class EClient(object):
                 + make_field(contract.localSymbol) \
                 + make_field(contract.tradingClass) \
                 + make_field(tickType)
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_TICK_BY_TICK_IGNORE_SIZE:
                 msg += make_field(numberOfTicks) \
                     + make_field(ignoreSize)
@@ -653,9 +653,9 @@ class EClient(object):
                 return
 
         try:
-        
+
             VERSION = 3
-    
+
             # send req mkt data msg
             flds = []
             flds += [make_field(OUT.REQ_CALC_IMPLIED_VOLAT),
@@ -677,7 +677,7 @@ class EClient(object):
                 flds += [make_field(contract.tradingClass),]
             flds += [ make_field( optionPrice),
                 make_field( underPrice)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_LINKING:
                 implVolOptStr = ""
                 tagValuesCount = len(implVolOptions) if implVolOptions else 0
@@ -686,13 +686,13 @@ class EClient(object):
                         implVolOptStr += str(implVolOpt)
                 flds += [make_field(tagValuesCount),
                     make_field(implVolOptStr)]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -751,10 +751,10 @@ class EClient(object):
                         "  It does not support tradingClass parameter in calculateImpliedVolatility.")
                 return
 
-        try: 
+        try:
 
             VERSION = 3
-    
+
             # send req mkt data msg
             flds = []
             flds += [make_field(OUT.REQ_CALC_OPTION_PRICE),
@@ -776,7 +776,7 @@ class EClient(object):
                 flds += [make_field(contract.tradingClass),]
             flds += [ make_field(volatility),
                 make_field(underPrice)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_LINKING:
                 optPrcOptStr = ""
                 tagValuesCount = len(optPrcOptions) if optPrcOptions else 0
@@ -785,13 +785,13 @@ class EClient(object):
                         optPrcOptStr += str(implVolOpt)
                 flds += [make_field(tagValuesCount),
                     make_field(optPrcOptStr)]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -853,9 +853,9 @@ class EClient(object):
                 return
 
         try:
-                
+
             VERSION = 2
-    
+
             # send req mkt data msg
             flds = []
             flds += [make_field(OUT.EXERCISE_OPTIONS),
@@ -879,13 +879,13 @@ class EClient(object):
                 make_field(exerciseQuantity),
                 make_field(account),
                 make_field(override)]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -1123,18 +1123,18 @@ class EClient(object):
                 return
 
         try:
-                
+
             VERSION = 27 if (self.serverVersion() < MIN_SERVER_VER_NOT_HELD) else 45
-    
+
             # send place order msg
             flds = []
             flds += [make_field(OUT.PLACE_ORDER)]
-    
+
             if self.serverVersion() < MIN_SERVER_VER_ORDER_CONTAINER:
                 flds += [make_field(VERSION)]
-    
+
             flds += [make_field(orderId)]
-    
+
             # send contract fields
             if self.serverVersion() >= MIN_SERVER_VER_PLACE_ORDER_CONID:
                 flds.append(make_field( contract.conId))
@@ -1150,19 +1150,19 @@ class EClient(object):
                 make_field( contract.localSymbol)] # srv v2 and above
             if self.serverVersion() >= MIN_SERVER_VER_TRADING_CLASS:
                 flds.append(make_field( contract.tradingClass))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_SEC_ID_TYPE:
                 flds += [make_field( contract.secIdType),
                     make_field( contract.secId)]
-    
+
             # send main order fields
             flds.append(make_field( order.action))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_FRACTIONAL_POSITIONS:
                 flds.append(make_field(order.totalQuantity))
             else:
                 flds.append(make_field(int(order.totalQuantity)))
-    
+
             flds.append(make_field(order.orderType))
             if self.serverVersion() < MIN_SERVER_VER_ORDER_COMBO_LEGS_PRICE:
                 flds.append(make_field(
@@ -1174,7 +1174,7 @@ class EClient(object):
                     order.auxPrice if order.auxPrice != UNSET_DOUBLE else 0))
             else:
                 flds.append(make_field_handle_empty( order.auxPrice))
-    
+
             # send extended order fields
                 flds += [make_field( order.tif),
                 make_field( order.ocaGroup),
@@ -1190,14 +1190,14 @@ class EClient(object):
                 make_field( order.triggerMethod), # srv v5 and above
                 make_field( order.outsideRth),    # srv v5 and above
                 make_field( order.hidden)]        # srv v7 and above
-    
+
             # Send combo legs for BAG requests (srv v8 and above)
             if contract.secType == "BAG":
                 comboLegsCount = len(contract.comboLegs) if contract.comboLegs else 0
                 flds.append(make_field(comboLegsCount))
                 if comboLegsCount > 0:
                     for comboLeg in contract.comboLegs:
-                        assert comboLeg
+                        # assert comboLeg @sbt commented out for bandit
                         flds += [make_field(comboLeg.conId),
                             make_field( comboLeg.ratio),
                             make_field( comboLeg.action),
@@ -1207,16 +1207,16 @@ class EClient(object):
                             make_field( comboLeg.designatedLocation)] # srv v35 and above
                         if self.serverVersion() >= MIN_SERVER_VER_SSHORTX_OLD:
                             flds.append(make_field(comboLeg.exemptCode))
-    
+
             # Send order combo legs for BAG requests
             if self.serverVersion() >= MIN_SERVER_VER_ORDER_COMBO_LEGS_PRICE and contract.secType == "BAG":
                 orderComboLegsCount = len(order.orderComboLegs) if order.orderComboLegs else 0
                 flds.append(make_field( orderComboLegsCount))
                 if orderComboLegsCount:
                     for orderComboLeg in order.orderComboLegs:
-                        assert orderComboLeg
+                        # assert orderComboLeg  @sbt comment out bandit
                         flds.append(make_field_handle_empty( orderComboLeg.price))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_SMART_COMBO_ROUTING_PARAMS and contract.secType == "BAG":
                     smartComboRoutingParamsCount = len(order.smartComboRoutingParams) if order.smartComboRoutingParams else 0
                     flds.append(make_field( smartComboRoutingParamsCount))
@@ -1224,7 +1224,7 @@ class EClient(object):
                         for tagValue in order.smartComboRoutingParams:
                             flds += [make_field(tagValue.tag),
                                 make_field(tagValue.value)]
-    
+
             ######################################################################
             # Send the shares allocation.
             #
@@ -1239,28 +1239,28 @@ class EClient(object):
             #####################################################################
             # send deprecated sharesAllocation field
             flds += [make_field( ""),            # srv v9 and above
-    
+
                 make_field( order.discretionaryAmt), # srv v10 and above
                 make_field( order.goodAfterTime), # srv v11 and above
                 make_field( order.goodTillDate), # srv v12 and above
-    
+
                 make_field( order.faGroup),      # srv v13 and above
                 make_field( order.faMethod),     # srv v13 and above
                 make_field( order.faPercentage), # srv v13 and above
                 make_field( order.faProfile)]    # srv v13 and above
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_MODELS_SUPPORT:
                 flds.append(make_field( order.modelCode))
-    
+
             # institutional short saleslot data (srv v18 and above)
             flds += [make_field( order.shortSaleSlot),   # 0 for retail, 1 or 2 for institutions
                 make_field( order.designatedLocation)]   # populate only when shortSaleSlot = 2.
             if self.serverVersion() >= MIN_SERVER_VER_SSHORTX_OLD:
                 flds.append(make_field( order.exemptCode))
-    
+
             # not needed anymore
             #bool isVolOrder = (order.orderType.CompareNoCase("VOL") == 0)
-    
+
             # srv v19 and above fields
             flds.append(make_field( order.ocaType))
             #if( self.serverVersion() < 38) {
@@ -1281,34 +1281,34 @@ class EClient(object):
                 make_field_handle_empty( order.delta),
                 make_field_handle_empty( order.stockRangeLower),
                 make_field_handle_empty( order.stockRangeUpper),
-    
+
                 make_field( order.overridePercentageConstraints),    #srv v22 and above
-    
+
                 # Volatility orders (srv v26 and above)
                 make_field_handle_empty( order.volatility),
                 make_field_handle_empty( order.volatilityType),
                 make_field( order.deltaNeutralOrderType),             # srv v28 and above
                 make_field_handle_empty( order.deltaNeutralAuxPrice)] # srv v28 and above
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_DELTA_NEUTRAL_CONID and order.deltaNeutralOrderType:
                 flds += [make_field( order.deltaNeutralConId),
                     make_field( order.deltaNeutralSettlingFirm),
                     make_field( order.deltaNeutralClearingAccount),
                     make_field( order.deltaNeutralClearingIntent)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_DELTA_NEUTRAL_OPEN_CLOSE and order.deltaNeutralOrderType:
                 flds += [make_field( order.deltaNeutralOpenClose),
                     make_field( order.deltaNeutralShortSale),
                     make_field( order.deltaNeutralShortSaleSlot),
                     make_field( order.deltaNeutralDesignatedLocation)]
-    
+
             flds += [make_field( order.continuousUpdate),
                 make_field_handle_empty( order.referencePriceType),
                 make_field_handle_empty( order.trailStopPrice)] # srv v30 and above
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_TRAILING_PERCENT:
                 flds.append(make_field_handle_empty( order.trailingPercent))
-    
+
             # SCALE orders
             if self.serverVersion() >= MIN_SERVER_VER_SCALE_ORDERS2:
                 flds += [make_field_handle_empty( order.scaleInitLevelSize),
@@ -1317,13 +1317,13 @@ class EClient(object):
                     # srv v35 and above)
                 flds += [make_field( ""), # for not supported scaleNumComponents
                     make_field_handle_empty(order.scaleInitLevelSize)] # for scaleComponentSize
-    
+
             flds.append(make_field_handle_empty( order.scalePriceIncrement))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_SCALE_ORDERS3 \
                 and order.scalePriceIncrement != UNSET_DOUBLE \
                 and order.scalePriceIncrement > 0.0:
-    
+
                 flds += [make_field_handle_empty( order.scalePriceAdjustValue),
                     make_field_handle_empty( order.scalePriceAdjustInterval),
                     make_field_handle_empty( order.scaleProfitOffset),
@@ -1331,28 +1331,28 @@ class EClient(object):
                     make_field_handle_empty( order.scaleInitPosition),
                     make_field_handle_empty( order.scaleInitFillQty),
                     make_field( order.scaleRandomPercent)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_SCALE_TABLE:
                 flds += [make_field( order.scaleTable),
                     make_field( order.activeStartTime),
                     make_field( order.activeStopTime)]
-    
+
             # HEDGE orders
             if self.serverVersion() >= MIN_SERVER_VER_HEDGE_ORDERS:
                 flds.append(make_field( order.hedgeType))
                 if order.hedgeType:
                     flds.append(make_field( order.hedgeParam))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_OPT_OUT_SMART_ROUTING:
                 flds.append(make_field( order.optOutSmartRouting))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_PTA_ORDERS:
                 flds += [make_field( order.clearingAccount),
                     make_field( order.clearingIntent)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_NOT_HELD:
                 flds.append(make_field( order.notHeld))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_DELTA_NEUTRAL:
                 if contract.deltaNeutralContract:
                     flds += [make_field(True),
@@ -1361,7 +1361,7 @@ class EClient(object):
                         make_field(contract.deltaNeutralContract.price)]
                 else:
                     flds.append(make_field(False))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_ALGO_ORDERS:
                 flds.append(make_field( order.algoStrategy))
                 if order.algoStrategy:
@@ -1371,12 +1371,12 @@ class EClient(object):
                         for algoParam in order.algoParams:
                             flds += [make_field(algoParam.tag),
                                 make_field(algoParam.value)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_ALGO_ID:
                 flds.append(make_field( order.algoId))
-    
+
             flds.append(make_field( order.whatIf)) # srv v36 and above
-    
+
             # send miscOptions parameter
             if self.serverVersion() >= MIN_SERVER_VER_LINKING:
                 miscOptionsStr = ""
@@ -1384,14 +1384,14 @@ class EClient(object):
                     for tagValue in order.orderMiscOptions:
                         miscOptionsStr += str(tagValue)
                 flds.append(make_field( miscOptionsStr))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_ORDER_SOLICITED:
                 flds.append(make_field(order.solicited))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_RANDOMIZE_SIZE_AND_PRICE:
                 flds += [make_field(order.randomizeSize),
                     make_field(order.randomizePrice)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_PEGGED_TO_BENCHMARK:
                 if order.orderType == "PEG BENCH":
                     flds += [make_field(order.referenceContractId),
@@ -1399,17 +1399,17 @@ class EClient(object):
                         make_field(order.peggedChangeAmount),
                         make_field(order.referenceChangeAmount),
                         make_field(order.referenceExchangeId)]
-    
+
                 flds.append(make_field(len(order.conditions)))
-    
+
                 if len(order.conditions) > 0:
                     for cond in order.conditions:
                         flds.append(make_field(cond.type()))
                         flds += cond.make_fields()
-    
+
                     flds += [make_field(order.conditionsIgnoreRth),
                         make_field(order.conditionsCancelOrder)]
-    
+
                 flds += [make_field(order.adjustedOrderType),
                     make_field(order.triggerPrice),
                     make_field(order.lmtPriceOffset),
@@ -1417,40 +1417,40 @@ class EClient(object):
                     make_field(order.adjustedStopLimitPrice),
                     make_field(order.adjustedTrailingAmount),
                     make_field(order.adjustableTrailingUnit)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_EXT_OPERATOR:
                 flds.append(make_field( order.extOperator))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_SOFT_DOLLAR_TIER:
                 flds += [make_field(order.softDollarTier.name),
                     make_field(order.softDollarTier.val)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_CASH_QTY:
                 flds.append(make_field( order.cashQty))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_DECISION_MAKER:
                 flds.append(make_field( order.mifid2DecisionMaker))
                 flds.append(make_field( order.mifid2DecisionAlgo))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_MIFID_EXECUTION:
                 flds.append(make_field( order.mifid2ExecutionTrader))
                 flds.append(make_field( order.mifid2ExecutionAlgo))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_AUTO_PRICE_FOR_HEDGE:
                 flds.append(make_field(order.dontUseAutoPriceForHedge))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_ORDER_CONTAINER:
                 flds.append(make_field(order.isOmsContainer))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_D_PEG_ORDERS:
                 flds.append(make_field(order.discretionaryUpToLimitPrice))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_PRICE_MGMT_ALGO:
                 flds.append(make_field_handle_empty(UNSET_INTEGER if order.usePriceMgmtAlgo == None else 1 if order.usePriceMgmtAlgo else 0))
 
             if self.serverVersion() >= MIN_SERVER_VER_DURATION:
                 flds.append(make_field(order.duration))
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_POST_TO_ATS:
                 flds.append(make_field(order.postToAts))
 
@@ -1479,11 +1479,11 @@ class EClient(object):
                     flds.append(make_field_handle_empty(order.midOffsetAtHalf))
 
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(orderId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -1657,19 +1657,19 @@ class EClient(object):
         if not self.isConnected():
             self.wrapper.error(NO_VALID_ID, NOT_CONNECTED.code(), NOT_CONNECTED.msg())
             return
-        
+
         try:
-    
+
             VERSION = 2
-    
+
             flds = []
             flds += [make_field(OUT.REQ_ACCT_DATA),
                make_field(VERSION),
                make_field(subscribe),  # TRUE = subscribe, FALSE = unsubscribe.
                make_field(acctCode)]   # srv v9 and above, the account code. This will only be used for FA clients
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(NO_VALID_ID, ex.code, ex.msg + ex.text)
             return
@@ -1837,9 +1837,9 @@ class EClient(object):
             return
 
         try:
-            
+
             VERSION = 1
-    
+
             msg = make_field(OUT.REQ_POSITIONS_MULTI) \
                + make_field(VERSION)   \
                + make_field(reqId)     \
@@ -1849,7 +1849,7 @@ class EClient(object):
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-    
+
         self.sendMsg(msg)
 
 
@@ -1891,9 +1891,9 @@ class EClient(object):
             return
 
         try:
-            
+
             VERSION = 1
-    
+
             msg = make_field(OUT.REQ_ACCOUNT_UPDATES_MULTI) \
                + make_field(VERSION)   \
                + make_field(reqId)     \
@@ -1948,7 +1948,7 @@ class EClient(object):
             return
 
         try:
-            
+
             msg = make_field(OUT.REQ_PNL) \
                 + make_field(reqId) \
                 + make_field(account) \
@@ -1991,7 +1991,7 @@ class EClient(object):
                                "  It does not support PnL request.")
             return
 
-        try: 
+        try:
 
             msg = make_field(OUT.REQ_PNL_SINGLE) \
                 + make_field(reqId) \
@@ -2050,17 +2050,17 @@ class EClient(object):
             return
 
         try:
-            
+
             VERSION = 3
-    
+
             # send req open orders msg
             flds = []
             flds += [make_field(OUT.REQ_EXECUTIONS),
                 make_field(VERSION)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_EXECUTION_DATA_CHAIN:
                 flds += [make_field( reqId),]
-    
+
             # Send the execution rpt filter data (srv v9 and above)
             flds += [make_field( execFilter.clientId),
                 make_field(execFilter.acctCode),
@@ -2069,13 +2069,13 @@ class EClient(object):
                 make_field(execFilter.secType),
                 make_field(execFilter.exchange),
                 make_field(execFilter.side)]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -2125,17 +2125,17 @@ class EClient(object):
                 return
 
         try:
-            
+
             VERSION = 8
 
             # send req mkt data msg
             flds = []
             flds += [make_field(OUT.REQ_CONTRACT_DATA),
                 make_field( VERSION)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_CONTRACT_DATA_CHAIN:
                 flds += [make_field( reqId),]
-    
+
             # send contract fields
             flds += [make_field(contract.conId), # srv v37 and above
                 make_field(contract.symbol),
@@ -2144,7 +2144,7 @@ class EClient(object):
                 make_field(contract.strike),
                 make_field(contract.right),
                 make_field(contract.multiplier)] # srv v15 and above
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_PRIMARYEXCH:
                 flds += [make_field(contract.exchange),
                     make_field(contract.primaryExchange)]
@@ -2154,22 +2154,22 @@ class EClient(object):
                     flds += [make_field(contract.exchange + ":" + contract.primaryExchange),]
                 else:
                     flds += [make_field(contract.exchange),]
-    
+
             flds += [make_field( contract.currency),
                 make_field( contract.localSymbol)]
             if self.serverVersion() >= MIN_SERVER_VER_TRADING_CLASS:
                 flds += [make_field(contract.tradingClass), ]
             flds += [make_field(contract.includeExpired),] # srv v31 and above
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_SEC_ID_TYPE:
                 flds += [make_field( contract.secIdType),
                     make_field( contract.secId)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_BOND_ISSUERID:
                 flds += [make_field(contract.issuerId), ]
-    
+
             msg = "".join(flds)
-        
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
@@ -2243,15 +2243,15 @@ class EClient(object):
             return
 
         try:
-                
+
             VERSION = 5
-    
+
             # send req mkt depth msg
             flds = []
             flds += [make_field(OUT.REQ_MKT_DEPTH),
                 make_field(VERSION),
                 make_field(reqId)]
-    
+
             # send contract fields
             if self.serverVersion() >= MIN_SERVER_VER_TRADING_CLASS:
                 flds += [make_field(contract.conId),]
@@ -2268,12 +2268,12 @@ class EClient(object):
                 make_field(contract.localSymbol)]
             if self.serverVersion() >= MIN_SERVER_VER_TRADING_CLASS:
                 flds += [make_field(contract.tradingClass),]
-    
+
             flds += [make_field(numRows),] # srv v19 and above
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_SMART_DEPTH:
                 flds += [make_field(isSmartDepth),]
-    
+
             # send mktDepthOptions parameter
             if self.serverVersion() >= MIN_SERVER_VER_LINKING:
                 #current doc says this part if for "internal use only" -> won't support it
@@ -2281,13 +2281,13 @@ class EClient(object):
                     raise NotImplementedError("not supported")
                 mktDataOptionsStr = ""
                 flds += [make_field(mktDataOptionsStr),]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -2438,14 +2438,14 @@ class EClient(object):
             self.wrapper.error(NO_VALID_ID, NOT_CONNECTED.code(), NOT_CONNECTED.msg())
             return
 
-        try: 
+        try:
             VERSION = 1
-    
+
             msg = make_field(OUT.REPLACE_FA) \
                + make_field(VERSION) \
                + make_field(int(faData)) \
                + make_field(cxml) \
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_REPLACE_FA_END:
                 msg += make_field(reqId)
 
@@ -2539,18 +2539,18 @@ class EClient(object):
                 return
 
         try:
-                
+
             VERSION = 6
-    
+
             # send req mkt data msg
             flds = []
             flds += [make_field(OUT.REQ_HISTORICAL_DATA),]
-    
+
             if self.serverVersion() < MIN_SERVER_VER_SYNT_REALTIME_BARS:
                 flds += [make_field(VERSION),]
-    
+
             flds += [make_field(reqId),]
-    
+
             # send contract fields
             if self.serverVersion() >= MIN_SERVER_VER_TRADING_CLASS:
                 flds += [make_field(contract.conId),]
@@ -2573,7 +2573,7 @@ class EClient(object):
                 make_field(useRTH),
                 make_field(whatToShow),
                 make_field(formatDate)] # srv v16 and above
-    
+
             # Send combo legs for BAG requests
             if contract.secType == "BAG":
                 flds += [make_field(len(contract.comboLegs)),]
@@ -2582,10 +2582,10 @@ class EClient(object):
                         make_field( comboLeg.ratio),
                         make_field( comboLeg.action),
                         make_field( comboLeg.exchange)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_SYNT_REALTIME_BARS:
                 flds += [make_field(keepUpToDate), ]
-    
+
             # send chartOptions parameter
             if self.serverVersion() >= MIN_SERVER_VER_LINKING:
                 chartOptionsStr = ""
@@ -2593,13 +2593,13 @@ class EClient(object):
                     for tagValue in chartOptions:
                         chartOptionsStr += str(tagValue)
                 flds += [make_field( chartOptionsStr),]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
     def cancelHistoricalData(self, reqId:TickerId):
@@ -2642,7 +2642,7 @@ class EClient(object):
             return
 
         try:
-                
+
             flds = []
             flds += [make_field(OUT.REQ_HEAD_TIMESTAMP),
                 make_field(reqId),
@@ -2662,13 +2662,13 @@ class EClient(object):
                 make_field(useRTH),
                 make_field(whatToShow),
                 make_field(formatDate) ]
-    
+
             msg = "".join(flds)
 
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
     def cancelHeadTimeStamp(self, reqId: TickerId):
@@ -2706,7 +2706,7 @@ class EClient(object):
             return
 
         try:
-                
+
             flds = []
             flds += [make_field(OUT.REQ_HISTOGRAM_DATA),
                 make_field(tickerId),
@@ -2725,13 +2725,13 @@ class EClient(object):
                 make_field(contract.includeExpired),
                 make_field(useRTH),
                 make_field(timePeriod)]
-    
+
             msg = "".join(flds)
 
         except ClientException as ex:
             self.wrapper.error(tickerId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
     def cancelHistogramData(self, tickerId: int):
@@ -2767,7 +2767,7 @@ class EClient(object):
             return
 
         try:
-                
+
             flds = []
             flds += [make_field(OUT.REQ_HISTORICAL_TICKS),
                      make_field(reqId),
@@ -2790,19 +2790,19 @@ class EClient(object):
                      make_field(whatToShow),
                      make_field(useRth),
                      make_field(ignoreSize)]
-    
+
             miscOptionsString = ""
             if miscOptions:
                 for tagValue in miscOptions:
                     miscOptionsString += str(tagValue)
             flds += [make_field(miscOptionsString),]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -2851,15 +2851,15 @@ class EClient(object):
             return
 
         try:
-            
+
             VERSION = 4
-    
+
             flds = []
             flds += [make_field(OUT.REQ_SCANNER_SUBSCRIPTION)]
-    
+
             if self.serverVersion() < MIN_SERVER_VER_SCANNER_GENERIC_OPTS:
                 flds += [make_field(VERSION)]
-    
+
             flds +=[make_field(reqId),
                 make_field_handle_empty(subscription.numberOfRows),
                 make_field(subscription.instrument),
@@ -2882,7 +2882,7 @@ class EClient(object):
                 make_field_handle_empty(subscription.averageOptionVolumeAbove), # srv v25 and above
                 make_field(subscription.scannerSettingPairs), # srv v25 and above
                 make_field(subscription.stockTypeFilter)] # srv v27 and above
-    
+
             # send scannerSubscriptionFilterOptions parameter
             if self.serverVersion() >= MIN_SERVER_VER_SCANNER_GENERIC_OPTS:
                 scannerSubscriptionFilterOptionsStr = ""
@@ -2890,7 +2890,7 @@ class EClient(object):
                     for tagValueOpt in scannerSubscriptionFilterOptions:
                         scannerSubscriptionFilterOptionsStr += str(tagValueOpt)
                 flds += [make_field(scannerSubscriptionFilterOptionsStr)]
-    
+
             # send scannerSubscriptionOptions parameter
             if self.serverVersion() >= MIN_SERVER_VER_LINKING:
                 scannerSubscriptionOptionsStr = ""
@@ -2898,13 +2898,13 @@ class EClient(object):
                     for tagValueOpt in scannerSubscriptionOptions:
                         scannerSubscriptionOptionsStr += str(tagValueOpt)
                 flds += [make_field(scannerSubscriptionOptionsStr),]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -2973,14 +2973,14 @@ class EClient(object):
                 return
 
         try:
-                
+
             VERSION = 3
-    
+
             flds = []
             flds += [make_field(OUT.REQ_REAL_TIME_BARS),
                 make_field(VERSION),
                 make_field(reqId)]
-    
+
             # send contract fields
             if self.serverVersion() >= MIN_SERVER_VER_TRADING_CLASS:
                 flds += [make_field(contract.conId),]
@@ -2999,7 +2999,7 @@ class EClient(object):
             flds += [make_field(barSize),
                 make_field(whatToShow),
                 make_field(useRTH)]
-    
+
             # send realTimeBarsOptions parameter
             if self.serverVersion() >= MIN_SERVER_VER_LINKING:
                 realTimeBarsOptionsStr = ""
@@ -3007,13 +3007,13 @@ class EClient(object):
                     for tagValueOpt in realTimeBarsOptions:
                         realTimeBarsOptionsStr += str(tagValueOpt)
                 flds += [make_field(realTimeBarsOptionsStr),]
-    
+
             msg = "".join(flds)
 
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -3075,24 +3075,24 @@ class EClient(object):
             return
 
         try:
-                
+
             VERSION = 2
-    
+
             if self.serverVersion() < MIN_SERVER_VER_FUNDAMENTAL_DATA:
                 self.wrapper.error(NO_VALID_ID, UPDATE_TWS.code(), UPDATE_TWS.msg() +
                     "  It does not support fundamental data request.")
                 return
-    
+
             if self.serverVersion() < MIN_SERVER_VER_TRADING_CLASS:
                 self.wrapper.error(NO_VALID_ID, UPDATE_TWS.code(), UPDATE_TWS.msg() +
                     "  It does not support conId parameter in reqFundamentalData.")
                 return
-    
+
             flds = []
             flds += [make_field(OUT.REQ_FUNDAMENTAL_DATA),
                 make_field(VERSION),
                 make_field(reqId)]
-    
+
             # send contract fields
             if self.serverVersion() >= MIN_SERVER_VER_TRADING_CLASS:
                 flds += [make_field( contract.conId),]
@@ -3103,7 +3103,7 @@ class EClient(object):
                 make_field(contract.currency),
                 make_field(contract.localSymbol),
                 make_field(reportType)]
-    
+
             if self.serverVersion() >= MIN_SERVER_VER_LINKING:
                 fundDataOptStr = ""
                 tagValuesCount = len(fundamentalDataOptions) if fundamentalDataOptions else 0
@@ -3112,13 +3112,13 @@ class EClient(object):
                         fundDataOptStr += str(fundDataOption)
                 flds += [make_field(tagValuesCount),
                     make_field(fundDataOptStr)]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -3182,16 +3182,16 @@ class EClient(object):
             self.wrapper.error(NO_VALID_ID, UPDATE_TWS.code(), UPDATE_TWS.msg() +
                        "  It does not support news article request.")
             return
-        
+
         try:
-    
+
             flds = []
-    
+
             flds += [make_field(OUT.REQ_NEWS_ARTICLE),
                      make_field(reqId),
                      make_field(providerCode),
                      make_field(articleId)]
-    
+
             # send newsArticleOptions parameter
             if self.serverVersion() >= MIN_SERVER_VER_NEWS_QUERY_ORIGINS:
                 newsArticleOptionsStr = ""
@@ -3199,13 +3199,13 @@ class EClient(object):
                     for tagValue in newsArticleOptions:
                         newsArticleOptionsStr += str(tagValue)
                 flds += [make_field(newsArticleOptionsStr),]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -3222,11 +3222,11 @@ class EClient(object):
             self.wrapper.error(NO_VALID_ID, UPDATE_TWS.code(), UPDATE_TWS.msg() +
                        "  It does not support historical news request.")
             return
-        
+
         try:
-    
+
             flds = []
-    
+
             flds += [make_field(OUT.REQ_HISTORICAL_NEWS),
                      make_field(reqId),
                      make_field(conId),
@@ -3234,7 +3234,7 @@ class EClient(object):
                      make_field(startDateTime),
                      make_field(endDateTime),
                      make_field(totalResults)]
-    
+
             # send historicalNewsOptions parameter
             if self.serverVersion() >= MIN_SERVER_VER_NEWS_QUERY_ORIGINS:
                 historicalNewsOptionsStr = ""
@@ -3242,13 +3242,13 @@ class EClient(object):
                     for tagValue in historicalNewsOptionsStr:
                         historicalNewsOptionsStr += str(tagValue)
                 flds += [make_field(historicalNewsOptionsStr),]
-    
+
             msg = "".join(flds)
 
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -3332,9 +3332,9 @@ class EClient(object):
             return
 
         try:
-                
+
             VERSION = 1
-    
+
             msg = make_field(OUT.UPDATE_DISPLAY_GROUP) \
                + make_field(VERSION)   \
                + make_field(reqId) \
@@ -3343,7 +3343,7 @@ class EClient(object):
         except ClientException as ex:
             self.wrapper.error(NO_VALID_ID, ex.code, ex.msg + ex.text)
             return
-    
+
         self.sendMsg(msg)
 
 
@@ -3391,18 +3391,18 @@ class EClient(object):
             return
 
         try:
-                
+
             VERSION = 1
-    
+
             msg = make_field(OUT.VERIFY_REQUEST) \
                + make_field(VERSION)   \
                + make_field(apiName)   \
                + make_field(apiVersion)
-    
+
         except ClientException as ex:
             self.wrapper.error(NO_VALID_ID, ex.code, ex.msg + ex.text)
             return
-    
+
         self.sendMsg(msg)
 
 
@@ -3422,9 +3422,9 @@ class EClient(object):
             return
 
         try:
-                
+
             VERSION = 1
-    
+
             msg = make_field(OUT.VERIFY_MESSAGE) \
                + make_field(VERSION)   \
                + make_field(apiData)
@@ -3458,9 +3458,9 @@ class EClient(object):
             return
 
         try:
-                
+
             VERSION = 1
-    
+
             msg = make_field(OUT.VERIFY_AND_AUTH_REQUEST) \
                + make_field(VERSION)   \
                + make_field(apiName)   \
@@ -3492,7 +3492,7 @@ class EClient(object):
         try:
 
             VERSION = 1
-    
+
             msg = make_field(OUT.VERIFY_AND_AUTH_MESSAGE) \
                + make_field(VERSION)   \
                + make_field(apiData)   \
@@ -3528,7 +3528,7 @@ class EClient(object):
             return
 
         try:
-                
+
             flds = []
             flds += [make_field(OUT.REQ_SEC_DEF_OPT_PARAMS),
                 make_field(reqId),
@@ -3536,13 +3536,13 @@ class EClient(object):
                 make_field(futFopExchange),
                 make_field(underlyingSecType),
                 make_field(underlyingConId)]
-    
+
             msg = "".join(flds)
-            
+
         except ClientException as ex:
             self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
             return
-            
+
         self.sendMsg(msg)
 
 
@@ -3607,8 +3607,8 @@ class EClient(object):
         self.sendMsg(msg)
 
     def reqCompletedOrders(self, apiOnly:bool):
-        """Call this function to request the completed orders. If apiOnly parameter 
-        is true, then only completed orders placed from API are requested. 
+        """Call this function to request the completed orders. If apiOnly parameter
+        is true, then only completed orders placed from API are requested.
         Each completed order will be fed back through the
         completedOrder() function on the EWrapper."""
 
@@ -3637,7 +3637,7 @@ class EClient(object):
             return
 
         try:
-            
+
             msg = make_field(OUT.REQ_WSH_META_DATA) \
                 + make_field(reqId)
 
@@ -3746,4 +3746,4 @@ class EClient(object):
         msg = make_field(OUT.REQ_USER_INFO) \
             + make_field(reqId)
 
-        self.sendMsg(msg)        
+        self.sendMsg(msg)

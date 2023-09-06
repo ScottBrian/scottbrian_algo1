@@ -16,7 +16,7 @@ The information that can be obtained includes:
     5) current cash balance
     6) total balance of cash and positions
 
-Much of the information is saved in a MongoDb data base and updated
+Much of the information is saved in a MongoDb database and updated
 periodically.
 
 """
@@ -71,16 +71,6 @@ import logging
 ########################################################################
 # logging
 ########################################################################
-logging.basicConfig(filename='AlgoApp.log',
-                    filemode='w',
-                    level=logging.DEBUG,
-                    format='%(asctime)s '
-                           '%(levelname)s '
-                           '%(filename)s:'
-                           '%(funcName)s:'
-                           '%(lineno)d '
-                           '%(message)s')
-
 logger = logging.getLogger(__name__)
 
 
@@ -779,12 +769,18 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                     self.stock_symbols.loc[conId] = \
                         pd.Series(get_contract_description_dict(desc))
                 else:
-                    self.stock_symbols = \
-                        self.stock_symbols.append(
-                            pd.DataFrame(
+                    # self.stock_symbols = \
+                    #     self.stock_symbols.append(
+                    #         pd.DataFrame(
+                    #             get_contract_description_dict(desc,
+                    #                                           df=True),
+                    #             index=[conId]))
+                    self.stock_symbols = pd.concat([
+                        self.stock_symbols,
+                        pd.DataFrame(
                                 get_contract_description_dict(desc,
                                                               df=True),
-                                index=[conId]))
+                                index=[conId])])
             else:  # all other symbols
                 # update the descriptor if it already exists in the DataFrame
                 # as we want the newest information to replace the old
@@ -792,10 +788,15 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                     self.symbols.loc[conId] = \
                         pd.Series(get_contract_description_dict(desc))
                 else:
-                    self.symbols = self.symbols.append(
+                    # self.symbols = self.symbols.append(
+                    #     pd.DataFrame(get_contract_description_dict(desc,
+                    #                                                df=True),
+                    #                  index=[conId]))
+                    self.symbols = pd.concat([
+                        self.symbols,
                         pd.DataFrame(get_contract_description_dict(desc,
                                                                    df=True),
-                                     index=[conId]))
+                                     index=[conId])])
 
         self.response_complete_event.set()
 
@@ -901,18 +902,26 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         if conId in self.contracts.index:
             self.contracts.loc[conId] = pd.Series(contract_dict)
         else:
-            self.contracts = self.contracts.append(
-                        pd.DataFrame(contract_dict,
-                                     index=[conId]))
+            # self.contracts = self.contracts.append(
+            #             pd.DataFrame(contract_dict,
+            #                          index=[conId]))
+            self.contracts = pd.concat([
+                self.contracts,
+                pd.DataFrame(contract_dict,
+                             index=[conId])])
 
         # add the contract details to the DataFrame
         contract_details_dict = get_contract_details_dict(contract_details)
         if conId in self.contract_details.index:
             self.contract_details.loc[conId] = pd.Series(contract_details_dict)
         else:
-            self.contract_details = self.contract_details.append(
-                        pd.DataFrame(contract_details_dict,
-                                     index=[conId]))
+            # self.contract_details = self.contract_details.append(
+            #             pd.DataFrame(contract_details_dict,
+            #                          index=[conId]))
+            self.contract_details = pd.concat([
+                self.contract_details,
+                pd.DataFrame(contract_details_dict,
+                             index=[conId])])
 
         # print('self.contract_details:\n', contract_details)
         # print('self.contract_details.__dict__:\n',

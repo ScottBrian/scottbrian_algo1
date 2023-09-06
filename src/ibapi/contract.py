@@ -27,7 +27,7 @@ class ComboLeg(Object):
         self.ratio = 0  # type: int
         self.action = ""      # BUY/SELL/SSHORT
         self.exchange = ""
-        self.openClose = 0   # type: int; LegOpenClose enum values
+        self.openClose = 0
         # for stock legs when doing short sale
         self.shortSaleSlot = 0
         self.designatedLocation = ""
@@ -80,8 +80,8 @@ class Contract(Object):
         self.issuerId = ""
 
         #combos
-        self.comboLegsDescrip = ""  # type: str; received in open order 14 and up for all combos
-        self.comboLegs = None     # type: list<ComboLeg>
+        self.comboLegsDescrip = ""
+        self.comboLegs = None
         self.deltaNeutralContract = None
 
 
@@ -207,13 +207,13 @@ class ContractDetails(Object):
             decimalMaxString(self.minSize),
             decimalMaxString(self.sizeIncrement),
             decimalMaxString(self.suggestedSizeIncrement)))
-            
+
         return s
 
 
 class ContractDescription(Object):
     def __init__(self):
         self.contract = Contract()
-        self.derivativeSecTypes = None   # type: list of strings
+        self.derivativeSecTypes = None
 
 
