@@ -15,6 +15,7 @@ from ibapi.comm import (make_field, make_msg, read_msg, read_fields)
 from ibapi.common import NO_VALID_ID
 from ibapi.errors import FAIL_CREATE_SOCK
 
+# from scottbrian_algo1.scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_utils.file_catalog import FileCatalog
 # from scottbrian_utils.diag_msg import diag_msg
@@ -274,22 +275,27 @@ class MockIB:
         #######################################################################
         # get version and connect time (special case - not decode able)
         #######################################################################
-        # if msg == b'API\x00\x00\x00\x00\tv100..157':
-        # the number at the end of the msg (currently 176) is the
-        # version number - this is set in client.connect. The first line
-        # above in this send_msg method issues a log message which will
-        # show what the client put together as the starting message when
-        # first connecting. The version number must match the version
-        # number if the API message in the following if statement.
-        if msg == b'API\x00\x00\x00\x00\tv100..176':
+        # The input msg is a str from the ibapi. For connect processing
+        # this msg will contain text with a number at the end - this is
+        # the version number which is set in client.connect. The first
+        # if check below compares the input msg to a hard coded str of a
+        # connect msg with the version number at the end. If the API is
+        # updated (we download a new version and place it into the
+        # library) and we forget to update the hard coded str below,
+        # test case test_mock_connect_to_ib will fail with IndexError:
+        # tuple index out of range on the elif check following the first
+        # if check. Simply look in the log to see what was received for
+        # msg and update the hard coded text below with the new version
+        # number and that should fix it.
+        if msg == b'API\x00\x00\x00\x00\tv100..177':
             current_dt = datetime.now(
                 tz=timezone(offset=timedelta(hours=5))).\
                 strftime('%Y%m%d %H:%M:%S')
 
             # recv_msg = b'\x00\x00\x00\x1a157\x0020210301 23:43:23 EST\x00'
             # the version number in the following recv_msg must match
-            # the version number above in the API msg (currently 176)
-            recv_msg = b'\x00\x00\x00\x1a176\x00' \
+            # the version number above in the API msg (currently 177)
+            recv_msg = b'\x00\x00\x00\x1a177\x00' \
                        + current_dt.encode('utf-8') + b' EST\x00'
 
         #######################################################################
@@ -647,7 +653,7 @@ class MockIB:
             # self.delta_neutral_contract = self.delta_neutral_contract.append(
             #     pd.DataFrame(dn_dict, index=[0]))
             self.delta_neutral_contract = pd.concat([
-                self.delta_neutral_contract.
+                self.delta_neutral_contract,
                 pd.DataFrame(dn_dict, index=[0])])
 
     ###########################################################################

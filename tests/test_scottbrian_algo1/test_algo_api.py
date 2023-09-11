@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 class TestAlgoAppConnect:
     """TestAlgoAppConnect class."""
 
+    @pytest.mark.seltest
     def test_mock_connect_to_ib(self,
                                 algo_app: "AlgoApp"
                                 ) -> None:

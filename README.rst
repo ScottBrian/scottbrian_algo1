@@ -33,10 +33,29 @@ The algo_api.py module contains:
 Installation
 ============
 
-Linux:
+Windows:
 
-``pip install scottbrian-algo1``
+The following instructions are for the latest version of ibapi at this time, meaning version 10.24.1. The
+sccottbrian_algo1 project may be updated for newer ibapi versions as needed.
 
+    1) You will need the ibapi package, and *not* from PyPI using pip install. Instead, go to the Interactive Brokers
+       site to find it, download it, and install it. By default it should go into: C:/TWS API
+    2) create a virtual environment for your project
+    3) Open a terminal in PyCharm for your project and get into directory: C:/TWS API/source/pythonclient
+    4) run: py -m pip install --upgrade pip build setuptools wheel
+    5) run: py -m build
+    6) You should now have a new dist folder and two new files in C:/TWS API/source/pythonclient/dist
+       a) ibapi-10.24.1.tar.gz
+       b) ibapi-10.24.1-py3-none-any.whl
+    7) get into your virtual environment folder
+    8) run ``pip install scottbrian-algo1``
+
+Note that the scottbrian_algo1 pyproject.toml file [project] section has a dependencies specification for:
+"ibapi @ file://localhost/TWS%20API/source/pythonclient/dist/ibapi-10.24.1-py3-none-any.whl"
+
+To install ibapi into venv311:
+    1) get into venv311 folder
+    2) run: py -m pip install file:///C:/TWS%20API/source/pythonclient/dist/ibapi-10.24.1-py3-none-any.whl
 
 Usage examples:
 ===============

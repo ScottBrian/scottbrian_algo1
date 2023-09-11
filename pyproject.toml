@@ -18,8 +18,19 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Operating System :: Windows"]
 dependencies = [
-    'pandas',
-    'scottbrian_utils']
+    "pandas",
+    "scottbrian_utils",
+    "ibapi @ file://localhost/TWS%20API/source/pythonclient/dist/ibapi-10.24.1-py3-none-any.whl"]
+
+[tool.setuptools]
+packages = ["scottbrian_algo1"]
+package-dir = {"" = "src"}
+#packages = ["scottbrian_algo1", "ibapi"]
+
+#[tool.setuptools.package-dir]
+#scottbrian_algo1 = "src/scottbrian_algo1"
+#ibapi = "pythonclient/ibapi"
+#ibapi = "venv311/Lib/site-packages/ibapi"
 
 [project.urls]
 Documentation = "https://scottbrian-algo1.readthedocs.io/en/latest/"
@@ -27,7 +38,7 @@ Source = "https://github.com/ScottBrian/scottbrian_algo1.git"
 
 [build-system]
 requires = [
-    "setuptools >= 68.1.2",
-    "wheel >= 0.41.2"
+    "setuptools >= 68.2.0",
+#    "wheel >= 0.41.2"
 ]
 build-backend = "setuptools.build_meta"
