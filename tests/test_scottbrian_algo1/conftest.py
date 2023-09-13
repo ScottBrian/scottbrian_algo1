@@ -336,8 +336,10 @@ class MockIB:
             symbol_starts_with_pattern = \
                 self.contract_descriptions['symbol'].map(
                     lambda symbol: symbol.startswith(pattern))
+            # logger.debug(f'{symbol_starts_with_pattern=}')
             match_descs = \
                 self.contract_descriptions[symbol_starts_with_pattern]
+            # logger.debug(f'{match_descs=}')
 
             # match_descs = self.contract_descriptions.loc[
             #     self.contract_descriptions['symbol'].str.
@@ -351,16 +353,24 @@ class MockIB:
             build_msg = build_msg + make_field(num_found)
 
             for i in range(num_found):
-                build_msg = build_msg \
-                    + make_field(match_descs.iloc[i].conId) \
-                    + make_field(match_descs.iloc[i].symbol) \
-                    + make_field(match_descs.iloc[i].secType) \
-                    + make_field(match_descs.iloc[i].primaryExchange) \
-                    + make_field(match_descs.iloc[i].currency) \
-                    + make_field(len(match_descs.iloc[i].derivativeSecTypes))
+                build_msg = (
+                        build_msg
+                        + make_field(match_descs.iloc[i].conId)
+                        + make_field(match_descs.iloc[i].symbol)
+                        + make_field(match_descs.iloc[i].secType)
+                        + make_field(match_descs.iloc[i].primaryExchange)
+                        + make_field(match_descs.iloc[i].currency)
+                        + make_field(len(match_descs.iloc[
+                                             i].derivativeSecTypes))
+                )
 
                 for dvt in match_descs.iloc[i].derivativeSecTypes:
                     build_msg = build_msg + make_field(dvt)
+
+                build_msg += make_field(
+                    f"description for conid: {match_descs.iloc[i].conId}")
+                build_msg += make_field(
+                    f"issuer ID for symbol: {match_descs.iloc[i].symbol}")
 
             recv_msg = make_msg(build_msg)
 
@@ -374,9 +384,10 @@ class MockIB:
             conId = int(fields[3])
 
             # construct start of receive message for wrapper
-            start_msg = make_field(IN.CONTRACT_DATA) \
-                + make_field(version) \
-                + make_field(reqId)
+            start_msg = (
+                    make_field(IN.CONTRACT_DATA)
+                    # + make_field(version)
+                    + make_field(reqId))
 
             # find pattern matches in mock contract descriptions
             # fow now, just conId
@@ -384,55 +395,65 @@ class MockIB:
                 self.contract_descriptions['conId'] == conId]
 
             for i in range(len(match_descs)):
-                build_msg = start_msg \
-                    + make_field(match_descs.iloc[i].symbol) \
-                    + make_field(match_descs.iloc[i].secType) \
+                build_msg = (
+                    start_msg
+                    + make_field(match_descs.iloc[i].symbol)
+                    + make_field(match_descs.iloc[i].secType)
                     + make_field(match_descs.iloc[i].
-                                 lastTradeDateOrContractMonth) \
-                    + make_field(match_descs.iloc[i].strike) \
-                    + make_field(match_descs.iloc[i].right) \
-                    + make_field(match_descs.iloc[i].exchange) \
-                    + make_field(match_descs.iloc[i].currency) \
-                    + make_field(match_descs.iloc[i].localSymbol) \
-                    + make_field(match_descs.iloc[i].marketName) \
-                    + make_field(match_descs.iloc[i].tradingClass) \
-                    + make_field(match_descs.iloc[i].conId) \
-                    + make_field(match_descs.iloc[i].minTick) \
-                    + make_field(match_descs.iloc[i].mdSizeMultiplier) \
-                    + make_field(match_descs.iloc[i].multiplier) \
-                    + make_field(match_descs.iloc[i].orderTypes) \
-                    + make_field(match_descs.iloc[i].validExchanges) \
-                    + make_field(match_descs.iloc[i].priceMagnifier) \
-                    + make_field(match_descs.iloc[i].underConId) \
-                    + make_field(match_descs.iloc[i].longName) \
-                    + make_field(match_descs.iloc[i].primaryExchange) \
-                    + make_field(match_descs.iloc[i].contractMonth) \
-                    + make_field(match_descs.iloc[i].industry) \
-                    + make_field(match_descs.iloc[i].category) \
-                    + make_field(match_descs.iloc[i].subcategory) \
-                    + make_field(match_descs.iloc[i].timeZoneId) \
-                    + make_field(match_descs.iloc[i].tradingHours) \
-                    + make_field(match_descs.iloc[i].liquidHours) \
-                    + make_field(match_descs.iloc[i].evRule) \
-                    + make_field(match_descs.iloc[i].evMultiplier) \
+                                 lastTradeDateOrContractMonth)
+                    + make_field(match_descs.iloc[i].strike)
+                    + make_field(match_descs.iloc[i].right)
+                    + make_field(match_descs.iloc[i].exchange)
+                    + make_field(match_descs.iloc[i].currency)
+                    + make_field(match_descs.iloc[i].localSymbol)
+                    + make_field(match_descs.iloc[i].marketName)
+                    + make_field(match_descs.iloc[i].tradingClass)
+                    + make_field(match_descs.iloc[i].conId)
+                    + make_field(match_descs.iloc[i].minTick)
+                    # + make_field(match_descs.iloc[i].mdSizeMultiplier)
+                    + make_field(match_descs.iloc[i].multiplier)
+                    + make_field(match_descs.iloc[i].orderTypes)
+                    + make_field(match_descs.iloc[i].validExchanges)
+                    + make_field(match_descs.iloc[i].priceMagnifier)
+                    + make_field(match_descs.iloc[i].underConId)
+                    + make_field(match_descs.iloc[i].longName)
+                    + make_field(match_descs.iloc[i].primaryExchange)
+                    + make_field(match_descs.iloc[i].contractMonth)
+                    + make_field(match_descs.iloc[i].industry)
+                    + make_field(match_descs.iloc[i].category)
+                    + make_field(match_descs.iloc[i].subcategory)
+                    + make_field(match_descs.iloc[i].timeZoneId)
+                    + make_field(match_descs.iloc[i].tradingHours)
+                    + make_field(match_descs.iloc[i].liquidHours)
+                    + make_field(match_descs.iloc[i].evRule)
+                    + make_field(match_descs.iloc[i].evMultiplier)
                     + make_field(match_descs.iloc[i].secIdListCount)
+                )
 
                 for tv in match_descs.iloc[i].secIdList:
                     build_msg += make_field(tv)
 
-                build_msg += make_field(match_descs.iloc[i].aggGroup) \
-                    + make_field(match_descs.iloc[i].underSymbol) \
-                    + make_field(match_descs.iloc[i].underSecType) \
-                    + make_field(match_descs.iloc[i].marketRuleIds) \
-                    + make_field(match_descs.iloc[i].realExpirationDate) \
-                    + make_field(match_descs.iloc[i].stockType)
+                build_msg += (
+                        make_field(match_descs.iloc[i].aggGroup)
+                        + make_field(match_descs.iloc[i].underSymbol)
+                        + make_field(match_descs.iloc[i].underSecType)
+                        + make_field(match_descs.iloc[i].marketRuleIds)
+                        + make_field(match_descs.iloc[i].realExpirationDate)
+                        + make_field(match_descs.iloc[i].stockType)
+                        + make_field('0001')
+                        + make_field('0002')
+                        + make_field('0003')
+                )
 
                 recv_msg = make_msg(build_msg)
                 self.msg_rcv_q.put(recv_msg, timeout=5)
 
-            build_msg = make_field(IN.CONTRACT_DATA_END) \
-                + make_field(version) \
-                + make_field(reqId)
+            build_msg = (
+                    make_field(IN.CONTRACT_DATA_END)
+                    + make_field(version)
+                    + make_field(reqId)
+            )
+
             recv_msg = make_msg(build_msg)
 
         #######################################################################

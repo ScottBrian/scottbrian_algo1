@@ -824,15 +824,17 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         # will be done for the contract_details (minus the contract). Note that
         # this is tricky code since both the contract and contract details
         # may contain other class instances or a list of class instances. In
-        # the case of a list or class instances, we must replace each  of those
+        # the case of a list of class instances, we must replace each  of
+        # those
         # instances with its dictionary, then turn the list into a tuple,
         # and then turn that into a string and placed into the containing
-        # class instance. This needs to be dome to 1) allow a list of arbitrary
+        # class instance. This needs to be done to 1) allow a list of
+        # arbitrary
         # count be placed into a DataFrame column as one item, and 2) allow
         # the DataFrame to be stored to a csv file. Note that the list
         # needs to be a tuple to allow certain DataFrame operations to be
         # performed, such as removing duplicates which does not like lists
-        # (something about them being non-hashable). Getting the dictionary
+        # (because they non-hashable). Getting the dictionary
         # of these classes is done with a get_dict method which will take care
         # of the details described above. When the saved DataFrame is retrieved
         # later and we want to restore an entry to its class instance, the
@@ -905,10 +907,21 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             # self.contracts = self.contracts.append(
             #             pd.DataFrame(contract_dict,
             #                          index=[conId]))
+
+            # self.contracts = pd.concat([
+            #     self.contracts,
+            #     pd.DataFrame(contract_dict,
+            #                  index=[conId])])
+
+            new_df = pd.DataFrame(contract_dict,
+                                  index=[conId])
+            logger.debug(f'{self.contracts.shape=}')
+            logger.debug(f'{self.contracts=}')
+            logger.debug(f'{new_df.shape=}')
+            logger.debug(f'{new_df=}')
             self.contracts = pd.concat([
                 self.contracts,
-                pd.DataFrame(contract_dict,
-                             index=[conId])])
+                new_df])
 
         # add the contract details to the DataFrame
         contract_details_dict = get_contract_details_dict(contract_details)
@@ -1048,69 +1061,68 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
 
 # @time_box
-# def main() -> None:
-#     """Main routine for quick discovery tests."""
-#     from pathlib import Path
-#     proj_dir = Path.cwd().resolve().parents[1]  # back two directories
-#     ds_catalog = \
-#         FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
-#                      'mock_contract_descs':
-#                          Path(proj_dir
-#                          / 't_datasets/mock_contract_descs.csv'),
-#                      'contracts':
-#                          Path(proj_dir / 't_datasets/contracts.csv'),
-#                      'contract_details':
-#                          Path(proj_dir / 't_datasets/contract_details.csv'),
-#                      'fundamental_data':
-#                          Path(proj_dir / 't_datasets/fundamental_data.csv')
-#                      })
-#
-#     algo_app = AlgoApp(ds_catalog)
-#
-#     # algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
-#
-#     print("serverVersion:%s connectionTime:%s" %
-#           (algo_app.serverVersion(),
-#            algo_app.twsConnectionTime()))
-#
-#     # print('SBT get_stock_symbols:main about to call get_symbols')
-#     # algo_app.get_symbols(start_char='A', end_char='A')
-#     # algo_app.get_symbols(start_char='B', end_char='B')
-#
-#     # algo_app.request_symbols('SWKS')
-#     #
-#     # print('algo_app.stock_symbols\n', algo_app.stock_symbols)
-#     try:
-#
-#         # contract = Contract()
-#         # contract.conId = 208813719 # 3691937        #  4726021
-#         # contract.symbol = 'GOOGL'
-#         # contract.secType = 'STK'
-#         # contract.currency = 'USD'
-#         # contract.exchange = 'SMART'
-#         # contract.primaryExchange = 'NASDAQ'
-#
-#         # algo_app.get_contract_details(contract)
-#         # algo_app.get_fundamental_data(contract, 'ReportSnapshot')
-#         # ReportSnapshot: Company overview
-#         # ReportsFinSummary: Financial summary
-#         # ReportRatios: Financial ratios
-#         # ReportsFinStatements: Financial statements
-#         # RESC: Analyst estimates
-#         # print('algo_app.contracts\n', algo_app.contracts)
-#         # print('algo_app.contract_details\n', algo_app.contract_details)
-#         # print('algo_app.contracts.primaryExchange.loc[contract.conId]\n',
-#         #       algo_app.contracts.primaryExchange.loc[contract.conId])
-#         # print('algo_app.contracts.symbol.loc[contract.conId]\n',
-#         #       algo_app.contracts.symbol.loc[contract.conId])
-#         # my_contract_details = algo_app.contract_details.loc[
-#         # contract.conId][0]
-#     #
-#         # print('my_contract_details\n', my_contract_details)
-#     finally:
-#         print('about to disconnect')
-#         # algo_app.disconnect()
-#
-#
-# if __name__ == "__main__":
-#     main()
+def main() -> None:
+    """Main routine for quick discovery tests."""
+    from pathlib import Path
+    proj_dir = Path.cwd().resolve().parents[1]  # back two directories
+    ds_catalog = \
+        FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
+                     'mock_contract_descs':
+                         Path(proj_dir
+                         / 't_datasets/mock_contract_descs.csv'),
+                     'contracts':
+                         Path(proj_dir / 't_datasets/contracts.csv'),
+                     'contract_details':
+                         Path(proj_dir / 't_datasets/contract_details.csv'),
+                     'fundamental_data':
+                         Path(proj_dir / 't_datasets/fundamental_data.csv')
+                     })
+
+    algo_app = AlgoApp(ds_catalog)
+
+    # algo_app.connect_to_ib("127.0.0.1", 7496, client_id=0)
+
+    print("serverVersion:%s connectionTime:%s" %
+          (algo_app.serverVersion(),
+           algo_app.twsConnectionTime()))
+
+    # print('SBT get_stock_symbols:main about to call get_symbols')
+    # algo_app.get_symbols(start_char='A', end_char='A')
+    # algo_app.get_symbols(start_char='B', end_char='B')
+
+    # algo_app.request_symbols('SWKS')
+    #
+    # print('algo_app.stock_symbols\n', algo_app.stock_symbols)
+    try:
+
+        contract = Contract()
+        # contract.conId = 208813719 # 3691937        #  4726021
+        # contract.symbol = 'GOOGL'
+        # contract.secType = 'STK'
+        # contract.currency = 'USD'
+        # contract.exchange = 'SMART'
+        # contract.primaryExchange = 'NASDAQ'
+
+        # algo_app.get_contract_details(contract)
+        # algo_app.get_fundamental_data(contract, 'ReportSnapshot')
+        # ReportSnapshot: Company overview
+        # ReportsFinSummary: Financial summary
+        # ReportRatios: Financial ratios
+        # ReportsFinStatements: Financial statements
+        # RESC: Analyst estimates
+        # print('algo_app.contracts\n', algo_app.contracts)
+        # print('algo_app.contract_details\n', algo_app.contract_details)
+        # print('algo_app.contracts.primaryExchange.loc[contract.conId]\n',
+        #       algo_app.contracts.primaryExchange.loc[contract.conId])
+        # print('algo_app.contracts.symbol.loc[contract.conId]\n',
+        #       algo_app.contracts.symbol.loc[contract.conId])
+        # my_contract_details = algo_app.contract_details.loc[
+        # contract.conId][0]
+        # print('my_contract_details\n', my_contract_details)
+    finally:
+        print('about to disconnect')
+        algo_app.disconnect()
+
+
+if __name__ == "__main__":
+    main()
