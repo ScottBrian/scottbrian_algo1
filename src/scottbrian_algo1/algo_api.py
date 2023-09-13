@@ -20,23 +20,24 @@ Much of the information is saved in a MongoDb database and updated
 periodically.
 
 """
-
-import pandas as pd  # type: ignore
-from threading import Event, get_ident, get_native_id, Thread, Lock
-from pathlib import Path
-
-import time
+########################################################################
+# Standard Library
+########################################################################
 import ast
+import logging
+from pathlib import Path
+import string
+from threading import Event, get_ident, get_native_id, Thread, Lock
+import time
+from typing import Any, Type, TYPE_CHECKING
 
-# import numexpr as ne
-# import bottleneck as bn
-
+########################################################################
+# Third Party
+########################################################################
 from ibapi.wrapper import EWrapper  # type: ignore
-# from ibapi import utils
 from ibapi.client import EClient  # type: ignore
 from ibapi.utils import current_fn_name  # type: ignore
 
-# types
 from ibapi.common import ListOfContractDescription  # type: ignore
 # from ibapi.order_condition import *  # @UnusedWildImport
 from ibapi.contract import Contract, ContractDetails  # type: ignore
@@ -49,15 +50,15 @@ from ibapi.contract import Contract, ContractDetails  # type: ignore
 # from ibapi.tag_value import TagValue
 #
 # from ibapi.account_summary_tags import *
-
-from typing import Any, Type, TYPE_CHECKING
-import string
-
+import pandas as pd  # type: ignore
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
-# from scottbrian_utils.time_hdr import time_box
-# from scottbrian_utils.diag_msg import diag_msg
 
+########################################################################
+# Local
+########################################################################
+# import numexpr as ne
+# import bottleneck as bn
 # from scottbrian_algo1.algo_maps import AlgoTagValue, AlgoComboLeg
 # from scottbrian_algo1.algo_maps import AlgoDeltaNeutralContract
 
@@ -65,8 +66,6 @@ from scottbrian_algo1.algo_maps import get_contract_dict
 from scottbrian_algo1.algo_maps import get_contract_details_dict
 from scottbrian_algo1.algo_maps import get_contract_description_dict
 
-# from datetime import datetime
-import logging
 
 ########################################################################
 # logging
@@ -908,20 +907,22 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             #             pd.DataFrame(contract_dict,
             #                          index=[conId]))
 
-            # self.contracts = pd.concat([
-            #     self.contracts,
-            #     pd.DataFrame(contract_dict,
-            #                  index=[conId])])
-
-            new_df = pd.DataFrame(contract_dict,
-                                  index=[conId])
-            logger.debug(f'{self.contracts.shape=}')
-            logger.debug(f'{self.contracts=}')
-            logger.debug(f'{new_df.shape=}')
-            logger.debug(f'{new_df=}')
             self.contracts = pd.concat([
                 self.contracts,
-                new_df])
+                pd.DataFrame(contract_dict,
+                             index=[conId])])
+
+            # new_df = pd.DataFrame(contract_dict,
+            #                       index=[conId])
+            # logger.debug(f'{self.contracts.shape=}')
+            # logger.debug(f'{self.contracts=}')
+            # logger.debug(f'{new_df.shape=}')
+            # logger.debug(f'{new_df=}')
+            # self.contracts = pd.concat([
+            #     self.contracts,
+            #     new_df])
+            # logger.debug(f'result: {self.contracts.shape=}')
+            # logger.debug(f'result: {self.contracts=}')
 
         # add the contract details to the DataFrame
         contract_details_dict = get_contract_details_dict(contract_details)
@@ -1068,8 +1069,7 @@ def main() -> None:
     ds_catalog = \
         FileCatalog({'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
                      'mock_contract_descs':
-                         Path(proj_dir
-                         / 't_datasets/mock_contract_descs.csv'),
+                         Path(proj_dir / 't_datasets/mock_contract_descs.csv'),
                      'contracts':
                          Path(proj_dir / 't_datasets/contracts.csv'),
                      'contract_details':
@@ -1096,12 +1096,12 @@ def main() -> None:
     try:
 
         contract = Contract()
-        # contract.conId = 208813719 # 3691937        #  4726021
-        # contract.symbol = 'GOOGL'
-        # contract.secType = 'STK'
-        # contract.currency = 'USD'
-        # contract.exchange = 'SMART'
-        # contract.primaryExchange = 'NASDAQ'
+        contract.conId = 208813719  # 3691937 4726021
+        contract.symbol = 'GOOGL'
+        contract.secType = 'STK'
+        contract.currency = 'USD'
+        contract.exchange = 'SMART'
+        contract.primaryExchange = 'NASDAQ'
 
         # algo_app.get_contract_details(contract)
         # algo_app.get_fundamental_data(contract, 'ReportSnapshot')

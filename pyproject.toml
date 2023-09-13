@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Operating System :: Windows"]
 dependencies = [
-    "pandas",
+    "pandas==2.0.0",
     "scottbrian_utils",
     "ibapi @ file://localhost/TWS%20API/source/pythonclient/dist/ibapi-10.24.1-py3-none-any.whl"]
 

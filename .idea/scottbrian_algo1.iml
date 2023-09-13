@@ -6,6 +6,7 @@
       <sourceFolder url="file://$MODULE_DIR$/src/scottbrian_algo1" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/tests/test_scottbrian_algo1" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/ibapi" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/venv38" />
       <excludeFolder url="file://$MODULE_DIR$/venv310" />
       <excludeFolder url="file://$MODULE_DIR$/venv" />
