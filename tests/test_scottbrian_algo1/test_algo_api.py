@@ -2,6 +2,7 @@
 
 # from datetime import datetime, timedelta
 import pytest
+
 # import sys
 # from pathlib import Path
 import numpy as np
@@ -10,6 +11,7 @@ import string
 import math
 
 from typing import Any, List, NamedTuple
+
 # from typing_extensions import Final
 
 from ibapi.tag_value import TagValue  # type: ignore
@@ -17,8 +19,14 @@ from ibapi.contract import ComboLeg  # type: ignore
 from ibapi.contract import DeltaNeutralContract
 from ibapi.contract import Contract, ContractDetails
 
-from scottbrian_algo1.algo_api import AlgoApp, AlreadyConnected, \
-    DisconnectLockHeld, ConnectTimeout, RequestTimeout, DisconnectDuringRequest
+from scottbrian_algo1.algo_api import (
+    AlgoApp,
+    AlreadyConnected,
+    DisconnectLockHeld,
+    ConnectTimeout,
+    RequestTimeout,
+    DisconnectDuringRequest,
+)
 
 from scottbrian_algo1.algo_maps import get_contract_dict, get_contract_obj
 from scottbrian_algo1.algo_maps import get_contract_details_obj
@@ -38,9 +46,10 @@ class TestAlgoAppConnect:
     """TestAlgoAppConnect class."""
 
     @pytest.mark.seltest
-    def test_mock_connect_to_ib(self,
-                                algo_app: "AlgoApp"
-                                ) -> None:
+    def test_mock_connect_to_ib(
+        self,
+        algo_app: "AlgoApp",
+    ) -> None:
         """Test connecting to IB.
 
         Args:
@@ -53,9 +62,7 @@ class TestAlgoAppConnect:
         # control as a result, such as getting the first requestID and then
         # starting a separate thread for the run loop.
         logger.debug("about to connect")
-        algo_app.connect_to_ib("127.0.0.1",
-                               algo_app.PORT_FOR_LIVE_TRADING,
-                               client_id=0)
+        algo_app.connect_to_ib("127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0)
 
         # verify that algo_app is connected and alive with a valid reqId
         verify_algo_app_connected(algo_app)
@@ -63,10 +70,9 @@ class TestAlgoAppConnect:
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
-    def test_mock_connect_to_ib_with_timeout(self,
-                                             algo_app: "AlgoApp",
-                                             mock_ib: Any
-                                             ) -> None:
+    def test_mock_connect_to_ib_with_timeout(
+        self, algo_app: "AlgoApp", mock_ib: Any
+    ) -> None:
         """Test connecting to IB.
 
         Args:
@@ -79,18 +85,17 @@ class TestAlgoAppConnect:
         # we are testing connect_to_ib with a simulated timeout
         logger.debug("about to connect")
         with pytest.raises(ConnectTimeout):
-            algo_app.connect_to_ib("127.0.0.1",
-                                   mock_ib.PORT_FOR_REQID_TIMEOUT,
-                                   client_id=0)
+            algo_app.connect_to_ib(
+                "127.0.0.1", mock_ib.PORT_FOR_REQID_TIMEOUT, client_id=0
+            )
 
         # verify that algo_app is not connected
         verify_algo_app_disconnected(algo_app)
         assert algo_app.request_id == 0
 
-    def test_connect_to_ib_already_connected(self,
-                                             algo_app: "AlgoApp",
-                                             mock_ib: Any
-                                             ) -> None:
+    def test_connect_to_ib_already_connected(
+        self, algo_app: "AlgoApp", mock_ib: Any
+    ) -> None:
         """Test connecting to IB.
 
         Args:
@@ -102,17 +107,17 @@ class TestAlgoAppConnect:
 
         # first, connect normally to mock_ib
         logger.debug("about to connect")
-        algo_app.connect_to_ib("127.0.0.1",
-                               algo_app.PORT_FOR_PAPER_TRADING,
-                               client_id=0)
+        algo_app.connect_to_ib(
+            "127.0.0.1", algo_app.PORT_FOR_PAPER_TRADING, client_id=0
+        )
         # verify that algo_app is connected
         verify_algo_app_connected(algo_app)
 
         # try to connect again - should get error
         with pytest.raises(AlreadyConnected):
-            algo_app.connect_to_ib("127.0.0.1",
-                                   algo_app.PORT_FOR_PAPER_TRADING,
-                                   client_id=0)
+            algo_app.connect_to_ib(
+                "127.0.0.1", algo_app.PORT_FOR_PAPER_TRADING, client_id=0
+            )
 
         # verify that algo_app is still connected and alive with a valid reqId
         verify_algo_app_connected(algo_app)
@@ -120,10 +125,9 @@ class TestAlgoAppConnect:
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
-    def test_connect_to_ib_with_lock_held(self,
-                                          algo_app: "AlgoApp",
-                                          mock_ib: Any
-                                          ) -> None:
+    def test_connect_to_ib_with_lock_held(
+        self, algo_app: "AlgoApp", mock_ib: Any
+    ) -> None:
         """Test connecting to IB with disconnect lock held.
 
         Args:
@@ -139,9 +143,9 @@ class TestAlgoAppConnect:
 
         # try to connect - should get error
         with pytest.raises(DisconnectLockHeld):
-            algo_app.connect_to_ib("127.0.0.1",
-                                   algo_app.PORT_FOR_LIVE_TRADING,
-                                   client_id=0)
+            algo_app.connect_to_ib(
+                "127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0
+            )
 
         # verify that algo_app is still simply initialized
         verify_algo_app_initialized(algo_app)
@@ -194,7 +198,7 @@ def verify_algo_app_initialized(algo_app: "AlgoApp") -> None:
     assert algo_app.stock_symbols.empty
     assert algo_app.response_complete_event.is_set() is False
     assert algo_app.nextValidId_event.is_set() is False
-    assert algo_app.__repr__() == 'AlgoApp(ds_catalog)'
+    assert algo_app.__repr__() == "AlgoApp(ds_catalog)"
     # assert algo_app.run_thread is None
 
 
@@ -228,6 +232,7 @@ def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
 ###############################################################################
 class ExpCounts(NamedTuple):
     """NamedTuple for the expected counts."""
+
     sym_non_recursive: int
     sym_recursive: int
     stock_sym_non_recursive: int
@@ -236,11 +241,10 @@ class ExpCounts(NamedTuple):
 
 class SymDfs:
     """Saved sym dfs."""
-    def __init__(self,
-                 mock_sym_df: Any,
-                 sym_df: Any,
-                 mock_stock_sym_df: Any,
-                 stock_sym_df: Any) -> None:
+
+    def __init__(
+        self, mock_sym_df: Any, sym_df: Any, mock_stock_sym_df: Any, stock_sym_df: Any
+    ) -> None:
         """Initialize the SymDfs.
 
         Args:
@@ -258,9 +262,10 @@ class SymDfs:
 
 class TestAlgoAppMatchingSymbols:
     """TestAlgoAppMatchingSymbols class."""
-    def test_request_symbols_all_combos(self,
-                                        algo_app: "AlgoApp",
-                                        mock_ib: Any) -> None:
+
+    def test_request_symbols_all_combos(
+        self, algo_app: "AlgoApp", mock_ib: Any
+    ) -> None:
         """Test request_symbols with all patterns.
 
         Args:
@@ -272,47 +277,45 @@ class TestAlgoAppMatchingSymbols:
         verify_algo_app_initialized(algo_app)
 
         logger.debug("about to connect")
-        algo_app.connect_to_ib("127.0.0.1",
-                               algo_app.PORT_FOR_LIVE_TRADING,
-                               client_id=0)
+        algo_app.connect_to_ib("127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0)
         verify_algo_app_connected(algo_app)
         algo_app.request_throttle_secs = 0.01
 
         try:
-            for idx, search_pattern in enumerate(
-                    mock_ib.search_patterns()):
+            for idx, search_pattern in enumerate(mock_ib.search_patterns()):
                 exp_counts = get_exp_counts(search_pattern, mock_ib)
                 # verify symbol table has zero entries for the symbol
-                logger.info("calling verify_match_symbols req_type 1 "
-                            "sym %s num %d", search_pattern, idx)
+                logger.info(
+                    "calling verify_match_symbols req_type 1 " "sym %s num %d",
+                    search_pattern,
+                    idx,
+                )
                 algo_app.symbols = pd.DataFrame()
                 algo_app.stock_symbols = pd.DataFrame()
-                verify_match_symbols(algo_app,
-                                     mock_ib,
-                                     search_pattern,
-                                     exp_counts=exp_counts,
-                                     req_type=1)
+                verify_match_symbols(
+                    algo_app, mock_ib, search_pattern, exp_counts=exp_counts, req_type=1
+                )
 
-                logger.info("calling verify_match_symbols req_type 2 "
-                            "sym %s num %d", search_pattern, idx)
+                logger.info(
+                    "calling verify_match_symbols req_type 2 " "sym %s num %d",
+                    search_pattern,
+                    idx,
+                )
                 algo_app.symbols = pd.DataFrame()
                 algo_app.stock_symbols = pd.DataFrame()
-                verify_match_symbols(algo_app,
-                                     mock_ib,
-                                     search_pattern,
-                                     exp_counts=exp_counts,
-                                     req_type=2)
+                verify_match_symbols(
+                    algo_app, mock_ib, search_pattern, exp_counts=exp_counts, req_type=2
+                )
         finally:
-            logger.debug('disconnecting')
+            logger.debug("disconnecting")
             algo_app.disconnect_from_ib()
-            logger.debug('verifying disconnected')
+            logger.debug("verifying disconnected")
             verify_algo_app_disconnected(algo_app)
-            logger.debug('disconnected - test case returning')
+            logger.debug("disconnected - test case returning")
 
-    def test_request_symbols_zero_result(self,
-                                         algo_app: "AlgoApp",
-                                         mock_ib: Any
-                                         ) -> None:
+    def test_request_symbols_zero_result(
+        self, algo_app: "AlgoApp", mock_ib: Any
+    ) -> None:
         """Test request_symbols with pattern that finds exactly 1 symbol.
 
         Args:
@@ -322,9 +325,7 @@ class TestAlgoAppMatchingSymbols:
         """
         verify_algo_app_initialized(algo_app)
         logger.debug("about to connect")
-        algo_app.connect_to_ib("127.0.0.1",
-                               algo_app.PORT_FOR_LIVE_TRADING,
-                               client_id=0)
+        algo_app.connect_to_ib("127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0)
         verify_algo_app_connected(algo_app)
         algo_app.request_throttle_secs = 0.01
 
@@ -332,34 +333,33 @@ class TestAlgoAppMatchingSymbols:
             exp_counts = ExpCounts(0, 0, 0, 0)
 
             # verify symbol table has zero entries for the symbols
-            for idx, search_pattern in enumerate(
-                    mock_ib.no_find_search_patterns()):
-                logger.info("calling verify_match_symbols req_type 1 "
-                            "sym %s num %d", search_pattern, idx)
-                verify_match_symbols(algo_app,
-                                     mock_ib,
-                                     search_pattern,
-                                     exp_counts=exp_counts,
-                                     req_type=1)
+            for idx, search_pattern in enumerate(mock_ib.no_find_search_patterns()):
+                logger.info(
+                    "calling verify_match_symbols req_type 1 " "sym %s num %d",
+                    search_pattern,
+                    idx,
+                )
+                verify_match_symbols(
+                    algo_app, mock_ib, search_pattern, exp_counts=exp_counts, req_type=1
+                )
 
-                logger.info("calling verify_match_symbols req_type 2 "
-                            "sym %s num %d", search_pattern, idx)
-                verify_match_symbols(algo_app,
-                                     mock_ib,
-                                     search_pattern,
-                                     exp_counts=exp_counts,
-                                     req_type=2)
+                logger.info(
+                    "calling verify_match_symbols req_type 2 " "sym %s num %d",
+                    search_pattern,
+                    idx,
+                )
+                verify_match_symbols(
+                    algo_app, mock_ib, search_pattern, exp_counts=exp_counts, req_type=2
+                )
 
         finally:
-            logger.debug('disconnecting')
+            logger.debug("disconnecting")
             algo_app.disconnect_from_ib()
-            logger.debug('verifying disconnected')
+            logger.debug("verifying disconnected")
             verify_algo_app_disconnected(algo_app)
-            logger.debug('disconnected - test case returning')
+            logger.debug("disconnected - test case returning")
 
-    def test_get_symbols_timeout(self,
-                                 algo_app: "AlgoApp",
-                                 mock_ib: Any) -> None:
+    def test_get_symbols_timeout(self, algo_app: "AlgoApp", mock_ib: Any) -> None:
         """Test get_symbols gets timeout.
 
         Args:
@@ -370,24 +370,22 @@ class TestAlgoAppMatchingSymbols:
         verify_algo_app_initialized(algo_app)
         try:
             logger.debug("about to connect")
-            algo_app.connect_to_ib("127.0.0.1",
-                                   mock_ib.PORT_FOR_SIMULATE_REQUEST_TIMEOUT,
-                                   client_id=0)
+            algo_app.connect_to_ib(
+                "127.0.0.1", mock_ib.PORT_FOR_SIMULATE_REQUEST_TIMEOUT, client_id=0
+            )
             verify_algo_app_connected(algo_app)
 
             with pytest.raises(RequestTimeout):
-                algo_app.request_symbols('A')
+                algo_app.request_symbols("A")
 
         finally:
-            logger.debug('disconnecting')
+            logger.debug("disconnecting")
             algo_app.disconnect_from_ib()
-            logger.debug('verifying disconnected')
+            logger.debug("verifying disconnected")
             verify_algo_app_disconnected(algo_app)
-            logger.debug('disconnected - test case returning')
+            logger.debug("disconnected - test case returning")
 
-    def test_get_symbols_disconnect(self,
-                                    algo_app: "AlgoApp",
-                                    mock_ib: Any) -> None:
+    def test_get_symbols_disconnect(self, algo_app: "AlgoApp", mock_ib: Any) -> None:
         """Test get_symbols gets disconnected while waiting.
 
         Args:
@@ -398,25 +396,22 @@ class TestAlgoAppMatchingSymbols:
         verify_algo_app_initialized(algo_app)
         try:
             logger.debug("about to connect")
-            algo_app.connect_to_ib("127.0.0.1",
-                                   mock_ib.
-                                   PORT_FOR_SIMULATE_REQUEST_DISCONNECT,
-                                   client_id=0)
+            algo_app.connect_to_ib(
+                "127.0.0.1", mock_ib.PORT_FOR_SIMULATE_REQUEST_DISCONNECT, client_id=0
+            )
             verify_algo_app_connected(algo_app)
 
             with pytest.raises(DisconnectDuringRequest):
-                algo_app.request_symbols('A')
+                algo_app.request_symbols("A")
 
         finally:
-            logger.debug('disconnecting')
+            logger.debug("disconnecting")
             algo_app.disconnect_from_ib()
-            logger.debug('verifying disconnected')
+            logger.debug("verifying disconnected")
             verify_algo_app_disconnected(algo_app)
-            logger.debug('disconnected - test case returning')
+            logger.debug("disconnected - test case returning")
 
-    def test_get_symbols(self,
-                         algo_app: "AlgoApp",
-                         mock_ib: Any) -> None:
+    def test_get_symbols(self, algo_app: "AlgoApp", mock_ib: Any) -> None:
         """Test get_symbols with pattern that finds no symbols.
 
         Args:
@@ -427,41 +422,36 @@ class TestAlgoAppMatchingSymbols:
         verify_algo_app_initialized(algo_app)
         try:
             logger.debug("about to connect")
-            algo_app.connect_to_ib("127.0.0.1",
-                                   algo_app.PORT_FOR_LIVE_TRADING,
-                                   client_id=0)
+            algo_app.connect_to_ib(
+                "127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0
+            )
             verify_algo_app_connected(algo_app)
             algo_app.request_throttle_secs = 0.01
 
-            sym_dfs = SymDfs(pd.DataFrame(),
-                             pd.DataFrame(),
-                             pd.DataFrame(),
-                             pd.DataFrame())
+            sym_dfs = SymDfs(
+                pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+            )
             # full_stock_sym_match_descs = pd.DataFrame()
             # stock_symbols_ds = pd.DataFrame()
             # full_sym_match_descs = pd.DataFrame()
             # symbols_ds = pd.DataFrame()
             # we need to loop from A to Z
             for letter in string.ascii_uppercase:
-                logger.debug("about to verify_get_symbols for letter %s",
-                             letter)
+                logger.debug("about to verify_get_symbols for letter %s", letter)
                 # full_stock_sym_match_descs, stock_symbols_ds,\
                 #     full_sym_match_descs, symbols_ds = \
-                sym_dfs = verify_get_symbols(letter,
-                                             algo_app,
-                                             mock_ib,
-                                             sym_dfs)
+                sym_dfs = verify_get_symbols(letter, algo_app, mock_ib, sym_dfs)
 
         finally:
-            logger.debug('disconnecting')
+            logger.debug("disconnecting")
             algo_app.disconnect_from_ib()
-            logger.debug('verifying disconnected')
+            logger.debug("verifying disconnected")
             verify_algo_app_disconnected(algo_app)
-            logger.debug('disconnected - test case returning')
+            logger.debug("disconnected - test case returning")
 
-    def test_get_symbols_with_connect_disconnect(self,
-                                                 algo_app: "AlgoApp",
-                                                 mock_ib: Any) -> None:
+    def test_get_symbols_with_connect_disconnect(
+        self, algo_app: "AlgoApp", mock_ib: Any
+    ) -> None:
         """Test get_symbols with pattern that finds no symbols.
 
         Args:
@@ -471,10 +461,7 @@ class TestAlgoAppMatchingSymbols:
         """
         verify_algo_app_initialized(algo_app)
 
-        sym_dfs = SymDfs(pd.DataFrame(),
-                         pd.DataFrame(),
-                         pd.DataFrame(),
-                         pd.DataFrame())
+        sym_dfs = SymDfs(pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
         # full_stock_sym_match_descs = pd.DataFrame()
         # full_sym_match_descs = pd.DataFrame()
         # stock_symbols_ds = pd.DataFrame()
@@ -483,36 +470,34 @@ class TestAlgoAppMatchingSymbols:
         for letter in string.ascii_uppercase:
             try:
                 logger.debug("about to connect")
-                algo_app.connect_to_ib("127.0.0.1",
-                                       algo_app.PORT_FOR_LIVE_TRADING,
-                                       client_id=0)
+                algo_app.connect_to_ib(
+                    "127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0
+                )
                 verify_algo_app_connected(algo_app)
                 algo_app.request_throttle_secs = 0.01
 
-                logger.debug("about to verify_get_symbols for letter %s",
-                             letter)
+                logger.debug("about to verify_get_symbols for letter %s", letter)
                 # full_stock_sym_match_descs, stock_symbols_ds, \
                 #     full_sym_match_descs, symbols_ds = \
-                sym_dfs = verify_get_symbols(letter,
-                                             algo_app,
-                                             mock_ib,
-                                             sym_dfs)
+                sym_dfs = verify_get_symbols(letter, algo_app, mock_ib, sym_dfs)
 
             finally:
-                logger.debug('disconnecting')
+                logger.debug("disconnecting")
                 algo_app.disconnect_from_ib()
-                logger.debug('verifying disconnected')
+                logger.debug("verifying disconnected")
                 verify_algo_app_disconnected(algo_app)
 
 
 ###############################################################################
 # matching symbols verification
 ###############################################################################
-def verify_match_symbols(algo_app: "AlgoApp",
-                         mock_ib: Any,
-                         pattern: str,
-                         exp_counts: ExpCounts,
-                         req_type: int = 1) -> None:
+def verify_match_symbols(
+    algo_app: "AlgoApp",
+    mock_ib: Any,
+    pattern: str,
+    exp_counts: ExpCounts,
+    req_type: int = 1,
+) -> None:
     """Verify that we find symbols correctly.
 
     Args:
@@ -535,33 +520,45 @@ def verify_match_symbols(algo_app: "AlgoApp",
         # algo_app.stock_symbols.drop_duplicates(inplace=True)
 
     logger.debug("getting stock_sym_match_descs")
-    symbol_starts_with_pattern = \
-        mock_ib.contract_descriptions['symbol'].map(
-            lambda symbol: symbol.startswith(pattern))
+    symbol_starts_with_pattern = mock_ib.contract_descriptions["symbol"].map(
+        lambda symbol: symbol.startswith(pattern)
+    )
     stock_sym_match_descs = mock_ib.contract_descriptions.loc[
         symbol_starts_with_pattern
-        & (mock_ib.contract_descriptions['secType'] == 'STK')
-        & (mock_ib.contract_descriptions['currency'] == 'USD')
+        & (mock_ib.contract_descriptions["secType"] == "STK")
+        & (mock_ib.contract_descriptions["currency"] == "USD")
         & (if_opt_in_derivativeSecTypes(mock_ib.contract_descriptions)),
-        ['conId', 'symbol', 'secType', 'primaryExchange', 'currency',
-         'derivativeSecTypes']
-        ]
+        [
+            "conId",
+            "symbol",
+            "secType",
+            "primaryExchange",
+            "currency",
+            "derivativeSecTypes",
+        ],
+    ]
 
     sym_match_descs = mock_ib.contract_descriptions.loc[
         symbol_starts_with_pattern
-        & ((mock_ib.contract_descriptions['secType'] != 'STK')
-            | (mock_ib.contract_descriptions['currency'] != 'USD')
+        & (
+            (mock_ib.contract_descriptions["secType"] != "STK")
+            | (mock_ib.contract_descriptions["currency"] != "USD")
             | if_opt_not_in_derivativeSecTypes(mock_ib.contract_descriptions)
-           ),
-        ['conId', 'symbol', 'secType', 'primaryExchange', 'currency',
-         'derivativeSecTypes']
-        ]
+        ),
+        [
+            "conId",
+            "symbol",
+            "secType",
+            "primaryExchange",
+            "currency",
+            "derivativeSecTypes",
+        ],
+    ]
 
     logger.debug("verifying results counts")
 
     if req_type == 1:
-        assert len(algo_app.stock_symbols) \
-               == exp_counts.stock_sym_non_recursive
+        assert len(algo_app.stock_symbols) == exp_counts.stock_sym_non_recursive
         assert len(algo_app.symbols) == exp_counts.sym_non_recursive
         assert len(stock_sym_match_descs) == exp_counts.stock_sym_recursive
         assert len(sym_match_descs) == exp_counts.sym_recursive
@@ -575,9 +572,9 @@ def verify_match_symbols(algo_app: "AlgoApp",
     if exp_counts.stock_sym_recursive > 0:
         if req_type == 1:
             stock_sym_match_descs = stock_sym_match_descs.iloc[
-                          0:exp_counts.stock_sym_non_recursive]
-        stock_sym_match_descs = stock_sym_match_descs.set_index(
-            ['conId']).sort_index()
+                0 : exp_counts.stock_sym_non_recursive
+            ]
+        stock_sym_match_descs = stock_sym_match_descs.set_index(["conId"]).sort_index()
 
         algo_app.stock_symbols.sort_index(inplace=True)
         comp_df = algo_app.stock_symbols.compare(stock_sym_match_descs)
@@ -585,10 +582,8 @@ def verify_match_symbols(algo_app: "AlgoApp",
 
     if exp_counts.sym_recursive > 0:
         if req_type == 1:
-            sym_match_descs = sym_match_descs.iloc[
-                                0:exp_counts.sym_non_recursive]
-        sym_match_descs = sym_match_descs.set_index(
-            ['conId']).sort_index()
+            sym_match_descs = sym_match_descs.iloc[0 : exp_counts.sym_non_recursive]
+        sym_match_descs = sym_match_descs.set_index(["conId"]).sort_index()
 
         algo_app.symbols.sort_index(inplace=True)
         comp_df = algo_app.symbols.compare(sym_match_descs)
@@ -611,7 +606,7 @@ def if_opt_in_derivativeSecTypes(df: Any) -> Any:
     """
     ret_array = np.full(len(df), False)
     for i in range(len(df)):
-        if 'OPT' in df.iloc[i].derivativeSecTypes:
+        if "OPT" in df.iloc[i].derivativeSecTypes:
             ret_array[i] = True
     return ret_array
 
@@ -628,7 +623,7 @@ def if_opt_not_in_derivativeSecTypes(df: Any) -> Any:
     """
     ret_array = np.full(len(df), True)
     for i in range(len(df)):
-        if 'OPT' in df.iloc[i].derivativeSecTypes:
+        if "OPT" in df.iloc[i].derivativeSecTypes:
             ret_array[i] = False
     return ret_array
 
@@ -643,22 +638,22 @@ def get_exp_counts(search_pattern: str, mock_ib: Any) -> ExpCounts:
     Returns:
         number of expected matches for recursive and non-recursive requests
     """
-    combo_factor = (1 + 3 + 3**2 + 3**3)
+    combo_factor = 1 + 3 + 3**2 + 3**3
     if len(search_pattern) > 4:
         # 5 or more chars will never match (for our mock setup)
         return ExpCounts(0, 0, 0, 0)
     if search_pattern[0] not in string.ascii_uppercase[0:17]:
         return ExpCounts(0, 0, 0, 0)  # not in A-Q, inclusive
     if len(search_pattern) >= 2:
-        if search_pattern[1] not in string.ascii_uppercase[1:3] + '.':
+        if search_pattern[1] not in string.ascii_uppercase[1:3] + ".":
             return ExpCounts(0, 0, 0, 0)  # not in 'BC.'
-        combo_factor = (1 + 3 + 3**2)
+        combo_factor = 1 + 3 + 3**2
     if len(search_pattern) >= 3:
         if search_pattern[2] not in string.ascii_uppercase[2:5]:
             return ExpCounts(0, 0, 0, 0)  # not in 'CDE'
-        combo_factor = (1 + 3)
+        combo_factor = 1 + 3
     if len(search_pattern) == 4:
-        if search_pattern[3] not in string.ascii_uppercase[3:5] + '.':
+        if search_pattern[3] not in string.ascii_uppercase[3:5] + ".":
             return ExpCounts(0, 0, 0, 0)  # not in 'DE.'
         combo_factor = 1
 
@@ -667,30 +662,30 @@ def get_exp_counts(search_pattern: str, mock_ib: Any) -> ExpCounts:
     combo = mock_ib.get_combos(search_pattern[0])
 
     for item in combo:
-        if item[0] == 'STK' and item[2] == 'USD' and 'OPT' in item[3]:
+        if item[0] == "STK" and item[2] == "USD" and "OPT" in item[3]:
             num_stock_sym_combos += 1
         else:
             num_sym_combos += 1
     exp_stock_sym_recursive = num_stock_sym_combos * combo_factor
     exp_sym_recursive = num_sym_combos * combo_factor
-    exp_stock_sym_non_recursive = \
-        math.ceil(min(16, len(combo) * combo_factor)
-                  * (num_stock_sym_combos / len(combo)))
-    exp_sym_non_recursive = \
-        math.floor(min(16, len(combo) * combo_factor)
-                   * (num_sym_combos / len(combo)))
+    exp_stock_sym_non_recursive = math.ceil(
+        min(16, len(combo) * combo_factor) * (num_stock_sym_combos / len(combo))
+    )
+    exp_sym_non_recursive = math.floor(
+        min(16, len(combo) * combo_factor) * (num_sym_combos / len(combo))
+    )
 
-    return ExpCounts(exp_sym_non_recursive,
-                     exp_sym_recursive,
-                     exp_stock_sym_non_recursive,
-                     exp_stock_sym_recursive
-                     )
+    return ExpCounts(
+        exp_sym_non_recursive,
+        exp_sym_recursive,
+        exp_stock_sym_non_recursive,
+        exp_stock_sym_recursive,
+    )
 
 
-def verify_get_symbols(letter: str,
-                       algo_app: "AlgoApp",
-                       mock_ib: Any,
-                       sym_dfs: SymDfs) -> SymDfs:
+def verify_get_symbols(
+    letter: str, algo_app: "AlgoApp", mock_ib: Any, sym_dfs: SymDfs
+) -> SymDfs:
     """Verify get_symbols.
 
     Args:
@@ -703,16 +698,13 @@ def verify_get_symbols(letter: str,
         updated sym_dfs
 
     """
-    if letter != 'A':
+    if letter != "A":
         # verify the symbol_status ds
-        symbols_status_path = \
-            algo_app.ds_catalog.get_path('symbols_status')
-        logger.info('symbols_status_path: %s', symbols_status_path)
+        symbols_status_path = algo_app.ds_catalog.get_path("symbols_status")
+        logger.info("symbols_status_path: %s", symbols_status_path)
 
         assert symbols_status_path.exists()
-        symbols_status = pd.read_csv(symbols_status_path,
-                                     header=0,
-                                     index_col=0)
+        symbols_status = pd.read_csv(symbols_status_path, header=0, index_col=0)
         test_letter = symbols_status.iloc[0, 0]
         assert test_letter == letter
 
@@ -722,60 +714,70 @@ def verify_get_symbols(letter: str,
     assert algo_app.request_id >= 2
 
     logger.debug("getting stock_sym_match_descs for %s", letter)
-    symbol_starts_with_pattern = \
-        mock_ib.contract_descriptions['symbol'].map(
-            lambda symbol: symbol.startswith(letter))
+    symbol_starts_with_pattern = mock_ib.contract_descriptions["symbol"].map(
+        lambda symbol: symbol.startswith(letter)
+    )
     stock_sym_match_descs = mock_ib.contract_descriptions.loc[
         symbol_starts_with_pattern
-        & (mock_ib.contract_descriptions['secType'] == 'STK')
-        & (mock_ib.contract_descriptions['currency'] == 'USD')
-        & (if_opt_in_derivativeSecTypes(
-            mock_ib.contract_descriptions)),
-        ['conId', 'symbol', 'secType', 'primaryExchange', 'currency',
-         'derivativeSecTypes']
-        ]
+        & (mock_ib.contract_descriptions["secType"] == "STK")
+        & (mock_ib.contract_descriptions["currency"] == "USD")
+        & (if_opt_in_derivativeSecTypes(mock_ib.contract_descriptions)),
+        [
+            "conId",
+            "symbol",
+            "secType",
+            "primaryExchange",
+            "currency",
+            "derivativeSecTypes",
+        ],
+    ]
 
     sym_match_descs = mock_ib.contract_descriptions.loc[
         symbol_starts_with_pattern
-        & ((mock_ib.contract_descriptions['secType'] != 'STK')
-           | (mock_ib.contract_descriptions['currency'] != 'USD')
-           | if_opt_not_in_derivativeSecTypes(mock_ib.contract_descriptions)
-           ),
-        ['conId', 'symbol', 'secType', 'primaryExchange', 'currency',
-         'derivativeSecTypes']
-        ]
+        & (
+            (mock_ib.contract_descriptions["secType"] != "STK")
+            | (mock_ib.contract_descriptions["currency"] != "USD")
+            | if_opt_not_in_derivativeSecTypes(mock_ib.contract_descriptions)
+        ),
+        [
+            "conId",
+            "symbol",
+            "secType",
+            "primaryExchange",
+            "currency",
+            "derivativeSecTypes",
+        ],
+    ]
     # we expect the stock_symbols to accumulate and grow, so the
     # number should now be what was there from the previous
     # iteration of this loop plus what we just now added
     assert len(stock_sym_match_descs) == exp_counts.stock_sym_recursive
     assert len(algo_app.stock_symbols) == (
-            exp_counts.stock_sym_recursive + len(sym_dfs.stock_sym_df))
+        exp_counts.stock_sym_recursive + len(sym_dfs.stock_sym_df)
+    )
 
     assert len(sym_match_descs) == exp_counts.sym_recursive
-    assert len(algo_app.symbols) == (
-            exp_counts.sym_recursive + len(sym_dfs.sym_df))
+    assert len(algo_app.symbols) == (exp_counts.sym_recursive + len(sym_dfs.sym_df))
 
     if exp_counts.stock_sym_recursive > 0:
-        stock_sym_match_descs = stock_sym_match_descs.set_index(
-            ['conId']).sort_index()
+        stock_sym_match_descs = stock_sym_match_descs.set_index(["conId"]).sort_index()
         # sym_dfs.mock_stock_sym_df \
         #     = sym_dfs.mock_stock_sym_df.append(stock_sym_match_descs)
-        sym_dfs.mock_stock_sym_df = pd.concat([
-            sym_dfs.mock_stock_sym_df,
-            stock_sym_match_descs
-        ])
+        sym_dfs.mock_stock_sym_df = pd.concat(
+            [sym_dfs.mock_stock_sym_df, stock_sym_match_descs]
+        )
         sym_dfs.mock_stock_sym_df.sort_index(inplace=True)
 
         # check the data set
-        stock_symbols_path = algo_app.ds_catalog.get_path('stock_symbols')
-        logger.info('stock_symbols_path: %s', stock_symbols_path)
+        stock_symbols_path = algo_app.ds_catalog.get_path("stock_symbols")
+        logger.info("stock_symbols_path: %s", stock_symbols_path)
 
-        sym_dfs.stock_sym_df = pd.read_csv(stock_symbols_path,
-                                           header=0,
-                                           index_col=0,
-                                           converters={
-                                               'derivativeSecTypes':
-                                                   lambda x: eval(x)})
+        sym_dfs.stock_sym_df = pd.read_csv(
+            stock_symbols_path,
+            header=0,
+            index_col=0,
+            converters={"derivativeSecTypes": lambda x: eval(x)},
+        )
         comp_df = algo_app.stock_symbols.compare(sym_dfs.stock_sym_df)
         assert comp_df.empty
 
@@ -783,27 +785,22 @@ def verify_get_symbols(letter: str,
         assert comp_df.empty
 
     if exp_counts.sym_recursive > 0:
-        sym_match_descs = sym_match_descs.set_index(
-            ['conId']).sort_index()
+        sym_match_descs = sym_match_descs.set_index(["conId"]).sort_index()
         # sym_dfs.mock_sym_df = \
         #     sym_dfs.mock_sym_df.append(sym_match_descs)
-        sym_dfs.mock_sym_df = pd.concat([
-            sym_dfs.mock_sym_df,
-            sym_match_descs
-        ])
+        sym_dfs.mock_sym_df = pd.concat([sym_dfs.mock_sym_df, sym_match_descs])
         sym_dfs.mock_sym_df.sort_index(inplace=True)
 
         # check the data set
-        symbols_path = \
-            algo_app.ds_catalog.get_path('symbols')
-        logger.info('symbols_path: %s', symbols_path)
+        symbols_path = algo_app.ds_catalog.get_path("symbols")
+        logger.info("symbols_path: %s", symbols_path)
 
-        sym_dfs.sym_df = pd.read_csv(symbols_path,
-                                     header=0,
-                                     index_col=0,
-                                     converters={
-                                         'derivativeSecTypes':
-                                             lambda x: eval(x)})
+        sym_dfs.sym_df = pd.read_csv(
+            symbols_path,
+            header=0,
+            index_col=0,
+            converters={"derivativeSecTypes": lambda x: eval(x)},
+        )
 
         comp_df = algo_app.symbols.compare(sym_dfs.sym_df)
         assert comp_df.empty
@@ -821,9 +818,10 @@ def verify_get_symbols(letter: str,
 ###############################################################################
 class TestErrorPath:
     """Class to test error path."""
-    def test_error_path_by_request_when_not_connected(self,
-                                                      algo_app: "AlgoApp",
-                                                      capsys: Any) -> None:
+
+    def test_error_path_by_request_when_not_connected(
+        self, algo_app: "AlgoApp", capsys: Any
+    ) -> None:
         """Test the error callback by any request while not connected.
 
         Args:
@@ -832,13 +830,13 @@ class TestErrorPath:
 
         """
         verify_algo_app_initialized(algo_app)
-        logger.debug('verifying disconnected')
+        logger.debug("verifying disconnected")
         verify_algo_app_disconnected(algo_app)
 
         logger.debug("about to request time")
         algo_app.reqCurrentTime()
         captured = capsys.readouterr().out
-        assert captured == 'Error:  -1   504   Not connected' + '\n'
+        assert captured == "Error:  -1   504   Not connected" + "\n"
 
 
 ###############################################################################
@@ -849,10 +847,9 @@ class TestErrorPath:
 class TestAlgoAppContractDetails:
     """TestAlgoAppContractDetails class."""
 
-    def test_get_contract_details_0_entries(self,
-                                            algo_app: "AlgoApp",
-                                            mock_ib: Any
-                                            ) -> None:
+    def test_get_contract_details_0_entries(
+        self, algo_app: "AlgoApp", mock_ib: Any
+    ) -> None:
         """Test contract details for non-existent conId.
 
         Args:
@@ -863,9 +860,7 @@ class TestAlgoAppContractDetails:
         verify_algo_app_initialized(algo_app)
 
         logger.debug("about to connect")
-        algo_app.connect_to_ib("127.0.0.1",
-                               algo_app.PORT_FOR_LIVE_TRADING,
-                               client_id=0)
+        algo_app.connect_to_ib("127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0)
 
         # verify that algo_app is connected and alive with a valid reqId
         verify_algo_app_connected(algo_app)
@@ -878,10 +873,9 @@ class TestAlgoAppContractDetails:
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
-    def test_get_contract_details_1_entry(self,
-                                          algo_app: "AlgoApp",
-                                          mock_ib: Any
-                                          ) -> None:
+    def test_get_contract_details_1_entry(
+        self, algo_app: "AlgoApp", mock_ib: Any
+    ) -> None:
         """Test contract details for 1 entry.
 
         Args:
@@ -892,9 +886,7 @@ class TestAlgoAppContractDetails:
         verify_algo_app_initialized(algo_app)
 
         logger.debug("about to connect")
-        algo_app.connect_to_ib("127.0.0.1",
-                               algo_app.PORT_FOR_LIVE_TRADING,
-                               client_id=0)
+        algo_app.connect_to_ib("127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0)
 
         # verify that algo_app is connected and alive with a valid reqId
         verify_algo_app_connected(algo_app)
@@ -908,10 +900,9 @@ class TestAlgoAppContractDetails:
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
-    def test_get_contract_details_2_entries(self,
-                                            algo_app: "AlgoApp",
-                                            mock_ib: Any
-                                            ) -> None:
+    def test_get_contract_details_2_entries(
+        self, algo_app: "AlgoApp", mock_ib: Any
+    ) -> None:
         """Test contract details for 2 entries.
 
         Args:
@@ -922,9 +913,7 @@ class TestAlgoAppContractDetails:
         verify_algo_app_initialized(algo_app)
 
         logger.debug("about to connect")
-        algo_app.connect_to_ib("127.0.0.1",
-                               algo_app.PORT_FOR_LIVE_TRADING,
-                               client_id=0)
+        algo_app.connect_to_ib("127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0)
 
         # verify that algo_app is connected and alive with a valid reqId
         verify_algo_app_connected(algo_app)
@@ -943,10 +932,9 @@ class TestAlgoAppContractDetails:
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
-    def test_get_contract_details_duplicates(self,
-                                             algo_app: "AlgoApp",
-                                             mock_ib: Any
-                                             ) -> None:
+    def test_get_contract_details_duplicates(
+        self, algo_app: "AlgoApp", mock_ib: Any
+    ) -> None:
         """Test contract details for 3 entries plus a duplicate.
 
         Args:
@@ -957,9 +945,7 @@ class TestAlgoAppContractDetails:
         verify_algo_app_initialized(algo_app)
 
         logger.debug("about to connect")
-        algo_app.connect_to_ib("127.0.0.1",
-                               algo_app.PORT_FOR_LIVE_TRADING,
-                               client_id=0)
+        algo_app.connect_to_ib("127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0)
 
         # verify that algo_app is connected and alive with a valid reqId
         verify_algo_app_connected(algo_app)
@@ -983,22 +969,19 @@ class TestAlgoAppContractDetails:
         contract.conId = 7003
         algo_app.get_contract_details(contract)
 
-        verify_contract_details(contract, algo_app, mock_ib,
-                                [7001, 7002, 7003])
+        verify_contract_details(contract, algo_app, mock_ib, [7001, 7002, 7003])
 
         contract.conId = 7002  # another duplicate
         algo_app.get_contract_details(contract)
 
-        verify_contract_details(contract, algo_app, mock_ib,
-                                [7001, 7002, 7003])
+        verify_contract_details(contract, algo_app, mock_ib, [7001, 7002, 7003])
 
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
-    def test_get_contract_details_many_entries(self,
-                                               algo_app: "AlgoApp",
-                                               mock_ib: Any
-                                               ) -> None:
+    def test_get_contract_details_many_entries(
+        self, algo_app: "AlgoApp", mock_ib: Any
+    ) -> None:
         """Test contract details for many entries.
 
         Args:
@@ -1009,9 +992,7 @@ class TestAlgoAppContractDetails:
         verify_algo_app_initialized(algo_app)
 
         logger.debug("about to connect")
-        algo_app.connect_to_ib("127.0.0.1",
-                               algo_app.PORT_FOR_LIVE_TRADING,
-                               client_id=0)
+        algo_app.connect_to_ib("127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0)
 
         # verify that algo_app is connected and alive with a valid reqId
         verify_algo_app_connected(algo_app)
@@ -1024,10 +1005,7 @@ class TestAlgoAppContractDetails:
                 conId_list.append(conId)
                 algo_app.get_contract_details(contract)
 
-                verify_contract_details(contract,
-                                        algo_app,
-                                        mock_ib,
-                                        conId_list)
+                verify_contract_details(contract, algo_app, mock_ib, conId_list)
         finally:
             algo_app.disconnect_from_ib()
             verify_algo_app_disconnected(algo_app)
@@ -1036,10 +1014,9 @@ class TestAlgoAppContractDetails:
 ###############################################################################
 # contract details verification
 ###############################################################################
-def verify_contract_details(contract: "Contract",
-                            algo_app: "AlgoApp",
-                            mock_ib: Any,
-                            conId_list: List[int]) -> None:
+def verify_contract_details(
+    contract: "Contract", algo_app: "AlgoApp", mock_ib: Any, conId_list: List[int]
+) -> None:
     """Verify contract details.
 
     Args:
@@ -1060,8 +1037,8 @@ def verify_contract_details(contract: "Contract",
         # so we can test that they were saved and restored
         # correctly (i.e., we will compare them against
         # what we just loaded)
-        contracts_path = algo_app.ds_catalog.get_path('contracts')
-        logger.info('contracts_path: %s', contracts_path)
+        contracts_path = algo_app.ds_catalog.get_path("contracts")
+        logger.info("contracts_path: %s", contracts_path)
         algo_app.contracts = algo_app.load_contracts(contracts_path)
         algo_app.load_contract_details()
 
@@ -1075,33 +1052,29 @@ def verify_contract_details(contract: "Contract",
 
             # match_desc = match_desc.iloc[0]
 
-            contract1 = get_contract_obj(
-                algo_app.contracts.loc[conId].to_dict())
+            contract1 = get_contract_obj(algo_app.contracts.loc[conId].to_dict())
 
             contract2 = get_contract_obj(contracts_ds.loc[conId].to_dict())
 
-            compare_contracts(contract1,
-                              contract2)
+            compare_contracts(contract1, contract2)
 
             contract3 = get_contract_from_mock_desc(conId, mock_ib)
 
-            compare_contracts(contract1,
-                              contract3)
+            compare_contracts(contract1, contract3)
 
             contract_details1 = get_contract_details_obj(
-                algo_app.contract_details.loc[conId].to_dict())
+                algo_app.contract_details.loc[conId].to_dict()
+            )
 
             contract_details2 = get_contract_details_obj(
-                contract_details_ds.loc[conId].to_dict())
+                contract_details_ds.loc[conId].to_dict()
+            )
 
-            compare_contract_details(contract_details1,
-                                     contract_details2)
+            compare_contract_details(contract_details1, contract_details2)
 
-            contract_details3 = \
-                get_contract_details_from_mock_desc(conId, mock_ib)
+            contract_details3 = get_contract_details_from_mock_desc(conId, mock_ib)
 
-            compare_contract_details(contract_details1,
-                                     contract_details3)
+            compare_contract_details(contract_details1, contract_details3)
 
 
 ###############################################################################
@@ -1115,10 +1088,7 @@ class TestExtraContractFields:
     ###########################################################################
     # test_contract_combo_legs
     ###########################################################################
-    def test_contract_extra_fields(self,
-                                   algo_app: "AlgoApp",
-                                   mock_ib: Any
-                                   ) -> None:
+    def test_contract_extra_fields(self, algo_app: "AlgoApp", mock_ib: Any) -> None:
         """Test combo legs in contract.
 
         Args:
@@ -1130,15 +1100,14 @@ class TestExtraContractFields:
         contract_list = []
         contract_df = pd.DataFrame()
         # get the path for saving/loading the combo legs contract df
-        extra_contract_path = \
-            algo_app.ds_catalog.get_path('extra_contract')
-        logger.info('extra_contract_path: %s', extra_contract_path)
+        extra_contract_path = algo_app.ds_catalog.get_path("extra_contract")
+        logger.info("extra_contract_path: %s", extra_contract_path)
 
         for i in range(num_contracts):
             conId = 7001 + i
-            contract = get_contract_from_mock_desc(conId,
-                                                   mock_ib,
-                                                   include_extra_details=True)
+            contract = get_contract_from_mock_desc(
+                conId, mock_ib, include_extra_details=True
+            )
 
             # add combo legs
             combo_leg_list = build_combo_legs(i, mock_ib)
@@ -1153,11 +1122,9 @@ class TestExtraContractFields:
             # contract_df = \
             #     contract_df.append(pd.DataFrame(contract_dict,
             #                                     index=[contract.conId]))
-            contract_df = pd.concat([
-                contract_df,
-                pd.DataFrame(contract_dict,
-                             index=[contract.conId])
-            ])
+            contract_df = pd.concat(
+                [contract_df, pd.DataFrame(contract_dict, index=[contract.conId])]
+            )
 
         # Save dataframe to csv
         contract_df.to_csv(extra_contract_path)
@@ -1176,8 +1143,7 @@ class TestExtraContractFields:
 ###############################################################################
 # build_combo_legs
 ###############################################################################
-def build_combo_legs(idx: int,
-                     mock_ib: Any) -> List[ComboLeg]:
+def build_combo_legs(idx: int, mock_ib: Any) -> List[ComboLeg]:
     """Build the combo leg list for a contract.
 
     Args:
@@ -1192,22 +1158,16 @@ def build_combo_legs(idx: int,
     combo_leg_list = []
     for j in range(num_combo_legs):
         combo_leg = ComboLeg()
-        combo_leg.conId = \
-            mock_ib.combo_legs.cl_conId.iloc[idx + j]
-        combo_leg.ratio = \
-            mock_ib.combo_legs.cl_ratio.iloc[idx + j]
-        combo_leg.action = \
-            mock_ib.combo_legs.cl_action.iloc[idx + j]
-        combo_leg.exchange = \
-            mock_ib.combo_legs.cl_exchange.iloc[idx + j]
-        combo_leg.openClose = \
-            mock_ib.combo_legs.cl_openClose.iloc[idx + j]
-        combo_leg.shortSaleSlot = \
-            mock_ib.combo_legs.cl_shortSaleSlot.iloc[idx + j]
-        combo_leg.designatedLocation = \
-            mock_ib.combo_legs.cl_designatedLocation.iloc[idx + j]
-        combo_leg.exemptCode = \
-            mock_ib.combo_legs.cl_exemptCode.iloc[idx + j]
+        combo_leg.conId = mock_ib.combo_legs.cl_conId.iloc[idx + j]
+        combo_leg.ratio = mock_ib.combo_legs.cl_ratio.iloc[idx + j]
+        combo_leg.action = mock_ib.combo_legs.cl_action.iloc[idx + j]
+        combo_leg.exchange = mock_ib.combo_legs.cl_exchange.iloc[idx + j]
+        combo_leg.openClose = mock_ib.combo_legs.cl_openClose.iloc[idx + j]
+        combo_leg.shortSaleSlot = mock_ib.combo_legs.cl_shortSaleSlot.iloc[idx + j]
+        combo_leg.designatedLocation = mock_ib.combo_legs.cl_designatedLocation.iloc[
+            idx + j
+        ]
+        combo_leg.exemptCode = mock_ib.combo_legs.cl_exemptCode.iloc[idx + j]
 
         combo_leg_list.append(combo_leg)
 
@@ -1217,10 +1177,9 @@ def build_combo_legs(idx: int,
 ###############################################################################
 # get_contract_from_mock_desc
 ###############################################################################
-def get_contract_from_mock_desc(conId: int,
-                                mock_ib: Any,
-                                include_extra_details: bool = False
-                                ) -> Contract:
+def get_contract_from_mock_desc(
+    conId: int, mock_ib: Any, include_extra_details: bool = False
+) -> Contract:
     """Build and return a contract from the mock description.
 
     Args:
@@ -1234,57 +1193,57 @@ def get_contract_from_mock_desc(conId: int,
 
     """
     ret_con = Contract()
-    ret_con.conId = mock_ib.contract_descriptions.at[conId, 'conId']  # cd
-    ret_con.symbol = mock_ib.contract_descriptions.at[conId, 'symbol']  # cd
-    ret_con.secType = mock_ib.contract_descriptions.at[conId, 'secType']  # cd
+    ret_con.conId = mock_ib.contract_descriptions.at[conId, "conId"]  # cd
+    ret_con.symbol = mock_ib.contract_descriptions.at[conId, "symbol"]  # cd
+    ret_con.secType = mock_ib.contract_descriptions.at[conId, "secType"]  # cd
 
-    if mock_ib.contract_descriptions.at[conId, 'lastTradeDateOrContractMonth']:
-        split_date = \
-            mock_ib.contract_descriptions.at[
-                conId, 'lastTradeDateOrContractMonth'].split()
+    if mock_ib.contract_descriptions.at[conId, "lastTradeDateOrContractMonth"]:
+        split_date = mock_ib.contract_descriptions.at[
+            conId, "lastTradeDateOrContractMonth"
+        ].split()
         if len(split_date) > 0:  # very well better be!
             ret_con.lastTradeDateOrContractMonth = split_date[0]
 
-    ret_con.strike = mock_ib.contract_descriptions.at[conId, 'strike']  # cd
-    ret_con.right = mock_ib.contract_descriptions.at[conId, 'right']  # cd
-    ret_con.multiplier = \
-        mock_ib.contract_descriptions.at[conId, 'multiplier']  # cd
-    ret_con.exchange = \
-        mock_ib.contract_descriptions.at[conId, 'exchange']  # cd
-    ret_con.primaryExchange = \
-        mock_ib.contract_descriptions.at[conId, 'primaryExchange']  # cd
-    ret_con.currency = \
-        mock_ib.contract_descriptions.at[conId, 'currency']  # cd
-    ret_con.localSymbol = \
-        mock_ib.contract_descriptions.at[conId, 'localSymbol']  # cd
-    ret_con.tradingClass = \
-        mock_ib.contract_descriptions.at[conId, 'tradingClass']  # cd
+    ret_con.strike = mock_ib.contract_descriptions.at[conId, "strike"]  # cd
+    ret_con.right = mock_ib.contract_descriptions.at[conId, "right"]  # cd
+    ret_con.multiplier = mock_ib.contract_descriptions.at[conId, "multiplier"]  # cd
+    ret_con.exchange = mock_ib.contract_descriptions.at[conId, "exchange"]  # cd
+    ret_con.primaryExchange = mock_ib.contract_descriptions.at[
+        conId, "primaryExchange"
+    ]  # cd
+    ret_con.currency = mock_ib.contract_descriptions.at[conId, "currency"]  # cd
+    ret_con.localSymbol = mock_ib.contract_descriptions.at[conId, "localSymbol"]  # cd
+    ret_con.tradingClass = mock_ib.contract_descriptions.at[conId, "tradingClass"]  # cd
 
     ###########################################################################
     # following fields are not included with reqContractDetails
     ###########################################################################
     if include_extra_details:
-        ret_con.includeExpired = \
-            mock_ib.contract_descriptions.at[conId, 'includeExpired']
-        ret_con.secIdType = mock_ib.contract_descriptions.at[conId,
-                                                             'secIdType']
-        ret_con.secId = mock_ib.contract_descriptions.at[conId, 'secId']
+        ret_con.includeExpired = mock_ib.contract_descriptions.at[
+            conId, "includeExpired"
+        ]
+        ret_con.secIdType = mock_ib.contract_descriptions.at[conId, "secIdType"]
+        ret_con.secId = mock_ib.contract_descriptions.at[conId, "secId"]
 
         # combos
-        ret_con.comboLegsDescrip = \
-            mock_ib.contract_descriptions.at[conId, 'comboLegsDescrip']
+        ret_con.comboLegsDescrip = mock_ib.contract_descriptions.at[
+            conId, "comboLegsDescrip"
+        ]
         # ret_con.comboLegs = mock_ib.contract_descriptions.comboLegs
 
         # build a delta_neutral_contract every third time
         if (conId % 3) == 0:
             delta_neutral_contract = DeltaNeutralContract()
             # item() is used to convert numpy.int64 to python int
-            delta_neutral_contract.conId = \
-                mock_ib.delta_neutral_contract.at[conId, 'conId']
-            delta_neutral_contract.delta = \
-                mock_ib.delta_neutral_contract.at[conId, 'delta']
-            delta_neutral_contract.price = \
-                mock_ib.delta_neutral_contract.at[conId, 'price']
+            delta_neutral_contract.conId = mock_ib.delta_neutral_contract.at[
+                conId, "conId"
+            ]
+            delta_neutral_contract.delta = mock_ib.delta_neutral_contract.at[
+                conId, "delta"
+            ]
+            delta_neutral_contract.price = mock_ib.delta_neutral_contract.at[
+                conId, "price"
+            ]
 
             ret_con.deltaNeutralContract = delta_neutral_contract
 
@@ -1294,9 +1253,7 @@ def get_contract_from_mock_desc(conId: int,
 ###############################################################################
 # get_contract_details_from_mock_desc
 ###############################################################################
-def get_contract_details_from_mock_desc(conId: int,
-                                        mock_ib: Any
-                                        ) -> ContractDetails:
+def get_contract_details_from_mock_desc(conId: int, mock_ib: Any) -> ContractDetails:
     """Build and return a contract_details from the mock description.
 
     Args:
@@ -1309,72 +1266,60 @@ def get_contract_details_from_mock_desc(conId: int,
     """
     ret_con = ContractDetails()
     ret_con.contract = get_contract_from_mock_desc(conId, mock_ib)
-    ret_con.marketName = \
-        mock_ib.contract_descriptions.at[conId, 'marketName']  # cd
-    ret_con.minTick = mock_ib.contract_descriptions.at[conId, 'minTick']  # cd
-    ret_con.orderTypes = \
-        mock_ib.contract_descriptions.at[conId, 'orderTypes']  # cd
-    ret_con.validExchanges = \
-        mock_ib.contract_descriptions.at[conId, 'validExchanges']  # cd
-    ret_con.priceMagnifier = \
-        mock_ib.contract_descriptions.at[conId, 'priceMagnifier']  # cd
-    ret_con.underConId = \
-        mock_ib.contract_descriptions.at[conId, 'underConId']  # cd
-    ret_con.longName = mock_ib.contract_descriptions.at[conId,
-                                                        'longName']  # cd
-    ret_con.contractMonth = \
-        mock_ib.contract_descriptions.at[conId, 'contractMonth']  # cd
-    ret_con.industry = mock_ib.contract_descriptions.at[conId,
-                                                        'industry']  # cd
-    ret_con.category = mock_ib.contract_descriptions.at[conId,
-                                                        'category']  # cd
-    ret_con.subcategory = \
-        mock_ib.contract_descriptions.at[conId, 'subcategory']  # cd
-    ret_con.timeZoneId = \
-        mock_ib.contract_descriptions.at[conId, 'timeZoneId']  # cd
-    ret_con.tradingHours = \
-        mock_ib.contract_descriptions.at[conId, 'tradingHours']  # cd
-    ret_con.liquidHours = \
-        mock_ib.contract_descriptions.at[conId, 'liquidHours']  # cd
-    ret_con.evRule = mock_ib.contract_descriptions.at[conId, 'evRule']  # cd
-    ret_con.evMultiplier = \
-        mock_ib.contract_descriptions.at[conId, 'evMultiplier']  # cd
-    ret_con.mdSizeMultiplier = \
-        mock_ib.contract_descriptions.at[conId, 'mdSizeMultiplier']  # cd
-    ret_con.aggGroup = mock_ib.contract_descriptions.at[conId,
-                                                        'aggGroup']  # cd
-    ret_con.underSymbol = \
-        mock_ib.contract_descriptions.at[conId, 'underSymbol']  # cd
-    ret_con.underSecType = \
-        mock_ib.contract_descriptions.at[conId, 'underSecType']  # cd
-    ret_con.marketRuleIds = \
-        mock_ib.contract_descriptions.at[conId, 'marketRuleIds']  # cd
+    ret_con.marketName = mock_ib.contract_descriptions.at[conId, "marketName"]  # cd
+    ret_con.minTick = mock_ib.contract_descriptions.at[conId, "minTick"]  # cd
+    ret_con.orderTypes = mock_ib.contract_descriptions.at[conId, "orderTypes"]  # cd
+    ret_con.validExchanges = mock_ib.contract_descriptions.at[
+        conId, "validExchanges"
+    ]  # cd
+    ret_con.priceMagnifier = mock_ib.contract_descriptions.at[
+        conId, "priceMagnifier"
+    ]  # cd
+    ret_con.underConId = mock_ib.contract_descriptions.at[conId, "underConId"]  # cd
+    ret_con.longName = mock_ib.contract_descriptions.at[conId, "longName"]  # cd
+    ret_con.contractMonth = mock_ib.contract_descriptions.at[
+        conId, "contractMonth"
+    ]  # cd
+    ret_con.industry = mock_ib.contract_descriptions.at[conId, "industry"]  # cd
+    ret_con.category = mock_ib.contract_descriptions.at[conId, "category"]  # cd
+    ret_con.subcategory = mock_ib.contract_descriptions.at[conId, "subcategory"]  # cd
+    ret_con.timeZoneId = mock_ib.contract_descriptions.at[conId, "timeZoneId"]  # cd
+    ret_con.tradingHours = mock_ib.contract_descriptions.at[conId, "tradingHours"]  # cd
+    ret_con.liquidHours = mock_ib.contract_descriptions.at[conId, "liquidHours"]  # cd
+    ret_con.evRule = mock_ib.contract_descriptions.at[conId, "evRule"]  # cd
+    ret_con.evMultiplier = mock_ib.contract_descriptions.at[conId, "evMultiplier"]  # cd
+    ret_con.mdSizeMultiplier = mock_ib.contract_descriptions.at[
+        conId, "mdSizeMultiplier"
+    ]  # cd
+    ret_con.aggGroup = mock_ib.contract_descriptions.at[conId, "aggGroup"]  # cd
+    ret_con.underSymbol = mock_ib.contract_descriptions.at[conId, "underSymbol"]  # cd
+    ret_con.underSecType = mock_ib.contract_descriptions.at[conId, "underSecType"]  # cd
+    ret_con.marketRuleIds = mock_ib.contract_descriptions.at[
+        conId, "marketRuleIds"
+    ]  # cd
 
-    secIdList = mock_ib.contract_descriptions.at[conId, 'secIdList']
+    secIdList = mock_ib.contract_descriptions.at[conId, "secIdList"]
     new_secIdList = []
-    for j in range(0,
-                   2 * mock_ib.contract_descriptions.at[conId,
-                                                        'secIdListCount'],
-                   2):
+    for j in range(0, 2 * mock_ib.contract_descriptions.at[conId, "secIdListCount"], 2):
         tag = secIdList[j]
-        value = secIdList[j+1]
+        value = secIdList[j + 1]
         tag_value = TagValue(tag, value)
         new_secIdList.append(tag_value)
     ret_con.secIdList = new_secIdList  # cd
 
-    ret_con.realExpirationDate = \
-        mock_ib.contract_descriptions.at[conId, 'realExpirationDate']  # cd
+    ret_con.realExpirationDate = mock_ib.contract_descriptions.at[
+        conId, "realExpirationDate"
+    ]  # cd
 
     # last trade time come from lastTradeDate as 'date time' (i.e., 2 items)
-    if mock_ib.contract_descriptions.at[conId, 'lastTradeDateOrContractMonth']:
-        split_date = \
-            mock_ib.contract_descriptions.at[
-                conId, 'lastTradeDateOrContractMonth'].split()
+    if mock_ib.contract_descriptions.at[conId, "lastTradeDateOrContractMonth"]:
+        split_date = mock_ib.contract_descriptions.at[
+            conId, "lastTradeDateOrContractMonth"
+        ].split()
         if len(split_date) > 1:
             ret_con.lastTradeTime = split_date[1]
 
-    ret_con.stockType = mock_ib.contract_descriptions.at[conId,
-                                                         'stockType']  # cd
+    ret_con.stockType = mock_ib.contract_descriptions.at[conId, "stockType"]  # cd
 
     return ret_con
 
@@ -1382,9 +1327,7 @@ def get_contract_details_from_mock_desc(conId: int,
 ###############################################################################
 # compare_tag_value
 ###############################################################################
-def compare_tag_value(tag_value1: TagValue,
-                      tag_value2: TagValue
-                      ) -> None:
+def compare_tag_value(tag_value1: TagValue, tag_value2: TagValue) -> None:
     """Compare two tag_value objects for equality.
 
     Args:
@@ -1408,9 +1351,7 @@ def compare_tag_value(tag_value1: TagValue,
 ###############################################################################
 # compare_combo_legs
 ###############################################################################
-def compare_combo_legs(cl1: ComboLeg,
-                       cl2: ComboLeg
-                       ) -> None:
+def compare_combo_legs(cl1: ComboLeg, cl2: ComboLeg) -> None:
     """Compare two combo leg objects for equality.
 
     Args:
@@ -1468,9 +1409,9 @@ def verify_combo_leg_types(combo_leg: ComboLeg) -> None:
 ###############################################################################
 # compare_delta_neutral_contracts
 ###############################################################################
-def compare_delta_neutral_contracts(con1: DeltaNeutralContract,
-                                    con2: DeltaNeutralContract
-                                    ) -> None:
+def compare_delta_neutral_contracts(
+    con1: DeltaNeutralContract, con2: DeltaNeutralContract
+) -> None:
     """Compare two delta neutral contracts for equality.
 
     Args:
@@ -1514,8 +1455,7 @@ def compare_contracts(con1: Contract, con2: Contract) -> None:
 
     assert con1.secType == con2.secType
 
-    assert (con1.lastTradeDateOrContractMonth
-           == con2.lastTradeDateOrContractMonth)
+    assert con1.lastTradeDateOrContractMonth == con2.lastTradeDateOrContractMonth
 
     assert con1.strike == con2.strike
 
@@ -1546,14 +1486,14 @@ def compare_contracts(con1: Contract, con2: Contract) -> None:
         assert len(con1.comboLegs) == len(con2.comboLegs)
 
         for i in range(len(con1.comboLegs)):
-            compare_combo_legs(con1.comboLegs[i],
-                               con2.comboLegs[i])
+            compare_combo_legs(con1.comboLegs[i], con2.comboLegs[i])
     else:  # check whether one contract has it and the other does not
         assert not (con1.comboLegs or con2.comboLegs)
 
     if con1.deltaNeutralContract and con2.deltaNeutralContract:
-        compare_delta_neutral_contracts(con1.deltaNeutralContract,
-                                        con2.deltaNeutralContract)
+        compare_delta_neutral_contracts(
+            con1.deltaNeutralContract, con2.deltaNeutralContract
+        )
     else:  # check whether one contract has it and one does not
         assert not (con1.deltaNeutralContract or con2.deltaNeutralContract)
 
@@ -1610,16 +1550,13 @@ def verify_contract_types(contract: Contract) -> None:
         for combo_leg in contract.comboLegs:
             assert isinstance(combo_leg, ComboLeg)
 
-    assert isinstance(contract.deltaNeutralContract,
-                      (DeltaNeutralContract, type(None)))
+    assert isinstance(contract.deltaNeutralContract, (DeltaNeutralContract, type(None)))
 
 
 ###############################################################################
 # compare_contract_details
 ###############################################################################
-def compare_contract_details(con1: ContractDetails,
-                             con2: ContractDetails
-                             ) -> None:
+def compare_contract_details(con1: ContractDetails, con2: ContractDetails) -> None:
     """Compare two contract_details for equality.
 
     Args:
