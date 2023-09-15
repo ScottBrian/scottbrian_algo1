@@ -11,13 +11,14 @@ import socket
 
 from ibapi.connection import Connection
 from ibapi.message import IN, OUT
-from ibapi.comm import (make_field, make_msg, read_msg, read_fields)
+from ibapi.comm import make_field, make_msg, read_msg, read_fields
 from ibapi.common import NO_VALID_ID
 from ibapi.errors import FAIL_CREATE_SOCK
 
 # from scottbrian_algo1.scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_algo1.algo_api import AlgoApp
 from scottbrian_utils.file_catalog import FileCatalog
+
 # from scottbrian_utils.diag_msg import diag_msg
 
 import queue
@@ -42,19 +43,18 @@ logger = logging.getLogger(__name__)
 proj_dir = Path.cwd().resolve().parents[1]  # back two directories
 
 test_cat = FileCatalog(
-    {'symbols': Path(proj_dir / 't_datasets/symbols.csv'),
-     'mock_contract_descs':
-         Path(proj_dir / 't_datasets/mock_contract_descs.csv')
-     })
+    {
+        "symbols": Path(proj_dir / "t_datasets/symbols.csv"),
+        "mock_contract_descs": Path(proj_dir / "t_datasets/mock_contract_descs.csv"),
+    }
+)
 
 
 ###############################################################################
 # algo_app
 ###############################################################################
-@pytest.fixture(scope='function')
-def algo_app(monkeypatch: Any,
-             tmp_path: Any,
-             mock_ib: "MockIB") -> "AlgoApp":
+@pytest.fixture(scope="function")
+def algo_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "AlgoApp":
     """Instantiate and return an AlgoApp for testing.
 
     Args:
@@ -65,6 +65,7 @@ def algo_app(monkeypatch: Any,
     Returns:
         An instance of AlgoApp
     """
+
     ###########################################################################
     # algo_app: mock_connection_connect
     ###########################################################################
@@ -75,16 +76,16 @@ def algo_app(monkeypatch: Any,
             self: instance of ib Connection class
 
         """
-        logger.debug('entered')
+        logger.debug("entered")
         try:
             self.socket = socket.socket()
         # TO DO list the exceptions you want to catch
         except socket.error:
-            logger.debug('socket.error exception')
+            logger.debug("socket.error exception")
             if self.wrapper:
-                self.wrapper.error(NO_VALID_ID,
-                                   FAIL_CREATE_SOCK.code(),
-                                   FAIL_CREATE_SOCK.msg())
+                self.wrapper.error(
+                    NO_VALID_ID, FAIL_CREATE_SOCK.code(), FAIL_CREATE_SOCK.msg()
+                )
 
         if self.port == mock_ib.PORT_FOR_REQID_TIMEOUT:
             mock_ib.reqId_timeout = True  # simulate timeout
@@ -145,7 +146,7 @@ def algo_app(monkeypatch: Any,
               queue.Full: message can not be added because queue is at limit
 
         """
-        logger.debug('entered with msg: %s', msg)
+        logger.debug("entered with msg: %s", msg)
         logger.debug("acquiring lock")
         self.lock.acquire()
         logger.debug("acquired lock")
@@ -209,14 +210,17 @@ def algo_app(monkeypatch: Any,
     extra_contract_path = d / "extra_contract.csv"
     fundamental_data_path = d / "fundamental_data.csv"
 
-    catalog = FileCatalog({'symbols': symbols_path,
-                           'stock_symbols': stock_symbols_path,
-                           'symbols_status': symbol_status_path,
-                           'contracts': contracts_path,
-                           'contract_details': contract_details_path,
-                           'extra_contract': extra_contract_path,
-                           'fundamental_data': fundamental_data_path
-                           })
+    catalog = FileCatalog(
+        {
+            "symbols": symbols_path,
+            "stock_symbols": stock_symbols_path,
+            "symbols_status": symbol_status_path,
+            "contracts": contracts_path,
+            "contract_details": contract_details_path,
+            "extra_contract": extra_contract_path,
+            "fundamental_data": fundamental_data_path,
+        }
+    )
 
     a_algo_app = AlgoApp(catalog)
     return a_algo_app
@@ -264,13 +268,13 @@ class MockIB:
             msg: message to be sent (i.e., interpreted and queued)
 
         """
-        logger.debug('entered with message %s', msg)
+        logger.debug("entered with message %s", msg)
         (size, msg2, buf) = read_msg(msg)
-        logger.debug('size, msg, buf: %d, %s, %s ', size, msg2, buf)
+        logger.debug("size, msg, buf: %d, %s, %s ", size, msg2, buf)
         fields = read_fields(msg2)
-        logger.debug('fields: %s', fields)
+        logger.debug("fields: %s", fields)
 
-        recv_msg = b''
+        recv_msg = b""
 
         #######################################################################
         # get version and connect time (special case - not decode able)
@@ -287,58 +291,58 @@ class MockIB:
         # if check. Simply look in the log to see what was received for
         # msg and update the hard coded text below with the new version
         # number and that should fix it.
-        if msg == b'API\x00\x00\x00\x00\tv100..177':
-            current_dt = datetime.now(
-                tz=timezone(offset=timedelta(hours=5))).\
-                strftime('%Y%m%d %H:%M:%S')
+        if msg == b"API\x00\x00\x00\x00\tv100..177":
+            current_dt = datetime.now(tz=timezone(offset=timedelta(hours=5))).strftime(
+                "%Y%m%d %H:%M:%S"
+            )
 
             # recv_msg = b'\x00\x00\x00\x1a157\x0020210301 23:43:23 EST\x00'
             # the version number in the following recv_msg must match
             # the version number above in the API msg (currently 177)
-            recv_msg = b'\x00\x00\x00\x1a177\x00' \
-                       + current_dt.encode('utf-8') + b' EST\x00'
+            recv_msg = (
+                b"\x00\x00\x00\x1a177\x00" + current_dt.encode("utf-8") + b" EST\x00"
+            )
 
         #######################################################################
         # reqId (get next valid requestID)
         # b'\x00\x00\x00\x0871\x002\x000\x00\x00'
         #######################################################################
         elif int(fields[0]) == OUT.START_API:
-            logger.info('startAPI detected')
+            logger.info("startAPI detected")
             # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
             if self.reqId_timeout:  # if testing timeout case
-                recv_msg = make_msg('0')  # simulate timeout
+                recv_msg = make_msg("0")  # simulate timeout
             else:  # build the normal next valid id message
-                recv_msg = make_msg(make_field(IN.NEXT_VALID_ID)
-                                    + make_field('1')
-                                    + make_field('1'))
-            logger.debug('recv_msg: %s', recv_msg)
+                recv_msg = make_msg(
+                    make_field(IN.NEXT_VALID_ID) + make_field("1") + make_field("1")
+                )
+            logger.debug("recv_msg: %s", recv_msg)
         #######################################################################
         # Handle special test cases for request disconnect and timeout
         #######################################################################
         elif self.simulate_request_disconnect:  # if testing timeout case
             time.sleep(2)  # allow some time for request to get into wait loop
-            recv_msg = b''  # simulate disconnect
+            recv_msg = b""  # simulate disconnect
         elif self.simulate_request_timeout:
-            recv_msg = make_msg('0')  # simulate timeout
+            recv_msg = make_msg("0")  # simulate timeout
         #######################################################################
         # reqMatchingSymbols
         #######################################################################
         elif int(fields[0]) == OUT.REQ_MATCHING_SYMBOLS:
-            logger.info('reqMatchingSymbols detected')
+            logger.info("reqMatchingSymbols detected")
             reqId = int(fields[1])
-            pattern = fields[2].decode(errors='backslashreplace')
-            logger.debug('pattern: %s', pattern)
+            pattern = fields[2].decode(errors="backslashreplace")
+            logger.debug("pattern: %s", pattern)
 
             # construct start of receive message for wrapper
             build_msg = make_field(IN.SYMBOL_SAMPLES) + make_field(reqId)
 
             # find pattern matches in mock contract descriptions
-            symbol_starts_with_pattern = \
-                self.contract_descriptions['symbol'].map(
-                    lambda symbol: symbol.startswith(pattern))
+            symbol_starts_with_pattern = self.contract_descriptions["symbol"].map(
+                lambda symbol: symbol.startswith(pattern)
+            )
             # logger.debug(f'{symbol_starts_with_pattern=}')
-            match_descs = \
-                self.contract_descriptions[symbol_starts_with_pattern]
+            match_descs = self.contract_descriptions[symbol_starts_with_pattern]
             # logger.debug(f'{match_descs=}')
 
             # match_descs = self.contract_descriptions.loc[
@@ -346,31 +350,31 @@ class MockIB:
             #     startswith(pattern)]
 
             # limit the number found as ib does
-            num_found = min(self.MAX_CONTRACT_DESCS_RETURNED,
-                            match_descs.shape[0])
+            num_found = min(self.MAX_CONTRACT_DESCS_RETURNED, match_descs.shape[0])
 
             # add the number of descriptions to the receive message
             build_msg = build_msg + make_field(num_found)
 
             for i in range(num_found):
                 build_msg = (
-                        build_msg
-                        + make_field(match_descs.iloc[i].conId)
-                        + make_field(match_descs.iloc[i].symbol)
-                        + make_field(match_descs.iloc[i].secType)
-                        + make_field(match_descs.iloc[i].primaryExchange)
-                        + make_field(match_descs.iloc[i].currency)
-                        + make_field(len(match_descs.iloc[
-                                             i].derivativeSecTypes))
+                    build_msg
+                    + make_field(match_descs.iloc[i].conId)
+                    + make_field(match_descs.iloc[i].symbol)
+                    + make_field(match_descs.iloc[i].secType)
+                    + make_field(match_descs.iloc[i].primaryExchange)
+                    + make_field(match_descs.iloc[i].currency)
+                    + make_field(len(match_descs.iloc[i].derivativeSecTypes))
                 )
 
                 for dvt in match_descs.iloc[i].derivativeSecTypes:
                     build_msg = build_msg + make_field(dvt)
 
                 build_msg += make_field(
-                    f"description for conid: {match_descs.iloc[i].conId}")
+                    f"description for conid: {match_descs.iloc[i].conId}"
+                )
                 build_msg += make_field(
-                    f"issuer ID for symbol: {match_descs.iloc[i].symbol}")
+                    f"issuer ID for symbol: {match_descs.iloc[i].symbol}"
+                )
 
             recv_msg = make_msg(build_msg)
 
@@ -378,29 +382,30 @@ class MockIB:
         # reqContractDetails
         #######################################################################
         elif int(fields[0]) == OUT.REQ_CONTRACT_DATA:
-            logger.info('reqContractDetails detected')
+            logger.info("reqContractDetails detected")
             version = int(fields[1])
             reqId = int(fields[2])
             conId = int(fields[3])
 
             # construct start of receive message for wrapper
             start_msg = (
-                    make_field(IN.CONTRACT_DATA)
-                    # + make_field(version)
-                    + make_field(reqId))
+                make_field(IN.CONTRACT_DATA)
+                # + make_field(version)
+                + make_field(reqId)
+            )
 
             # find pattern matches in mock contract descriptions
             # fow now, just conId
             match_descs = self.contract_descriptions.loc[
-                self.contract_descriptions['conId'] == conId]
+                self.contract_descriptions["conId"] == conId
+            ]
 
             for i in range(len(match_descs)):
                 build_msg = (
                     start_msg
                     + make_field(match_descs.iloc[i].symbol)
                     + make_field(match_descs.iloc[i].secType)
-                    + make_field(match_descs.iloc[i].
-                                 lastTradeDateOrContractMonth)
+                    + make_field(match_descs.iloc[i].lastTradeDateOrContractMonth)
                     + make_field(match_descs.iloc[i].strike)
                     + make_field(match_descs.iloc[i].right)
                     + make_field(match_descs.iloc[i].exchange)
@@ -434,24 +439,24 @@ class MockIB:
                     build_msg += make_field(tv)
 
                 build_msg += (
-                        make_field(match_descs.iloc[i].aggGroup)
-                        + make_field(match_descs.iloc[i].underSymbol)
-                        + make_field(match_descs.iloc[i].underSecType)
-                        + make_field(match_descs.iloc[i].marketRuleIds)
-                        + make_field(match_descs.iloc[i].realExpirationDate)
-                        + make_field(match_descs.iloc[i].stockType)
-                        + make_field('0001')
-                        + make_field('0002')
-                        + make_field('0003')
+                    make_field(match_descs.iloc[i].aggGroup)
+                    + make_field(match_descs.iloc[i].underSymbol)
+                    + make_field(match_descs.iloc[i].underSecType)
+                    + make_field(match_descs.iloc[i].marketRuleIds)
+                    + make_field(match_descs.iloc[i].realExpirationDate)
+                    + make_field(match_descs.iloc[i].stockType)
+                    + make_field("0001")
+                    + make_field("0002")
+                    + make_field("0003")
                 )
 
                 recv_msg = make_msg(build_msg)
                 self.msg_rcv_q.put(recv_msg, timeout=5)
 
             build_msg = (
-                    make_field(IN.CONTRACT_DATA_END)
-                    + make_field(version)
-                    + make_field(reqId)
+                make_field(IN.CONTRACT_DATA_END)
+                + make_field(version)
+                + make_field(reqId)
             )
 
             recv_msg = make_msg(build_msg)
@@ -499,12 +504,12 @@ class MockIB:
         """
         for char1 in string.ascii_uppercase[0:17]:  # A-Q
             yield char1
-            for char2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
-                yield f'{char1}{char2}'
+            for char2 in string.ascii_uppercase[1:3] + ".":  # 'BC.'
+                yield f"{char1}{char2}"
                 for char3 in string.ascii_uppercase[2:5]:  # C-E
-                    yield f'{char1}{char2}{char3}'
-                    for char4 in string.ascii_uppercase[3:5] + '.':  # D-E
-                        yield f'{char1}{char2}{char3}{char4}'
+                    yield f"{char1}{char2}{char3}"
+                    for char4 in string.ascii_uppercase[3:5] + ".":  # D-E
+                        yield f"{char1}{char2}{char3}{char4}"
 
     ###########################################################################
     # MockIB: no_find_search_patterns
@@ -524,28 +529,28 @@ class MockIB:
         # two characters
         for char1 in string.ascii_uppercase[0:2]:  # ABC
             for char2 in string.ascii_uppercase[3:5]:  # 'DE'
-                yield f'{char1}{char2}'
+                yield f"{char1}{char2}"
 
         # three characters
         for char1 in string.ascii_uppercase[0:2]:  # ABC
-            for char2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
+            for char2 in string.ascii_uppercase[1:3] + ".":  # 'BC.'
                 for char3 in string.ascii_uppercase[5:7]:  # 'FG'
-                    yield f'{char1}{char2}{char3}'
+                    yield f"{char1}{char2}{char3}"
 
         # four characters
         for char1 in string.ascii_uppercase[0:2]:  # 'AB'
-            for char2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
+            for char2 in string.ascii_uppercase[1:3] + ".":  # 'BC.'
                 for char3 in string.ascii_uppercase[2:4]:  # 'CD'
                     for char4 in string.ascii_uppercase[5:7]:  # 'FG'
-                        yield f'{char1}{char2}{char3}{char4}'
+                        yield f"{char1}{char2}{char3}{char4}"
 
         # five characters
         for char1 in string.ascii_uppercase[0:2]:  # 'AB'
-            for char2 in string.ascii_uppercase[1:3] + '.':  # 'BC.'
+            for char2 in string.ascii_uppercase[1:3] + ".":  # 'BC.'
                 for char3 in string.ascii_uppercase[2:4]:  # 'CD'
-                    for char4 in string.ascii_uppercase[3:5] + '.':  # 'DE.'
+                    for char4 in string.ascii_uppercase[3:5] + ".":  # 'DE.'
                         for char5 in string.ascii_uppercase[0:2]:  # 'AB'
-                            yield f'{char1}{char2}{char3}{char4}{char5}'
+                            yield f"{char1}{char2}{char3}{char4}{char5}"
 
     ###########################################################################
     # MockIB: build_desc
@@ -569,121 +574,127 @@ class MockIB:
             sel9 = conId % 9
             sel12 = conId % 12
 
-            cd_dict = {'conId': conId,
-                       'symbol': symbol,
-                       'secType': combo[0],
-                       'primaryExchange': combo[1],
-                       'currency': combo[2],
-                       'derivativeSecTypes': [combo[3]]
-                       }
+            cd_dict = {
+                "conId": conId,
+                "symbol": symbol,
+                "secType": combo[0],
+                "primaryExchange": combo[1],
+                "currency": combo[2],
+                "derivativeSecTypes": [combo[3]],
+            }
 
-            cd_dict['lastTradeDateOrContractMonth'] = \
-                ('20220202', '202203', '', '20220303 12:34:56')[sel4]
+            cd_dict["lastTradeDateOrContractMonth"] = (
+                "20220202",
+                "202203",
+                "",
+                "20220303 12:34:56",
+            )[sel4]
 
-            cd_dict['right'] = ('C', 'P', [''])[sel3]
-            cd_dict['mdSizeMultiplier'] = sel3 + 1
-            cd_dict['validExchanges'] = ('ABC', 'DEFXYZ', 'WXYZ')[sel3]
-            cd_dict['industry'] = f'Industry{sel3 + 1}'
-            cd_dict['subcategory'] = f'SubCategory{("A", "B", "C")[sel3]}'
-            cd_dict['liquidHours'] = f'LiquidHours{(sel3 * 10) + 50}'
-            cd_dict['realExpirationDate'] = ('20220203', '20220202', '')[sel3]
+            cd_dict["right"] = ("C", "P", [""])[sel3]
+            cd_dict["mdSizeMultiplier"] = sel3 + 1
+            cd_dict["validExchanges"] = ("ABC", "DEFXYZ", "WXYZ")[sel3]
+            cd_dict["industry"] = f"Industry{sel3 + 1}"
+            cd_dict["subcategory"] = f'SubCategory{("A", "B", "C")[sel3]}'
+            cd_dict["liquidHours"] = f"LiquidHours{(sel3 * 10) + 50}"
+            cd_dict["realExpirationDate"] = ("20220203", "20220202", "")[sel3]
 
-            cd_dict['strike'] = (sel5 + 1) * 100.0
-            cd_dict['exchange'] = ('SMART', 'BRIGHT', 'GENIUS', 'WHIZ')[sel4]
-            cd_dict['minTick'] = (sel4 + 1) * 0.01
-            cd_dict['multiplier'] = ("3", "2", "1", "100")[sel4]
-            cd_dict['priceMagnifier'] = (11, 12, 14, 18)[sel4]
-            cd_dict['category'] = f'Category1{"0" * sel4}'
-            cd_dict['evRule'] = 'EvRule' + ('W', 'X', 'Y', 'Z')[sel4]
-            cd_dict['localSymbol'] = f'{symbol}{conId}'
-            cd_dict['tradingClass'] = f'TradingClass{conId}'
-            cd_dict['includeExpired'] = bool(sel2)
-            cd_dict['secIdType'] = ('CUSIP', 'SEDOL', 'ISIN', 'RIC')[sel4]
+            cd_dict["strike"] = (sel5 + 1) * 100.0
+            cd_dict["exchange"] = ("SMART", "BRIGHT", "GENIUS", "WHIZ")[sel4]
+            cd_dict["minTick"] = (sel4 + 1) * 0.01
+            cd_dict["multiplier"] = ("3", "2", "1", "100")[sel4]
+            cd_dict["priceMagnifier"] = (11, 12, 14, 18)[sel4]
+            cd_dict["category"] = f'Category1{"0" * sel4}'
+            cd_dict["evRule"] = "EvRule" + ("W", "X", "Y", "Z")[sel4]
+            cd_dict["localSymbol"] = f"{symbol}{conId}"
+            cd_dict["tradingClass"] = f"TradingClass{conId}"
+            cd_dict["includeExpired"] = bool(sel2)
+            cd_dict["secIdType"] = ("CUSIP", "SEDOL", "ISIN", "RIC")[sel4]
 
-            cd_dict['secId'] = f'SecId{conId}'
+            cd_dict["secId"] = f"SecId{conId}"
 
-            cd_dict['comboLegsDescrip'] = f'ComboLegsDescrip{conId}'
+            cd_dict["comboLegsDescrip"] = f"ComboLegsDescrip{conId}"
 
-            cd_dict['marketName'] = f'MarketName{conId}'
+            cd_dict["marketName"] = f"MarketName{conId}"
 
-            cd_dict['orderTypes'] = f'OrdType{conId}'
+            cd_dict["orderTypes"] = f"OrdType{conId}"
 
-            cd_dict['underConId'] = conId - 1000
-            cd_dict['longName'] = f'ABC DEF XYZ {conId}'
+            cd_dict["underConId"] = conId - 1000
+            cd_dict["longName"] = f"ABC DEF XYZ {conId}"
 
-            cd_dict['contractMonth'] = str(sel12 + 1)
+            cd_dict["contractMonth"] = str(sel12 + 1)
 
-            cd_dict['evMultiplier'] = sel7 + 1
-            cd_dict['timeZoneId'] = ('EST', 'PMT', 'EDT', 'PDT', 'CST')[sel5]
-            cd_dict['tradingHours'] = \
-                'TradingHours' + ('0000', '0200', '0400', '0600', '0800')[sel5]
+            cd_dict["evMultiplier"] = sel7 + 1
+            cd_dict["timeZoneId"] = ("EST", "PMT", "EDT", "PDT", "CST")[sel5]
+            cd_dict["tradingHours"] = (
+                "TradingHours" + ("0000", "0200", "0400", "0600", "0800")[sel5]
+            )
 
-            cd_dict['secIdListCount'] = sel5
+            cd_dict["secIdListCount"] = sel5
             secIdList = []
-            for i in range(cd_dict['secIdListCount']):
-                secIdList.append(f'tag{i}')
-                secIdList.append(f'value{i}')
-            cd_dict['secIdList'] = [secIdList]
+            for i in range(cd_dict["secIdListCount"]):
+                secIdList.append(f"tag{i}")
+                secIdList.append(f"value{i}")
+            cd_dict["secIdList"] = [secIdList]
 
-            cd_dict['aggGroup'] = sel4 + 1
-            cd_dict['underSymbol'] = f'Under{symbol}'
-            cd_dict['underSecType'] = f'Under{combo[0]}'
+            cd_dict["aggGroup"] = sel4 + 1
+            cd_dict["underSymbol"] = f"Under{symbol}"
+            cd_dict["underSecType"] = f"Under{combo[0]}"
 
-            cd_dict['marketRuleIds'] = f'MarketRuleIds{conId}'
+            cd_dict["marketRuleIds"] = f"MarketRuleIds{conId}"
 
-            cd_dict['stockType'] = f'StockType{sel9 + 1}'
+            cd_dict["stockType"] = f"StockType{sel9 + 1}"
 
             # self.contract_descriptions = self.contract_descriptions.append(
             #                 pd.DataFrame(cd_dict))
-            self.contract_descriptions = pd.concat([
-                self.contract_descriptions,
-                pd.DataFrame(cd_dict)])
+            self.contract_descriptions = pd.concat(
+                [self.contract_descriptions, pd.DataFrame(cd_dict)]
+            )
 
             ###################################################################
             # ComboLegs
             ###################################################################
-            cl_dict = {'cl_conId': conId}
+            cl_dict = {"cl_conId": conId}
 
-            cl_dict['cl_ratio'] = sel7
+            cl_dict["cl_ratio"] = sel7
 
-            cl_dict['cl_action'] = ('BUY', 'SELL', 'SSHORT')[sel3]
-            cl_dict['cl_exchange'] = ('EX0', 'EX1', 'EX2', 'EX3')[sel4]
-            cl_dict['cl_openClose'] = sel4
+            cl_dict["cl_action"] = ("BUY", "SELL", "SSHORT")[sel3]
+            cl_dict["cl_exchange"] = ("EX0", "EX1", "EX2", "EX3")[sel4]
+            cl_dict["cl_openClose"] = sel4
             # for stock legs when doing short sale
-            cl_dict['cl_shortSaleSlot'] = sel6
+            cl_dict["cl_shortSaleSlot"] = sel6
 
-            cl_dict['cl_designatedLocation'] = \
-                ('DL0', 'DL1', 'DL2', 'DL3', 'DL4')[sel5]
+            cl_dict["cl_designatedLocation"] = ("DL0", "DL1", "DL2", "DL3", "DL4")[sel5]
 
-            cl_dict['cl_exemptCode'] = sel7 - 1
+            cl_dict["cl_exemptCode"] = sel7 - 1
 
             # self.combo_legs = self.combo_legs.append(
             #     pd.DataFrame(cl_dict, index=[0]))
-            self.combo_legs = pd.concat([
-                self.combo_legs,
-                pd.DataFrame(cl_dict, index=[0])])
+            self.combo_legs = pd.concat(
+                [self.combo_legs, pd.DataFrame(cl_dict, index=[0])]
+            )
 
             ############################################################
             # build DeltaNeutralContract
             ############################################################
-            dn_dict = {'conId': conId,
-                       'delta': round(conId / .25, 4),
-                       'price': round(conId / .33, 4)
-                       }
+            dn_dict = {
+                "conId": conId,
+                "delta": round(conId / 0.25, 4),
+                "price": round(conId / 0.33, 4),
+            }
 
             # self.delta_neutral_contract = self.delta_neutral_contract.append(
             #     pd.DataFrame(dn_dict, index=[0]))
-            self.delta_neutral_contract = pd.concat([
-                self.delta_neutral_contract,
-                pd.DataFrame(dn_dict, index=[0])])
+            self.delta_neutral_contract = pd.concat(
+                [self.delta_neutral_contract, pd.DataFrame(dn_dict, index=[0])]
+            )
 
     ###########################################################################
     # MockIB: build_contract_descriptions
     ###########################################################################
     def build_contract_descriptions(self):
         """Build the set of contract descriptions to use for testing."""
-        contract_descs_path = self.test_cat.get_path('mock_contract_descs')
-        logger.info('mock_contract_descs path: %s', contract_descs_path)
+        contract_descs_path = self.test_cat.get_path("mock_contract_descs")
+        logger.info("mock_contract_descs path: %s", contract_descs_path)
 
         self.contract_descriptions = pd.DataFrame()
 
@@ -693,23 +704,22 @@ class MockIB:
         #######################################################################
         # set and sort index for contract_descriptions, delta_neutral_contract
         #######################################################################
-        self.contract_descriptions.set_index('conId', drop=False, inplace=True)
+        self.contract_descriptions.set_index("conId", drop=False, inplace=True)
         self.contract_descriptions.sort_index(inplace=True)
 
-        self.delta_neutral_contract.set_index('conId',
-                                              drop=False,
-                                              inplace=True)
+        self.delta_neutral_contract.set_index("conId", drop=False, inplace=True)
         self.delta_neutral_contract.sort_index(inplace=True)
 
-        logger.info('built mock_con_descs DataFrame with %d entries',
-                    len(self.contract_descriptions))
+        logger.info(
+            "built mock_con_descs DataFrame with %d entries",
+            len(self.contract_descriptions),
+        )
 
     ###########################################################################
     # MockIB: get_combos
     ###########################################################################
     @staticmethod
-    def get_combos(symbol: str
-                   ) -> Tuple[Tuple[str, str, str, Tuple[str, ...]]]:
+    def get_combos(symbol: str) -> Tuple[Tuple[str, str, str, Tuple[str, ...]]]:
         """Get combos.
 
         Args:
@@ -719,42 +729,65 @@ class MockIB:
             List of lists of combos
         """
         first_char = symbol[0]
-        combos = {'A': (('STK', 'CBOE', 'EUR', ()),),
-                  'B': (('IND', 'CBOE', 'USD', ('BAG', )),),
-                  'C': (('STK', 'CBOE', 'USD', ('WAR',)),),
-                  'D': (('STK', 'CBOE', 'USD', ('WAR', 'BAG')),
-                        ('IND', 'CBOE', 'USD', ('CFD', ))),
-                  'E': (('STK', 'CBOE', 'USD', ('CFD', 'BAG')),
-                        ('STK', 'NYSE', 'EUR', ('CFD', 'WAR'))),
-                  'F': (('STK', 'CBOE', 'USD', ('CFD', 'WAR', 'BAG')),
-                        ('STK', 'NYSE', 'USD', ())),
-                  'G': (('STK', 'CBOE', 'EUR', ('OPT', )),),
-                  'H': (('IND', 'CBOE', 'USD', ('OPT', 'BAG')),),
-                  'I': (('STK', 'CBOE', 'USD', ('OPT', 'WAR')),),
-                  'J': (('STK', 'CBOE', 'USD', ('OPT', 'WAR', 'BAG')),
-                        ('IND', 'CBOE', 'USD', ('OPT', 'CFD'))),
-                  'K': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'BAG')),
-                        ('STK', 'NYSE', 'EUR', ('OPT', 'CFD', 'WAR'))),
-                  'L': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
-                        ('STK', 'NYSE', 'USD', ('WAR', ))),
-                  'M': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
-                        ('STK', 'NYSE', 'USD', ('OPT',))),
-                  'N': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
-                        ('STK', 'NYSE', 'USD', ('OPT',)),
-                        ('STK', 'BATS', 'USD', ('WAR', ))),
-                  'O': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
-                        ('STK', 'NYSE', 'USD', ('OPT',)),
-                        ('STK', 'BATS', 'USD', ('OPT',))),
-                  'P': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
-                        ('STK', 'NYSE', 'USD', ('OPT',)),
-                        ('STK', 'BATS', 'USD', ('OPT',)),
-                        ('STK', 'AMSE', 'USD', ('OPT',))),
-                  'Q': (('STK', 'CBOE', 'USD', ('OPT', 'CFD', 'WAR', 'BAG')),
-                        ('STK', 'NYSE', 'USD', ('OPT',)),
-                        ('STK', 'BATS', 'USD', ('OPT',)),
-                        ('STK', 'BOSE', 'USD', ('OPT',)),
-                        ('STK', 'AMSE', 'USD', ('OPT',)))
-                  }
+        combos = {
+            "A": (("STK", "CBOE", "EUR", ()),),
+            "B": (("IND", "CBOE", "USD", ("BAG",)),),
+            "C": (("STK", "CBOE", "USD", ("WAR",)),),
+            "D": (
+                ("STK", "CBOE", "USD", ("WAR", "BAG")),
+                ("IND", "CBOE", "USD", ("CFD",)),
+            ),
+            "E": (
+                ("STK", "CBOE", "USD", ("CFD", "BAG")),
+                ("STK", "NYSE", "EUR", ("CFD", "WAR")),
+            ),
+            "F": (
+                ("STK", "CBOE", "USD", ("CFD", "WAR", "BAG")),
+                ("STK", "NYSE", "USD", ()),
+            ),
+            "G": (("STK", "CBOE", "EUR", ("OPT",)),),
+            "H": (("IND", "CBOE", "USD", ("OPT", "BAG")),),
+            "I": (("STK", "CBOE", "USD", ("OPT", "WAR")),),
+            "J": (
+                ("STK", "CBOE", "USD", ("OPT", "WAR", "BAG")),
+                ("IND", "CBOE", "USD", ("OPT", "CFD")),
+            ),
+            "K": (
+                ("STK", "CBOE", "USD", ("OPT", "CFD", "BAG")),
+                ("STK", "NYSE", "EUR", ("OPT", "CFD", "WAR")),
+            ),
+            "L": (
+                ("STK", "CBOE", "USD", ("OPT", "CFD", "WAR", "BAG")),
+                ("STK", "NYSE", "USD", ("WAR",)),
+            ),
+            "M": (
+                ("STK", "CBOE", "USD", ("OPT", "CFD", "WAR", "BAG")),
+                ("STK", "NYSE", "USD", ("OPT",)),
+            ),
+            "N": (
+                ("STK", "CBOE", "USD", ("OPT", "CFD", "WAR", "BAG")),
+                ("STK", "NYSE", "USD", ("OPT",)),
+                ("STK", "BATS", "USD", ("WAR",)),
+            ),
+            "O": (
+                ("STK", "CBOE", "USD", ("OPT", "CFD", "WAR", "BAG")),
+                ("STK", "NYSE", "USD", ("OPT",)),
+                ("STK", "BATS", "USD", ("OPT",)),
+            ),
+            "P": (
+                ("STK", "CBOE", "USD", ("OPT", "CFD", "WAR", "BAG")),
+                ("STK", "NYSE", "USD", ("OPT",)),
+                ("STK", "BATS", "USD", ("OPT",)),
+                ("STK", "AMSE", "USD", ("OPT",)),
+            ),
+            "Q": (
+                ("STK", "CBOE", "USD", ("OPT", "CFD", "WAR", "BAG")),
+                ("STK", "NYSE", "USD", ("OPT",)),
+                ("STK", "BATS", "USD", ("OPT",)),
+                ("STK", "BOSE", "USD", ("OPT",)),
+                ("STK", "AMSE", "USD", ("OPT",)),
+            ),
+        }
 
         return combos[first_char]
 
@@ -762,7 +795,7 @@ class MockIB:
 ###############################################################################
 # mock_ib
 ###############################################################################
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def mock_ib() -> "MockIB":
     """Provide data and methods for testing with ib.
 

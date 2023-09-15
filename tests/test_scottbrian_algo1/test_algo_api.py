@@ -150,6 +150,11 @@ class TestAlgoAppConnect:
         # verify that algo_app is still simply initialized
         verify_algo_app_initialized(algo_app)
 
+        logger.debug("about to free disconnect lock")
+        algo_app.disconnect_lock.release()
+
+        algo_app.algo1_smart_thread.smart_unreg(targets="ibapi_client")
+
     # def test_real_connect_to_IB(self) -> None:
     #     """Test connecting to IB.
     #
@@ -173,12 +178,12 @@ class TestAlgoAppConnect:
     #
     #     # verify that algo_app is connected and alive with a valid reqId
     #     assert connect_ans
-    #     assert algo_app.run_thread.is_alive()
+    #     assert algo_app.ibapi_client_smart_thread.thread.is_alive()
     #     assert algo_app.isConnected()
     #     assert algo_app.request_id == 1
     #
     #     algo_app.disconnect_from_ib()
-    #     assert not algo_app.run_thread.is_alive()
+    #     assert not algo_app.ibapi_client_smart_thread.thread.is_alive()
     #     assert not algo_app.isConnected()
 
 
@@ -199,7 +204,7 @@ def verify_algo_app_initialized(algo_app: "AlgoApp") -> None:
     assert algo_app.response_complete_event.is_set() is False
     assert algo_app.nextValidId_event.is_set() is False
     assert algo_app.__repr__() == "AlgoApp(ds_catalog)"
-    # assert algo_app.run_thread is None
+    # assert algo_app.ibapi_client_smart_thread.thread is None
 
 
 def verify_algo_app_connected(algo_app: "AlgoApp") -> None:
@@ -209,7 +214,7 @@ def verify_algo_app_connected(algo_app: "AlgoApp") -> None:
         algo_app: instance of AlgoApp that is to be checked
 
     """
-    assert algo_app.run_thread.is_alive()
+    assert algo_app.ibapi_client_smart_thread.thread.is_alive()
     assert algo_app.isConnected()
     assert algo_app.request_id == 1
 
@@ -221,7 +226,7 @@ def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
         algo_app: instance of AlgoApp that is to be checked
 
     """
-    assert not algo_app.run_thread.is_alive()
+    assert not algo_app.ibapi_client_smart_thread.thread.is_alive()
     assert not algo_app.isConnected()
 
 

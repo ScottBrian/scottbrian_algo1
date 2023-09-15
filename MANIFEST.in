@@ -5,6 +5,7 @@ include tox.ini
 include *.py
 include *.yml
 include docs/requirements.txt
+include docs/source/*
 recursive-include docs *.bat
 recursive-include docs *.py
 recursive-include docs *.rst

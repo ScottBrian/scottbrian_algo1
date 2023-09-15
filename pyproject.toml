@@ -20,7 +20,9 @@ classifiers = [
 dependencies = [
     "pandas==2.0.0",
     "scottbrian_utils",
-    "ibapi @ file://localhost/TWS%20API/source/pythonclient/dist/ibapi-10.24.1-py3-none-any.whl"]
+    "ibapi @ file://localhost/TWS%20API/source/pythonclient/dist/ibapi-10.24.1-py3-none-any.whl",
+    "scottbrian_paratools @  file://C:/Users/Tiger/PycharmProjects/scottbrian_paratools/dist/scottbrian_paratools-1.0.0-py2.py3-none-any.whl",
+]
 
 [tool.setuptools]
 packages = ["scottbrian_algo1"]
