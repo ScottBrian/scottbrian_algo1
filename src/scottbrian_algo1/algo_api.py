@@ -27,7 +27,7 @@ import ast
 import logging
 from pathlib import Path
 import string
-from threading import Event, get_ident, get_native_id, Thread, Lock
+from threading import Event, get_ident, get_native_id, Lock
 import time
 from typing import Any, Type, TYPE_CHECKING
 
@@ -53,7 +53,7 @@ from ibapi.contract import Contract, ContractDetails  # type: ignore
 #
 # from ibapi.account_summary_tags import *
 import pandas as pd  # type: ignore
-from scottbrian_paratools.smart_thread import SmartThread
+from scottbrian_paratools.smart_thread import SmartThread, ThreadState
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
 
@@ -161,10 +161,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.error_reqId: int = 0
         self.response_complete_event = Event()
         self.nextValidId_event = Event()
-        if "algo1" in SmartThread._registry:
-            self.algo1_smart_thread = SmartThread._registry["algo1"]
-        else:
-            self.algo1_smart_thread = SmartThread(name="algo1")
+        self.algo1_smart_thread = SmartThread(name="algo1")
         self.ibapi_client_smart_thread = SmartThread(
             name="ibapi_client", target=self.run, auto_start=False
         )
@@ -192,15 +189,16 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         Returns:
             The representation as how the class is instantiated
 
-        :Example: instantiate AlgoApp and print it
-
-        >>> from scottbrian_algo1.algo_api import AlgoApp
-        >>> from scottbrian_utils.file_catalog import FileCatalog
-        >>> from pathlib import Path
-        >>> test_cat = FileCatalog({'symbols': Path('t_datasets/symbols.csv')})
-        >>> algo_app = AlgoApp(test_cat)
-        >>> print(algo_app)
-        AlgoApp(ds_catalog)
+        # :Example: instantiate AlgoApp and print it
+        #
+        # >>> from scottbrian_algo1.algo_api import AlgoApp
+        # >>> from scottbrian_utils.file_catalog import FileCatalog
+        # >>> from pathlib import Path
+        # >>> test_cat = FileCatalog({'symbols':
+        Path('t_datasets/symbols.csv')})
+        # >>> algo_app = AlgoApp(test_cat)
+        # >>> print(algo_app)
+        # AlgoApp(ds_catalog)
 
         """
         if TYPE_CHECKING:
@@ -304,16 +302,21 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         logger.info("starting run thread")
         # the following try will succeed for the first connect only
-        try:
+        # try:
+        #     self.ibapi_client_smart_thread.smart_start()
+        # except RuntimeError:  # must be a reconnect - we need a new thread
+        #     self.ibapi_client_smart_thread = SmartThread(
+        #         name="ibapi_client",
+        #         auto_start=False,
+        #         target=self.run,
+        #     )
+        #     self.ibapi_client_smart_thread.smart_start()
+        if self.ibapi_client_smart_thread.st_state == ThreadState.Registered:
             self.ibapi_client_smart_thread.smart_start()
-        except RuntimeError:  # must be a reconnect - we need a new thread
+        else:
             self.ibapi_client_smart_thread = SmartThread(
-                name="ibapi_client",
-                auto_start=False,
-                target=self.run,
+                name="ibapi_client", target=self.run
             )
-            self.ibapi_client_smart_thread.smart_start()
-
         # we will wait on the first requestID here for 10 seconds
         logger.debug("id of nextValidId_event %d", id(self.nextValidId_event))
         if not self.nextValidId_event.wait(timeout=10):  # if we timed out

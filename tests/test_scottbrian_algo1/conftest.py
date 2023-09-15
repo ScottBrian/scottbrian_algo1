@@ -1,22 +1,29 @@
 """conftest.py module for testing."""
 
+########################################################################
+# Standard Library
+########################################################################
 from datetime import datetime, timedelta, timezone
 import string
+import threading
 import time
-
-import pytest
-import pandas as pd  # type: ignore
 from typing import Any, Tuple
-import socket
 
+########################################################################
+# Third Party
+########################################################################
 from ibapi.connection import Connection
 from ibapi.message import IN, OUT
 from ibapi.comm import make_field, make_msg, read_msg, read_fields
 from ibapi.common import NO_VALID_ID
 from ibapi.errors import FAIL_CREATE_SOCK
 
-# from scottbrian_algo1.scottbrian_algo1.algo_api import AlgoApp
+import pytest
+import pandas as pd  # type: ignore
+import socket
+
 from scottbrian_algo1.algo_api import AlgoApp
+from scottbrian_paratools.smart_thread import SmartThread
 from scottbrian_utils.file_catalog import FileCatalog
 
 # from scottbrian_utils.diag_msg import diag_msg
@@ -48,6 +55,116 @@ test_cat = FileCatalog(
         "mock_contract_descs": Path(proj_dir / "t_datasets/mock_contract_descs.csv"),
     }
 )
+
+########################################################################
+# Thread exceptions
+# The following fixture depends on the following pytest specification:
+# -p no:threadexception
+
+
+# For PyCharm, the above specification goes into field Additional
+# Arguments found at Run -> edit configurations
+#
+# For tox, the above specification goes into tox.ini in the string for
+# the commands=
+# For example, in tox.ini for the pytest section:
+# [testenv:py{36, 37, 38, 39}-pytest]
+# description = invoke pytest on the package
+# deps =
+#     pytest
+#
+# commands =
+#     pytest --import-mode=importlib -p no:threadexception {posargs}
+#
+# Usage:
+# The thread_exc is an autouse fixture which means it does not need to
+# be specified as an argument in the test case methods. If a thread
+# fails, such as an assert error, then thread_exc will capture the error
+# and raise it for the thread, and will also raise it during cleanup
+# processing for the mainline to ensure the test case fails. Without
+# thread_exc, any uncaptured thread failure will appear in the output,
+# but the test case itself will not fail.
+# Also, if you need to issue the thread error earlier, before cleanup,
+# then specify thread_exc as an argument on the test method and then in
+# mainline issue:
+#     thread_exc.raise_exc_if_one()
+#
+# When the above is done, cleanup will not raise the error again.
+#
+########################################################################
+class ExcHook:
+    def __init__(self):
+        self.exc_err_msg1 = ""
+
+    def raise_exc_if_one(self):
+        if self.exc_err_msg1:
+            exc_msg = self.exc_err_msg1
+            self.exc_err_msg1 = ""
+            raise Exception(f"{exc_msg}")
+
+
+@pytest.fixture(autouse=True)
+def thread_exc(monkeypatch: Any) -> ExcHook:
+    """Instantiate and return a ThreadExc for testing.
+
+    Args:
+        monkeypatch: pytest fixture used to modify code for testing
+
+    Returns:
+        a thread exception handler
+
+    """
+
+    # class ExcHook:
+    #     def __init__(self):
+    #         self.exc_err_msg1 = ""
+    #
+    #     def raise_exc_if_one(self):
+    #         if self.exc_err_msg1:
+    #             exc_msg = self.exc_err_msg1
+    #             self.exc_err_msg1 = ""
+    #             raise Exception(f"{exc_msg}")
+
+    # logger.debug(f'hook before: {threading.excepthook}')
+    exc_hook = ExcHook()
+
+    def mock_threading_excepthook(args):
+        # exc_err_msg = (f'SmartEvent excepthook: {args.exc_type}, '
+        #                f'{args.exc_value}, {args.exc_traceback},'
+        #                f' {args.thread}')
+        exc_err_msg = f"Algo1 excepthook: {args.exc_type}, " f"{args.exc_traceback}"
+        current_thread = threading.current_thread()
+        logging.exception(f"exception caught for {current_thread}")
+        logger.debug(f"excepthook current thread is {current_thread}")
+        # ExcHook.exc_err_msg1 = exc_err_msg
+        exc_hook.exc_err_msg1 = exc_err_msg
+        raise Exception(f"Algo1 thread test error: {exc_err_msg}")
+
+    monkeypatch.setattr(threading, "excepthook", mock_threading_excepthook)
+    # logger.debug(f'hook after: {threading.excepthook}')
+    new_hook = threading.excepthook
+
+    yield exc_hook
+
+    # clean the registry in SmartThread class
+    SmartThread._registry = {}
+    SmartThread._pair_array = {}
+    # assert threading.current_thread().name == 'alpha'
+    threading.current_thread().name = "MainThread"  # restore name
+
+    # surface any remote thread uncaught exceptions
+    exc_hook.raise_exc_if_one()
+
+    # the following check ensures that the test case waited via join for
+    # any started threads to come home
+    if threading.active_count() > 1:
+        for thread in threading.enumerate():
+            print(f"conftest thread: {thread}")
+    assert threading.active_count() == 1
+
+    # the following assert ensures -p no:threadexception was specified
+    assert threading.excepthook == new_hook
+    print("conftest is OK")
 
 
 ###############################################################################
