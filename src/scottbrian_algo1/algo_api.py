@@ -19,17 +19,37 @@ The information that can be obtained includes:
 Much of the information is saved in a MongoDb database and updated
 periodically.
 
+There are 3 possible configurations:
+
+    1) AlgoApp runs under the current thread. AlgoApp init parm
+       thread_config is specified as ThreadConfig.CurrentThread.
+       AlgoApp will create a SmartThread using the current thread.
+    2) AlgoApp runs under the current SmartThread. AlgoApp init parm
+       thread_config is specified as ThreadConfig.CurrentThread. AlgoApp
+       will use the SmartThread for the current thread.
+    3) AlgoApp runs under a remote thread. AlgoApp init parm
+       thread_config is specified as ThreadConfig.RemoteThread.
+       AlgoApp will create a SmartThread and start it.
+    4) AlgoApp runs under a remote SmartThread. AlgoApp init parm
+       thread_config is specified as ThreadConfig.RemoteThread.
+       AlgoApp will create a SmartThread using the remote thread and
+       start the thread.
+
+
+
 """
 ########################################################################
 # Standard Library
 ########################################################################
 import ast
+from enum import Enum, auto
 import logging
 from pathlib import Path
 import string
+import threading
 from threading import Event, get_ident, get_native_id, Lock
 import time
-from typing import Any, Type, TYPE_CHECKING
+from typing import Any, Optional, Type, TYPE_CHECKING, Union
 
 ########################################################################
 # Third Party
@@ -119,6 +139,14 @@ class RequestError(AlgoAppError):
 
 
 ########################################################################
+# ThreadConfig
+########################################################################
+class ThreadConfig(Enum):
+    CurrentThread = auto()
+    RemoteThread = auto()
+
+
+########################################################################
 # AlgoApp
 ########################################################################
 class AlgoApp(EWrapper, EClient):  # type: ignore
@@ -130,12 +158,15 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     REQUEST_TIMEOUT_SECONDS = 60
     REQUEST_THROTTLE_SECONDS = 1.0
 
-    ###########################################################################
+    ####################################################################
     # __init__
-    ###########################################################################
+    ####################################################################
     def __init__(
         self,
         ds_catalog: FileCatalog,
+        thread_config: Optional[ThreadConfig] = ThreadConfig.CurrentThread,
+        thread_to_use: Optional[Union[threading.Thread, SmartThread]] = None,
+        algo_name: str = "algo_app",
     ) -> None:
         """Instantiate the AlgoApp.
 
@@ -161,7 +192,15 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.error_reqId: int = 0
         self.response_complete_event = Event()
         self.nextValidId_event = Event()
-        self.algo1_smart_thread = SmartThread(name="algo1")
+
+        if thread_config == ThreadConfig.CurrentThread:
+            if (smart_thread := SmartThread.get_current_smart_thread()) is not None:
+                self.algo1_name = smart_thread.name
+                self.algo1_smart_thread = smart_thread
+            else:
+                self.algo1_name = algo_name
+                self.algo1_smart_thread = SmartThread(name=self.algo1_name)
+
         self.ibapi_client_smart_thread = SmartThread(
             name="ibapi_client", target=self.run, auto_start=False
         )
