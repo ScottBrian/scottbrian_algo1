@@ -21,21 +21,22 @@ periodically.
 
 There are 3 possible configurations:
 
-    1) AlgoApp runs under the current thread. AlgoApp init parm
+    1) AlgoApp is to run under the current thread. AlgoApp init parm
        thread_config is specified as ThreadConfig.CurrentThread.
        AlgoApp will create a SmartThread using the current thread.
-    2) AlgoApp runs under the current SmartThread. AlgoApp init parm
-       thread_config is specified as ThreadConfig.CurrentThread. AlgoApp
-       will use the SmartThread for the current thread.
-    3) AlgoApp runs under a remote thread. AlgoApp init parm
+    2) AlgoApp is to run under the current SmartThread. AlgoApp init
+       parm thread_config is specified as ThreadConfig.CurrentThread.
+       AlgoApp will use the SmartThread for the current thread.
+    3) AlgoApp is to run under a remote SmartThread. AlgoApp init parm
        thread_config is specified as ThreadConfig.RemoteThread.
-       AlgoApp will create a SmartThread and start it.
-    4) AlgoApp runs under a remote SmartThread. AlgoApp init parm
-       thread_config is specified as ThreadConfig.RemoteThread.
-       AlgoApp will create a SmartThread using the remote thread and
-       start the thread.
+       AlgoApp will create a remote SmartThread and start it.
 
-
+Requests can be made to the AlgoApp from any thread. If on the same thread,
+the request is handled synchronously. If from a remote thread,
+the request can specify whether it is to run synchrounously or
+asynchronously. When synchronous, any results are returned directly.
+For asynchronous requests, the requestor must do a SmartThread
+smart_recv request to receive the result.
 
 """
 ########################################################################
@@ -73,7 +74,12 @@ from ibapi.contract import Contract, ContractDetails  # type: ignore
 #
 # from ibapi.account_summary_tags import *
 import pandas as pd  # type: ignore
-from scottbrian_paratools.smart_thread import SmartThread, ThreadState
+from scottbrian_paratools.smart_thread import (
+    SmartThread,
+    ThreadState,
+    SmartThreadRemoteThreadNotAlive,
+    SmartThreadRequestTimedOut,
+)
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
 
@@ -165,7 +171,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self,
         ds_catalog: FileCatalog,
         thread_config: Optional[ThreadConfig] = ThreadConfig.CurrentThread,
-        thread_to_use: Optional[Union[threading.Thread, SmartThread]] = None,
         algo_name: str = "algo_app",
     ) -> None:
         """Instantiate the AlgoApp.
@@ -200,6 +205,13 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             else:
                 self.algo1_name = algo_name
                 self.algo1_smart_thread = SmartThread(name=self.algo1_name)
+        elif thread_config == ThreadConfig.RemoteThread:
+            self.algo1_name = algo_name
+            self.algo1_smart_thread = SmartThread(
+                name=self.algo1_name,
+                target=self.cmd_loop,
+                thread_parm_name="algo_smart_thread",
+            )
 
         self.ibapi_client_smart_thread = SmartThread(
             name="ibapi_client", target=self.run, auto_start=False
@@ -246,6 +258,52 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         parms = "ds_catalog"
 
         return f"{classname}({parms})"
+
+    ###########################################################################
+    # cmd_loop
+    ###########################################################################
+    def cmd_loop(self) -> None:
+        """Handle commands for the AlgoApp."""
+        logger.debug("cmd_loop entered")
+
+        # cmd_table: dict[AlgoReqType, Callable[..., tuple[str, int]]] = {
+        #     AlgoReqType.Smart_send: build_recv_request,
+        #     AlgoReqType.Smart_recv: build_send_request,
+        #     AlgoReqType.Smart_resume: build_wait_request,
+        #     AlgoReqType.Smart_wait: build_resume_request
+        #
+        # }
+
+        handle_cmds = True
+        while handle_cmds:
+            senders: set[str] = SmartThread.get_names()
+            senders -= {self.algo1_name}
+            try:
+                recv_msgs: dict[str, list[Any]] = self.algo1_smart_thread.smart_recv(
+                    senders=senders,
+                    sender_count=1,
+                    timeout=2,
+                )
+            except SmartThreadRemoteThreadNotAlive:
+                continue
+            except SmartThreadRequestTimedOut:
+                continue
+
+            for name, cmd_list in recv_msgs.items():
+                for cmd in cmd_list:
+                    cmd_result = cmd[0](cmd[1], cmd[2])
+                    if cmd_result == "exit":
+                        handle_cmds = False
+                    else:
+                        try:
+                            self.algo1_smart_thread.smart_send(
+                                msg=cmd_result,
+                                receivers=name,
+                            )
+                        except SmartThreadRemoteThreadNotAlive:
+                            continue
+
+        logger.debug("cmd_loop exiting")
 
     ###########################################################################
     # error
@@ -335,6 +393,17 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
+        if self.algo1_smart_thread.thread is not threading.current_thread():
+            if (
+                caller_smart_thread := SmartThread.get_current_smart_thread()
+            ) is not None:
+                cmd_tuple = (
+                    connect_to_ib,
+                    (),
+                    {"ip_addr": ip_addr, "port": port, "client_id": client_id},
+                )
+                caller_smart_thread.smart_send(msg=cmd_tuple, receivers=self.algo1_name)
+
         self.prepare_to_connect()  # verification and initialization
 
         self.connect(ip_addr, port, client_id)
