@@ -169,9 +169,10 @@ def thread_exc(monkeypatch: Any) -> ExcHook:
 
 ###############################################################################
 # algo_app
+# def algo_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "AlgoApp":
 ###############################################################################
 @pytest.fixture(scope="function")
-def algo_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "AlgoApp":
+def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog":
     """Instantiate and return an AlgoApp for testing.
 
     Args:
@@ -339,8 +340,9 @@ def algo_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "AlgoApp":
         }
     )
 
-    a_algo_app = AlgoApp(catalog)
-    return a_algo_app
+    # a_algo_app = AlgoApp(catalog)
+    # return a_algo_app
+    return catalog
 
 
 ###############################################################################

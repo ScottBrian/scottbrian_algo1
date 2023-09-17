@@ -1,23 +1,28 @@
 """test_algo_api.py module."""
 
+########################################################################
+# Standard Library
+########################################################################
 # from datetime import datetime, timedelta
-import pytest
-
-# import sys
 # from pathlib import Path
-import numpy as np
-import pandas as pd  # type: ignore
-import string
-import math
-
+# import sys
+from enum import Enum, auto
 from typing import Any, List, NamedTuple
 
 # from typing_extensions import Final
-
+########################################################################
+# Third Party
+########################################################################
 from ibapi.tag_value import TagValue  # type: ignore
 from ibapi.contract import ComboLeg  # type: ignore
 from ibapi.contract import DeltaNeutralContract
 from ibapi.contract import Contract, ContractDetails
+
+import logging
+import math
+import numpy as np
+import pandas as pd  # type: ignore
+import pytest
 
 from scottbrian_algo1.algo_api import (
     AlgoApp,
@@ -26,6 +31,7 @@ from scottbrian_algo1.algo_api import (
     ConnectTimeout,
     RequestTimeout,
     DisconnectDuringRequest,
+    ThreadConfig,
 )
 
 from scottbrian_algo1.algo_maps import get_contract_dict, get_contract_obj
@@ -34,28 +40,71 @@ from scottbrian_algo1.algo_maps import get_contract_details_obj
 # from scottbrian_utils.diag_msg import diag_msg
 # from scottbrian_utils.file_catalog import FileCatalog
 
-import logging
+from scottbrian_paratools.smart_thread import SmartThread
 
+import string
+
+########################################################################
+# get logger
+########################################################################
 logger = logging.getLogger(__name__)
 
 
-###############################################################################
+########################################################################
+# connect style
+########################################################################
+class TestThreadConfig(Enum):
+    TestNoSmartThreadAlgoAppCurrent = auto()
+    TestSmartThreadAlgoAppCurrent = auto()
+    TestSmartThreadAlgoAppRemote = auto()
+
+
+########################################################################
 # TestAlgoAppConnect class
-###############################################################################
+########################################################################
 class TestAlgoAppConnect:
     """TestAlgoAppConnect class."""
 
+    @pytest.mark.parametrize(
+        "thread_type_arg",
+        [
+            TestThreadConfig.TestNoSmartThreadAlgoAppCurrent,
+            TestThreadConfig.TestSmartThreadAlgoAppCurrent,
+            TestThreadConfig.TestSmartThreadAlgoAppRemote,
+        ],
+    )
     @pytest.mark.seltest
     def test_mock_connect_to_ib(
         self,
-        algo_app: "AlgoApp",
+        # algo_app: "AlgoApp",
+        cat_app: "FileCatalog",
+        thread_type_arg: TestThreadConfig,
     ) -> None:
         """Test connecting to IB.
 
         Args:
-            algo_app: pytest fixture instance of AlgoApp (see conftest.py)
+            cat_app: pytest fixture (see conftest.py)
+            thread_type_arg: specifies how to setup threads
 
         """
+        if thread_type_arg in (
+            TestThreadConfig.TestSmartThreadAlgoAppCurrent,
+            TestThreadConfig.TestSmartThreadAlgoAppRemote,
+        ):
+            test_smart_thread = SmartThread(name="tester1")
+        if thread_type_arg in (
+            TestThreadConfig.TestNoSmartThreadAlgoAppCurrent,
+            TestThreadConfig.TestSmartThreadAlgoAppCurrent,
+        ):
+            algo_app = AlgoApp(
+                ds_catalog=cat_app,
+                thread_config=ThreadConfig.CurrentThread,
+            )
+        else:
+            algo_app = AlgoApp(
+                ds_catalog=cat_app,
+                thread_config=ThreadConfig.RemoteThread,
+            )
         verify_algo_app_initialized(algo_app)
 
         # we are testing connect_to_ib and the subsequent code that gets

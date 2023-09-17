@@ -262,7 +262,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     ###########################################################################
     # cmd_loop
     ###########################################################################
-    def cmd_loop(self) -> None:
+    def cmd_loop(self, algo_smart_thread: SmartThread) -> None:
         """Handle commands for the AlgoApp."""
         logger.debug("cmd_loop entered")
 
@@ -398,11 +398,12 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                 caller_smart_thread := SmartThread.get_current_smart_thread()
             ) is not None:
                 cmd_tuple = (
-                    connect_to_ib,
+                    self.connect_to_ib,
                     (),
                     {"ip_addr": ip_addr, "port": port, "client_id": client_id},
                 )
                 caller_smart_thread.smart_send(msg=cmd_tuple, receivers=self.algo1_name)
+                the_result = caller_smart_thread.smart_recv(senders=self.algo1_name)
 
         self.prepare_to_connect()  # verification and initialization
 
@@ -440,6 +441,18 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     def disconnect_from_ib(self) -> None:
         """Disconnect from ib."""
         logger.info("calling EClient disconnect")
+
+        if self.algo1_smart_thread.thread is not threading.current_thread():
+            if (
+                caller_smart_thread := SmartThread.get_current_smart_thread()
+            ) is not None:
+                cmd_tuple = (
+                    self.disconnect_from_ib,
+                    (),
+                    {},
+                )
+                caller_smart_thread.smart_send(msg=cmd_tuple, receivers=self.algo1_name)
+                the_result = caller_smart_thread.smart_recv(senders=self.algo1_name)
 
         self.disconnect()  # call our disconnect (overrides EClient)
 
