@@ -50,7 +50,7 @@ import string
 import threading
 from threading import Event, get_ident, get_native_id, Lock
 import time
-from typing import Any, Optional, Type, TYPE_CHECKING, Union
+from typing import Any, Callable, Optional, Type, TYPE_CHECKING, Union
 
 ########################################################################
 # Third Party
@@ -150,6 +150,33 @@ class RequestError(AlgoAppError):
 class ThreadConfig(Enum):
     CurrentThread = auto()
     RemoteThread = auto()
+
+
+####################################################################
+# cmd_loop
+####################################################################
+def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
+    def wrapped(self, *args, **kwargs) -> Any:
+        if self.algo1_smart_thread.thread is not threading.current_thread():
+            if (
+                caller_smart_thread := SmartThread.get_current_smart_thread()
+            ) is not None:
+                cmd_tuple = (
+                    func,
+                    args,
+                    kwargs,
+                )
+                caller_smart_thread.smart_send(msg=cmd_tuple, receivers=self.algo1_name)
+                ret_value = caller_smart_thread.smart_recv(senders=self.algo1_name)
+            else:
+                raise RequestError(
+                    f"{func.__name__} requires caller to have a SmartThread"
+                )
+        else:
+            ret_value = func(self, *args, **kwargs)
+        return ret_value
+
+    return wrapped
 
 
 ########################################################################
@@ -259,9 +286,9 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         return f"{classname}({parms})"
 
-    ###########################################################################
+    ####################################################################
     # cmd_loop
-    ###########################################################################
+    ####################################################################
     def cmd_loop(self, algo_smart_thread: SmartThread) -> None:
         """Handle commands for the AlgoApp."""
         logger.debug("cmd_loop entered")
@@ -291,7 +318,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
             for name, cmd_list in recv_msgs.items():
                 for cmd in cmd_list:
-                    cmd_result = cmd[0](cmd[1], cmd[2])
+                    cmd_result = cmd[0](*cmd[1], **cmd[2])
                     if cmd_result == "exit":
                         handle_cmds = False
                     else:
@@ -381,6 +408,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     ###########################################################################
     # connect_to_ib
     ###########################################################################
+    @handle_thread_switching
     def connect_to_ib(self, ip_addr: str, port: int, client_id: int) -> None:
         """Connect to IB on the given addr and port and client id.
 
