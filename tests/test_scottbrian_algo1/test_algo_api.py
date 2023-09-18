@@ -117,7 +117,11 @@ class TestAlgoAppConnect:
         verify_algo_app_connected(algo_app)
 
         algo_app.disconnect_from_ib()
+
         verify_algo_app_disconnected(algo_app)
+
+        if thread_type_arg == TestThreadConfig.TestSmartThreadAlgoAppRemote:
+            algo_app.algo_join(caller_smart_thread=test_smart_thread)
 
     def test_mock_connect_to_ib_with_timeout(
         self, algo_app: "AlgoApp", mock_ib: Any

@@ -55,8 +55,9 @@ from typing import Any, Callable, Optional, Type, TYPE_CHECKING, Union
 ########################################################################
 # Third Party
 ########################################################################
-from ibapi.wrapper import EWrapper  # type: ignore
+import ibapi.common as ibcommon
 from ibapi.client import EClient  # type: ignore
+from ibapi.wrapper import EWrapper  # type: ignore
 from ibapi.utils import current_fn_name  # type: ignore
 
 from ibapi.common import ListOfContractDescription  # type: ignore
@@ -168,6 +169,8 @@ def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
                 )
                 caller_smart_thread.smart_send(msg=cmd_tuple, receivers=self.algo1_name)
                 ret_value = caller_smart_thread.smart_recv(senders=self.algo1_name)
+                if ret_value == "NONE":
+                    ret_value = None
             else:
                 raise RequestError(
                     f"{func.__name__} requires caller to have a SmartThread"
@@ -225,6 +228,27 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.response_complete_event = Event()
         self.nextValidId_event = Event()
 
+        # stock symbols
+        self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
+        self.symbols_status = pd.DataFrame()
+        self.num_symbols_received = 0
+        self.symbols = pd.DataFrame()
+        self.stock_symbols = pd.DataFrame()
+
+        # contract details
+        self.contracts = pd.DataFrame()
+        self.contract_details = pd.DataFrame()
+
+        # fundamental data
+        self.fundamental_data = pd.DataFrame()
+
+        self.handle_cmds: bool = False
+
+        self.client_name = "ibapi_client"
+        self.ibapi_client_smart_thread = SmartThread(
+            name=self.client_name, target=self.run, auto_start=False
+        )
+
         if thread_config == ThreadConfig.CurrentThread:
             if (smart_thread := SmartThread.get_current_smart_thread()) is not None:
                 self.algo1_name = smart_thread.name
@@ -239,24 +263,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                 target=self.cmd_loop,
                 thread_parm_name="algo_smart_thread",
             )
-
-        self.ibapi_client_smart_thread = SmartThread(
-            name="ibapi_client", target=self.run, auto_start=False
-        )
-
-        # stock symbols
-        self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
-        self.symbols_status = pd.DataFrame()
-        self.num_symbols_received = 0
-        self.symbols = pd.DataFrame()
-        self.stock_symbols = pd.DataFrame()
-
-        # contract details
-        self.contracts = pd.DataFrame()
-        self.contract_details = pd.DataFrame()
-
-        # fundamental data
-        self.fundamental_data = pd.DataFrame()
 
     ###########################################################################
     # __repr__
@@ -293,49 +299,50 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         """Handle commands for the AlgoApp."""
         logger.debug("cmd_loop entered")
 
-        # cmd_table: dict[AlgoReqType, Callable[..., tuple[str, int]]] = {
-        #     AlgoReqType.Smart_send: build_recv_request,
-        #     AlgoReqType.Smart_recv: build_send_request,
-        #     AlgoReqType.Smart_resume: build_wait_request,
-        #     AlgoReqType.Smart_wait: build_resume_request
-        #
-        # }
+        exclude_names: set[str] = {self.algo1_name, self.client_name}
+        recv_msgs: dict[str, list[Any]] = {}
+        self.handle_cmds = True
+        while self.handle_cmds:
+            senders = SmartThread.get_active_names() - exclude_names
+            if senders:
+                try:
+                    recv_msgs = algo_smart_thread.smart_recv(
+                        senders=senders,
+                        sender_count=1,
+                        timeout=2,
+                    )
+                except SmartThreadRemoteThreadNotAlive:
+                    pass
+                except SmartThreadRequestTimedOut:
+                    continue
 
-        handle_cmds = True
-        while handle_cmds:
-            senders: set[str] = SmartThread.get_names()
-            senders -= {self.algo1_name}
-            try:
-                recv_msgs: dict[str, list[Any]] = self.algo1_smart_thread.smart_recv(
-                    senders=senders,
-                    sender_count=1,
-                    timeout=2,
-                )
-            except SmartThreadRemoteThreadNotAlive:
-                continue
-            except SmartThreadRequestTimedOut:
-                continue
-
-            for name, cmd_list in recv_msgs.items():
-                for cmd in cmd_list:
-                    cmd_result = cmd[0](*cmd[1], **cmd[2])
-                    if cmd_result == "exit":
-                        handle_cmds = False
-                    else:
+                for name, cmd_list in recv_msgs.items():
+                    for cmd in cmd_list:
+                        cmd_result = cmd[0](self, *cmd[1], **cmd[2])
+                        if cmd_result is None:
+                            cmd_result = "NONE"
                         try:
-                            self.algo1_smart_thread.smart_send(
+                            algo_smart_thread.smart_send(
                                 msg=cmd_result,
                                 receivers=name,
                             )
                         except SmartThreadRemoteThreadNotAlive:
                             continue
+            else:
+                time.sleep(1)
 
         logger.debug("cmd_loop exiting")
 
-    ###########################################################################
+    ####################################################################
     # error
-    ###########################################################################
-    def error(self, reqId: int, errorCode: int, errorString: str) -> None:
+    ####################################################################
+    def error(
+        self,
+        reqId: ibcommon.TickerId,
+        errorCode: int,
+        errorString: str,
+        advancedOrderRejectJson="",
+    ) -> None:
         """Receive error from IB and print it.
 
         Args:
@@ -344,9 +351,13 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             errorString: text to explain the error
 
         """
-        self.logAnswer(current_fn_name(), vars())
-        logger.error("ERROR %s %s %s", reqId, errorCode, errorString)
-        print("Error: ", reqId, " ", errorCode, " ", errorString)
+        super(EWrapper, self).wrapper.error(
+            reqId,
+            errorCode,
+            errorString,
+            advancedOrderRejectJson,
+        )
+
         self.error_reqId = reqId
 
     ###########################################################################
@@ -421,18 +432,6 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
-        if self.algo1_smart_thread.thread is not threading.current_thread():
-            if (
-                caller_smart_thread := SmartThread.get_current_smart_thread()
-            ) is not None:
-                cmd_tuple = (
-                    self.connect_to_ib,
-                    (),
-                    {"ip_addr": ip_addr, "port": port, "client_id": client_id},
-                )
-                caller_smart_thread.smart_send(msg=cmd_tuple, receivers=self.algo1_name)
-                the_result = caller_smart_thread.smart_recv(senders=self.algo1_name)
-
         self.prepare_to_connect()  # verification and initialization
 
         self.connect(ip_addr, port, client_id)
@@ -466,21 +465,10 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     ###########################################################################
     # disconnect_from_ib
     ###########################################################################
+    @handle_thread_switching
     def disconnect_from_ib(self) -> None:
         """Disconnect from ib."""
         logger.info("calling EClient disconnect")
-
-        if self.algo1_smart_thread.thread is not threading.current_thread():
-            if (
-                caller_smart_thread := SmartThread.get_current_smart_thread()
-            ) is not None:
-                cmd_tuple = (
-                    self.disconnect_from_ib,
-                    (),
-                    {},
-                )
-                caller_smart_thread.smart_send(msg=cmd_tuple, receivers=self.algo1_name)
-                the_result = caller_smart_thread.smart_recv(senders=self.algo1_name)
 
         self.disconnect()  # call our disconnect (overrides EClient)
 
@@ -489,8 +477,25 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             targets="ibapi_client",
             timeout=60,
         )
+        # tell cmd_loop (if running) to exit
+        self.handle_cmds = False
 
         logger.info("disconnect complete")
+
+    ###########################################################################
+    # algo_join
+    ###########################################################################
+    def algo_join(self, caller_smart_thread: SmartThread) -> None:
+        """Join the algo thread.
+
+        Args:
+            caller_smart_thread: smart thread instance to do join
+        """
+        logger.info("algo_join entered")
+
+        caller_smart_thread.smart_join(targets=self.algo1_name)
+
+        logger.info("algo_join exiting")
 
     ###########################################################################
     # disconnect
