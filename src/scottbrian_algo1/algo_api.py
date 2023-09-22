@@ -48,7 +48,7 @@ import logging
 from pathlib import Path
 import string
 import threading
-from threading import Event, get_ident, get_native_id, Lock
+from threading import Event, get_ident, get_native_id, Lock, Thread
 import time
 from typing import Any, Callable, Optional, Type, TYPE_CHECKING, Union
 
@@ -154,14 +154,23 @@ class ThreadConfig(Enum):
 
 
 ####################################################################
-# cmd_loop
+# handle_thread_switching
 ####################################################################
 def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
     def wrapped(self, *args, **kwargs) -> Any:
-        if self.algo1_smart_thread.thread is not threading.current_thread():
+        # if self.algo1_smart_thread.thread is not threading.current_thread():
+        logger.debug(f"wrapped entry: {self.thread=}, {threading.current_thread()=}")
+        logger.debug(f"wrapped entry: {SmartThread._registry=}")
+        for key, item in SmartThread._registry.items():
+            logger.debug(
+                f"{key=}, {item=}, {item.thread=}, {id(item.thread)=}, "
+                f"{item.thread.is_alive()=}"
+            )
+        if self.thread is not threading.current_thread():
             if (
                 caller_smart_thread := SmartThread.get_current_smart_thread()
             ) is not None:
+                logger.debug(f"wrapped: {caller_smart_thread=}")
                 cmd_tuple = (
                     func,
                     args,
@@ -185,7 +194,7 @@ def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
 ########################################################################
 # AlgoApp
 ########################################################################
-class AlgoApp(EWrapper, EClient):  # type: ignore
+class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
     """AlgoApp class."""
 
     PORT_FOR_LIVE_TRADING = 7496
@@ -200,7 +209,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
     def __init__(
         self,
         ds_catalog: FileCatalog,
-        thread_config: Optional[ThreadConfig] = ThreadConfig.CurrentThread,
+        # thread_config: Optional[ThreadConfig] = ThreadConfig.CurrentThread,
         algo_name: str = "algo_app",
     ) -> None:
         """Instantiate the AlgoApp.
@@ -221,6 +230,15 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         """
         EWrapper.__init__(self)
         EClient.__init__(self, wrapper=self)
+        Thread.__init__(self)
+        # threading.current_thread().name = algo_name
+        SmartThread.__init__(
+            self,
+            name=algo_name,
+            thread=self,
+            auto_start=False,
+        )
+        self.algo1_name = algo_name
         self.disconnect_lock = Lock()
         self.ds_catalog = ds_catalog
         self.request_id: int = 0
@@ -246,23 +264,26 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
 
         self.client_name = "ibapi_client"
         self.ibapi_client_smart_thread = SmartThread(
-            name=self.client_name, target=self.run, auto_start=False
+            name=self.client_name,
+            target=EClient.run,
+            args=(self,),
+            auto_start=False,
         )
 
-        if thread_config == ThreadConfig.CurrentThread:
-            if (smart_thread := SmartThread.get_current_smart_thread()) is not None:
-                self.algo1_name = smart_thread.name
-                self.algo1_smart_thread = smart_thread
-            else:
-                self.algo1_name = algo_name
-                self.algo1_smart_thread = SmartThread(name=self.algo1_name)
-        elif thread_config == ThreadConfig.RemoteThread:
-            self.algo1_name = algo_name
-            self.algo1_smart_thread = SmartThread(
-                name=self.algo1_name,
-                target=self.cmd_loop,
-                thread_parm_name="algo_smart_thread",
-            )
+        # if thread_config == ThreadConfig.CurrentThread:
+        #     if (smart_thread := SmartThread.get_current_smart_thread()) is not None:
+        #         self.algo1_name = smart_thread.name
+        #         self.algo1_smart_thread = smart_thread
+        #     else:
+        #         self.algo1_name = algo_name
+        #         self.algo1_smart_thread = SmartThread(name=self.algo1_name)
+        # elif thread_config == ThreadConfig.RemoteThread:
+        #     self.algo1_name = algo_name
+        #     self.algo1_smart_thread = SmartThread(
+        #         name=self.algo1_name,
+        #         target=self.cmd_loop,
+        #         thread_parm_name="algo_smart_thread",
+        #     )
 
     ###########################################################################
     # __repr__
@@ -293,11 +314,12 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         return f"{classname}({parms})"
 
     ####################################################################
-    # cmd_loop
+    # run
     ####################################################################
-    def cmd_loop(self, algo_smart_thread: SmartThread) -> None:
+    # def run(self, algo_smart_thread: SmartThread) -> None:
+    def run(self) -> None:
         """Handle commands for the AlgoApp."""
-        logger.debug("cmd_loop entered")
+        logger.debug("run entered")
 
         exclude_names: set[str] = {self.algo1_name, self.client_name}
         recv_msgs: dict[str, list[Any]] = {}
@@ -306,7 +328,12 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             senders = SmartThread.get_active_names() - exclude_names
             if senders:
                 try:
-                    recv_msgs = algo_smart_thread.smart_recv(
+                    # recv_msgs = algo_smart_thread.smart_recv(
+                    #     senders=senders,
+                    #     sender_count=1,
+                    #     timeout=2,
+                    # )
+                    recv_msgs = self.smart_recv(
                         senders=senders,
                         sender_count=1,
                         timeout=2,
@@ -322,7 +349,11 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
                         if cmd_result is None:
                             cmd_result = "NONE"
                         try:
-                            algo_smart_thread.smart_send(
+                            # algo_smart_thread.smart_send(
+                            #     msg=cmd_result,
+                            #     receivers=name,
+                            # )
+                            self.smart_send(
                                 msg=cmd_result,
                                 receivers=name,
                             )
@@ -331,7 +362,7 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             else:
                 time.sleep(1)
 
-        logger.debug("cmd_loop exiting")
+        logger.debug("run exiting")
 
     ####################################################################
     # error
@@ -370,9 +401,13 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             request_id: next id to use for a request to IB
 
         """
-        logger.info("next valid ID is %i", request_id)
+        logger.info(
+            f"next valid ID is {request_id}, {threading.current_thread()=}, " f"{self=}"
+        )
+
         self.request_id = request_id
-        self.nextValidId_event.set()
+        # self.nextValidId_event.set()
+        self.ibapi_client_smart_thread.smart_resume(waiters=self.algo1_name)
 
     ###########################################################################
     # get_reqId
@@ -451,14 +486,23 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
             self.ibapi_client_smart_thread.smart_start()
         else:
             self.ibapi_client_smart_thread = SmartThread(
-                name="ibapi_client", target=self.run
+                name="ibapi_client",
+                target=EClient.run,
+                args=(self,),
             )
         # we will wait on the first requestID here for 10 seconds
         logger.debug("id of nextValidId_event %d", id(self.nextValidId_event))
-        if not self.nextValidId_event.wait(timeout=10):  # if we timed out
+        try:
+            self.smart_wait(resumers="ibapi_client", timeout=10)
+        except SmartThreadRequestTimedOut:
             logger.debug("timed out waiting for next valid request ID")
             self.disconnect_from_ib()
             raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
+
+        # if not self.nextValidId_event.wait(timeout=10):  # if we timed out
+        #     logger.debug("timed out waiting for next valid request ID")
+        #     self.disconnect_from_ib()
+        #     raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
 
         logger.info("connect success")
 
@@ -473,11 +517,15 @@ class AlgoApp(EWrapper, EClient):  # type: ignore
         self.disconnect()  # call our disconnect (overrides EClient)
 
         logger.info("join ibapi_client_smart_thread to wait for it to come home")
-        self.algo1_smart_thread.smart_join(
+        # self.algo1_smart_thread.smart_join(
+        #     targets="ibapi_client",
+        #     timeout=60,
+        # )
+        self.smart_join(
             targets="ibapi_client",
             timeout=60,
         )
-        # tell cmd_loop (if running) to exit
+        # tell run (if running) to exit
         self.handle_cmds = False
 
         logger.info("disconnect complete")

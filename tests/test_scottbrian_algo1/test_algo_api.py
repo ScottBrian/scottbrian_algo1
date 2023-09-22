@@ -65,20 +65,20 @@ class TestThreadConfig(Enum):
 class TestAlgoAppConnect:
     """TestAlgoAppConnect class."""
 
-    @pytest.mark.parametrize(
-        "thread_type_arg",
-        [
-            TestThreadConfig.TestNoSmartThreadAlgoAppCurrent,
-            TestThreadConfig.TestSmartThreadAlgoAppCurrent,
-            TestThreadConfig.TestSmartThreadAlgoAppRemote,
-        ],
-    )
-    @pytest.mark.seltest
+    # @pytest.mark.parametrize(
+    #     "thread_type_arg",
+    #     [
+    #         TestThreadConfig.TestNoSmartThreadAlgoAppCurrent,
+    #         TestThreadConfig.TestSmartThreadAlgoAppCurrent,
+    #         TestThreadConfig.TestSmartThreadAlgoAppRemote,
+    #     ],
+    # )
+    # @pytest.mark.seltest
     def test_mock_connect_to_ib(
         self,
         # algo_app: "AlgoApp",
         cat_app: "FileCatalog",
-        thread_type_arg: TestThreadConfig,
+        # thread_type_arg: TestThreadConfig,
     ) -> None:
         """Test connecting to IB.
 
@@ -87,25 +87,32 @@ class TestAlgoAppConnect:
             thread_type_arg: specifies how to setup threads
 
         """
-        if thread_type_arg in (
-            TestThreadConfig.TestSmartThreadAlgoAppCurrent,
-            TestThreadConfig.TestSmartThreadAlgoAppRemote,
-        ):
-            test_smart_thread = SmartThread(name="tester1")
-        if thread_type_arg in (
-            TestThreadConfig.TestNoSmartThreadAlgoAppCurrent,
-            TestThreadConfig.TestSmartThreadAlgoAppCurrent,
-        ):
-            algo_app = AlgoApp(
-                ds_catalog=cat_app,
-                thread_config=ThreadConfig.CurrentThread,
-            )
-        else:
-            algo_app = AlgoApp(
-                ds_catalog=cat_app,
-                thread_config=ThreadConfig.RemoteThread,
-            )
+        # if thread_type_arg in (
+        #     TestThreadConfig.TestSmartThreadAlgoAppCurrent,
+        #     TestThreadConfig.TestSmartThreadAlgoAppRemote,
+        # ):
+        #     test_smart_thread = SmartThread(name="tester1")
+        # if thread_type_arg in (
+        #     TestThreadConfig.TestNoSmartThreadAlgoAppCurrent,
+        #     TestThreadConfig.TestSmartThreadAlgoAppCurrent,
+        # ):
+        #     algo_app = AlgoApp(
+        #         ds_catalog=cat_app,
+        #         thread_config=ThreadConfig.CurrentThread,
+        #     )
+        # else:
+        #     algo_app = AlgoApp(
+        #         ds_catalog=cat_app,
+        #         thread_config=ThreadConfig.RemoteThread,
+        #     )
+        test_smart_thread = SmartThread(name="tester1")
+
+        algo_app = AlgoApp(
+            ds_catalog=cat_app,
+        )
+
         verify_algo_app_initialized(algo_app)
+        algo_app.smart_start()
 
         # we are testing connect_to_ib and the subsequent code that gets
         # control as a result, such as getting the first requestID and then
@@ -120,8 +127,8 @@ class TestAlgoAppConnect:
 
         verify_algo_app_disconnected(algo_app)
 
-        if thread_type_arg == TestThreadConfig.TestSmartThreadAlgoAppRemote:
-            algo_app.algo_join(caller_smart_thread=test_smart_thread)
+        # if thread_type_arg == TestThreadConfig.TestSmartThreadAlgoAppRemote:
+        algo_app.algo_join(caller_smart_thread=test_smart_thread)
 
     def test_mock_connect_to_ib_with_timeout(
         self, algo_app: "AlgoApp", mock_ib: Any

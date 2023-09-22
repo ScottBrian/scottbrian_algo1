@@ -583,6 +583,7 @@ class MockIB:
         #######################################################################
         # queue the message to be received
         #######################################################################
+        logger.debug(f"queueing onto msg_rcv_q: {recv_msg=}")
         self.msg_rcv_q.put(recv_msg, timeout=5)
 
     ###########################################################################
@@ -597,8 +598,9 @@ class MockIB:
         """
         # if the queue is empty, the get will wait up to 1 second for an item
         # to be queued - if no item shows up, an Empty exception is raised
+        logger.debug("about to get msg from msg_rcv_q")
         msg = self.msg_rcv_q.get(timeout=1)  # wait for 1 second if empty
-
+        logger.debug(f"obtained from msg_recv_q {msg=}")
         return msg
 
     ###########################################################################
