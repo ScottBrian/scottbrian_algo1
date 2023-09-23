@@ -37,6 +37,7 @@ from scottbrian_utils.diag_msg import get_formatted_call_sequence
 ########################################################################
 # Local
 ########################################################################
+from scottbrian_algo1.algo_wrapper import AlgoWrapper
 
 ########################################################################
 # logging
@@ -47,8 +48,8 @@ logger = logging.getLogger(__name__)
 ########################################################################
 # AlgoApp
 ########################################################################
-class AlgoClient(EWrapper, EClient, SmartThread, Thread):  # type: ignore
-    """AlgoApp class."""
+class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
+    """AlgoClient class."""
 
     PORT_FOR_LIVE_TRADING = 7496
     PORT_FOR_PAPER_TRADING = 7497
@@ -63,12 +64,8 @@ class AlgoClient(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         self,
         algo_name: str,
         client_name: str,
+        wrapper: AlgoWrapper,
         disconnect_lock: Lock,
-        response_complete_event: Event,
-        symbols: pd.DataFrame,
-        stock_symbols: pd.DataFrame,
-        contracts: pd.DataFrame,
-        contract_details: pd.DataFrame,
     ) -> None:
         """Instantiate the AlgoClient.
 
@@ -79,8 +76,9 @@ class AlgoClient(EWrapper, EClient, SmartThread, Thread):  # type: ignore
                 disconnect
         """
         self.specified_args = locals()  # used for __repr__, see below
-        EWrapper.__init__(self)
-        EClient.__init__(self, wrapper=self)
+        # EWrapper.__init__(self)
+        # AlgoWrapper.__init__(self)
+        EClient.__init__(self, wrapper=wrapper)
         Thread.__init__(self)
         # threading.current_thread().name = algo_name
         self.client_name = client_name
@@ -94,21 +92,20 @@ class AlgoClient(EWrapper, EClient, SmartThread, Thread):  # type: ignore
 
         self.disconnect_lock = disconnect_lock
         # self.ds_catalog = ds_catalog
-        self.request_id: int = 0
-        self.error_reqId: int = 0
-        self.response_complete_event = response_complete_event
+        # self.request_id: int = 0
+        # self.error_reqId: int = 0
         # self.nextValidId_event = Event()
         #
         # # stock symbols
         # self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
         # self.symbols_status = pd.DataFrame()
-        self.num_symbols_received = 0
-        self.symbols = symbols
-        self.stock_symbols = stock_symbols
-        #
-        # # contract details
-        self.contracts = contracts
-        self.contract_details = contract_details
+        # self.num_symbols_received = 0
+        # self.symbols = symbols
+        # self.stock_symbols = stock_symbols
+        # #
+        # # # contract details
+        # self.contracts = contracts
+        # self.contract_details = contract_details
         #
         # # fundamental data
         # self.fundamental_data = pd.DataFrame()
@@ -167,50 +164,56 @@ class AlgoClient(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         return f"{classname}({parms})"
 
     ####################################################################
-    # error
+    # msgLoopRec
     ####################################################################
-    def error(
-        self,
-        reqId: ibcommon.TickerId,
-        errorCode: int,
-        errorString: str,
-        advancedOrderRejectJson="",
-    ) -> None:
-        """Receive error from IB and print it.
-
-        Args:
-            reqId: the id of the failing request
-            errorCode: the error code
-            errorString: text to explain the error
-
-        """
-        super(EWrapper, self).wrapper.error(
-            reqId,
-            errorCode,
-            errorString,
-            advancedOrderRejectJson,
-        )
-
-        self.error_reqId = reqId
-
-    ###########################################################################
-    # nextValidId
-    ###########################################################################
-    def nextValidId(self, request_id: int) -> None:
-        """Receive next valid ID from IB and save it.
-
-        Args:
-            request_id: next id to use for a request to IB
-
-        """
-        logger.info(
-            f"next valid ID is {request_id}, {threading.current_thread()=}, " f"{self=}"
-        )
-
-        self.request_id = request_id
-        # self.nextValidId_event.set()
-        # self.ibapi_client_smart_thread.smart_resume(waiters=self.algo_name)
+    def msgLoopRec(self):
         self.smart_resume(waiters=self.algo_name)
+
+    # ####################################################################
+    # # error
+    # ####################################################################
+    # def error(
+    #     self,
+    #     reqId: ibcommon.TickerId,
+    #     errorCode: int,
+    #     errorString: str,
+    #     advancedOrderRejectJson="",
+    # ) -> None:
+    #     """Receive error from IB and print it.
+    #
+    #     Args:
+    #         reqId: the id of the failing request
+    #         errorCode: the error code
+    #         errorString: text to explain the error
+    #
+    #     """
+    #     super(EWrapper, self).wrapper.error(
+    #         reqId,
+    #         errorCode,
+    #         errorString,
+    #         advancedOrderRejectJson,
+    #     )
+    #
+    #     self.error_reqId = reqId
+    #
+    # ###########################################################################
+    # # nextValidId
+    # ###########################################################################
+    # def nextValidId(self, request_id: int) -> None:
+    #     """Receive next valid ID from IB and save it.
+    #
+    #     Args:
+    #         request_id: next id to use for a request to IB
+    #
+    #     """
+    #     logger.info(
+    #         f"next valid ID is {request_id}, {threading.current_thread()=}, " f"{self=}"
+    #     )
+    #
+    #     self.request_id = request_id
+    #     # self.nextValidId_event.set()
+    #     # self.ibapi_client_smart_thread.smart_resume(waiters=self.algo_name)
+    #     self.smart_resume(waiters=self.algo_name)
 
     ###########################################################################
     # get_reqId
@@ -273,134 +276,134 @@ class AlgoClient(EWrapper, EClient, SmartThread, Thread):  # type: ignore
                 )
                 self.reset()
 
-    ###########################################################################
-    # symbolSamples - callback
-    ###########################################################################
-    def symbolSamples(
-        self,
-        request_id: int,
-        contract_descriptions: ibcommon.ListOfContractDescription,
-    ) -> None:
-        """Receive IB reply for reqMatchingSymbols request.
-
-        Args:
-            request_id: the id used on the request
-            contract_descriptions: contains a list of contract descriptions.
-                                     Each description includes the symbol,
-                                     conId, security type, primary exchange,
-                                     currency, and derivative security
-                                     types.
-
-        The contracts are filtered for stocks traded in the USA and are
-        stored into a data frame as contracts that can be used later to
-        request additional information or to make trades.
-        """
-        logger.info("entered for request_id %d", request_id)
-        self.num_symbols_received = len(contract_descriptions)
-        logger.info("Number of descriptions received: %d", self.num_symbols_received)
-
-        for desc in contract_descriptions:
-            logger.debug("Symbol: {}".format(desc.contract.symbol))
-
-            conId = desc.contract.conId
-
-            if (
-                desc.contract.secType == "STK"
-                and desc.contract.currency == "USD"
-                and "OPT" in desc.derivativeSecTypes
-            ):
-                if conId in self.stock_symbols.index:
-                    self.stock_symbols.loc[conId] = pd.Series(
-                        get_contract_description_dict(desc)
-                    )
-                else:
-                    self.stock_symbols = pd.concat(
-                        [
-                            self.stock_symbols,
-                            pd.DataFrame(
-                                get_contract_description_dict(desc, df=True),
-                                index=[conId],
-                            ),
-                        ]
-                    )
-            else:  # all other symbols
-                # update the descriptor if it already exists in the DataFrame
-                # as we want the newest information to replace the old
-                if conId in self.symbols.index:
-                    self.symbols.loc[conId] = pd.Series(
-                        get_contract_description_dict(desc)
-                    )
-                else:
-                    self.symbols = pd.concat(
-                        [
-                            self.symbols,
-                            pd.DataFrame(
-                                get_contract_description_dict(desc, df=True),
-                                index=[conId],
-                            ),
-                        ]
-                    )
-
-        self.response_complete_event.set()
-
-    ###########################################################################
-    # contractDetails callback method
-    ###########################################################################
-    def contractDetails(
-        self, request_id: int, contract_details: ContractDetails
-    ) -> None:
-        """Receive IB reply for reqContractDetails request.
-
-        Args:
-            request_id: the id used on the request
-            contract_details: contains contract and details
-
-        """
-        logger.info("entered for request_id %d", request_id)
-        logger.debug("Symbol: %s", contract_details.contract.symbol)
-        # print('contract_details:\n', contract_details)
-        # print('contract_details.__dict__:\n', contract_details.__dict__)
-
-        # get the conId to use as an index
-        conId = contract_details.contract.conId
-
-        # The contracts and contract_details DataFrames are both indexed by
-        # the conId. If an entry for the conId already exists, we will replace
-        # it with the newest information we just now received. Otherwise, we
-        # will add it. The get_contract_dict and get_contract_details_dict
-        # methods each return a dictionary that can be used to update or add
-        # to the DataFrame. Any class instances or arrays of class
-        # instances will be returned as a string so that the DataFrame can be
-        # stored and retrieved as csv files.
-        contract_dict = get_contract_dict(contract_details.contract)
-        if conId in self.contracts.index:
-            self.contracts.loc[conId] = pd.Series(contract_dict)
-        else:
-            self.contracts = pd.concat(
-                [self.contracts, pd.DataFrame(contract_dict, index=[conId])]
-            )
-
-        # add the contract details to the DataFrame
-        contract_details_dict = get_contract_details_dict(contract_details)
-        if conId in self.contract_details.index:
-            self.contract_details.loc[conId] = pd.Series(contract_details_dict)
-        else:
-            self.contract_details = pd.concat(
-                [
-                    self.contract_details,
-                    pd.DataFrame(contract_details_dict, index=[conId]),
-                ]
-            )
-
-    ###########################################################################
-    # contractDetailsEnd
-    ###########################################################################
-    def contractDetailsEnd(self, request_id: int) -> None:
-        """Receive IB reply for reqContractDetails request end.
-
-        Args:
-            request_id: the id used on the request
-
-        """
-        logger.info("entered for request_id %d", request_id)
-        self.response_complete_event.set()
+    # ###########################################################################
+    # # symbolSamples - callback
+    # ###########################################################################
+    # def symbolSamples(
+    #     self,
+    #     request_id: int,
+    #     contract_descriptions: ibcommon.ListOfContractDescription,
+    # ) -> None:
+    #     """Receive IB reply for reqMatchingSymbols request.
+    #
+    #     Args:
+    #         request_id: the id used on the request
+    #         contract_descriptions: contains a list of contract descriptions.
+    #                                  Each description includes the symbol,
+    #                                  conId, security type, primary exchange,
+    #                                  currency, and derivative security
+    #                                  types.
+    #
+    #     The contracts are filtered for stocks traded in the USA and are
+    #     stored into a data frame as contracts that can be used later to
+    #     request additional information or to make trades.
+    #     """
+    #     logger.info("entered for request_id %d", request_id)
+    #     self.num_symbols_received = len(contract_descriptions)
+    #     logger.info("Number of descriptions received: %d", self.num_symbols_received)
+    #
+    #     for desc in contract_descriptions:
+    #         logger.debug("Symbol: {}".format(desc.contract.symbol))
+    #
+    #         conId = desc.contract.conId
+    #
+    #         if (
+    #             desc.contract.secType == "STK"
+    #             and desc.contract.currency == "USD"
+    #             and "OPT" in desc.derivativeSecTypes
+    #         ):
+    #             if conId in self.stock_symbols.index:
+    #                 self.stock_symbols.loc[conId] = pd.Series(
+    #                     get_contract_description_dict(desc)
+    #                 )
+    #             else:
+    #                 self.stock_symbols = pd.concat(
+    #                     [
+    #                         self.stock_symbols,
+    #                         pd.DataFrame(
+    #                             get_contract_description_dict(desc, df=True),
+    #                             index=[conId],
+    #                         ),
+    #                     ]
+    #                 )
+    #         else:  # all other symbols
+    #             # update the descriptor if it already exists in the DataFrame
+    #             # as we want the newest information to replace the old
+    #             if conId in self.symbols.index:
+    #                 self.symbols.loc[conId] = pd.Series(
+    #                     get_contract_description_dict(desc)
+    #                 )
+    #             else:
+    #                 self.symbols = pd.concat(
+    #                     [
+    #                         self.symbols,
+    #                         pd.DataFrame(
+    #                             get_contract_description_dict(desc, df=True),
+    #                             index=[conId],
+    #                         ),
+    #                     ]
+    #                 )
+    #
+    #     self.response_complete_event.set()
+    #
+    # ###########################################################################
+    # # contractDetails callback method
+    # ###########################################################################
+    # def contractDetails(
+    #     self, request_id: int, contract_details: ContractDetails
+    # ) -> None:
+    #     """Receive IB reply for reqContractDetails request.
+    #
+    #     Args:
+    #         request_id: the id used on the request
+    #         contract_details: contains contract and details
+    #
+    #     """
+    #     logger.info("entered for request_id %d", request_id)
+    #     logger.debug("Symbol: %s", contract_details.contract.symbol)
+    #     # print('contract_details:\n', contract_details)
+    #     # print('contract_details.__dict__:\n', contract_details.__dict__)
+    #
+    #     # get the conId to use as an index
+    #     conId = contract_details.contract.conId
+    #
+    #     # The contracts and contract_details DataFrames are both indexed by
+    #     # the conId. If an entry for the conId already exists, we will replace
+    #     # it with the newest information we just now received. Otherwise, we
+    #     # will add it. The get_contract_dict and get_contract_details_dict
+    #     # methods each return a dictionary that can be used to update or add
+    #     # to the DataFrame. Any class instances or arrays of class
+    #     # instances will be returned as a string so that the DataFrame can be
+    #     # stored and retrieved as csv files.
+    #     contract_dict = get_contract_dict(contract_details.contract)
+    #     if conId in self.contracts.index:
+    #         self.contracts.loc[conId] = pd.Series(contract_dict)
+    #     else:
+    #         self.contracts = pd.concat(
+    #             [self.contracts, pd.DataFrame(contract_dict, index=[conId])]
+    #         )
+    #
+    #     # add the contract details to the DataFrame
+    #     contract_details_dict = get_contract_details_dict(contract_details)
+    #     if conId in self.contract_details.index:
+    #         self.contract_details.loc[conId] = pd.Series(contract_details_dict)
+    #     else:
+    #         self.contract_details = pd.concat(
+    #             [
+    #                 self.contract_details,
+    #                 pd.DataFrame(contract_details_dict, index=[conId]),
+    #             ]
+    #         )
+    #
+    # ###########################################################################
+    # # contractDetailsEnd
+    # ###########################################################################
+    # def contractDetailsEnd(self, request_id: int) -> None:
+    #     """Receive IB reply for reqContractDetails request end.
+    #
+    #     Args:
+    #         request_id: the id used on the request
+    #
+    #     """
+    #     logger.info("entered for request_id %d", request_id)
+    #     self.response_complete_event.set()

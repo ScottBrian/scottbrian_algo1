@@ -48,14 +48,13 @@ import logging
 from pathlib import Path
 import string
 import threading
-from threading import Event, get_ident, get_native_id, Lock, Thread
+from threading import Event, Lock, Thread
 import time
 from typing import Any, Callable, Optional, Type, TYPE_CHECKING, Union
 
 ########################################################################
 # Third Party
 ########################################################################
-import ibapi.common as ibcommon
 from ibapi.client import EClient  # type: ignore
 from ibapi.wrapper import EWrapper  # type: ignore
 from ibapi.utils import current_fn_name  # type: ignore
@@ -97,6 +96,7 @@ from scottbrian_algo1.algo_maps import get_contract_details_dict
 from scottbrian_algo1.algo_maps import get_contract_description_dict
 
 from scottbrian_algo1.algo_client import AlgoClient
+from scottbrian_algo1.algo_wrapper import AlgoWrapper
 
 
 ########################################################################
@@ -245,14 +245,14 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self.disconnect_lock = Lock()
         self.ds_catalog = ds_catalog
         # self.request_id: int = 0
-        self.error_reqId: int = 0
+        # self.error_reqId: int = 0
         self.response_complete_event = Event()
         # self.nextValidId_event = Event()
 
         # stock symbols
         self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
         self.symbols_status = pd.DataFrame()
-        self.num_symbols_received = 0
+        # self.num_symbols_received = 0
         self.symbols = pd.DataFrame()
         self.stock_symbols = pd.DataFrame()
 
@@ -266,6 +266,16 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self.handle_cmds: bool = False
 
         self.client_name = "ibapi_client"
+
+        self.algo_wrapper = AlgoWrapper(
+            algo_name=self.algo_name,
+            client_name=self.client_name,
+            response_complete_event=self.response_complete_event,
+            symbols=self.symbols,
+            stock_symbols=self.stock_symbols,
+            contracts=self.contracts,
+            contract_details=self.contract_details,
+        )
         # self.ibapi_client_smart_thread = SmartThread(
         #     name=self.client_name,
         #     target=EClient.run,
@@ -275,12 +285,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self.algo_client = AlgoClient(
             algo_name=self.algo_name,
             client_name=self.client_name,
+            wrapper=self.algo_wrapper,
             disconnect_lock=self.disconnect_lock,
-            response_complete_event=self.response_complete_event,
-            symbols=self.symbols,
-            stock_symbols=self.stock_symbols,
-            contracts=self.contracts,
-            contract_details=self.contract_details,
         )
         # if thread_config == ThreadConfig.CurrentThread:
         #     if (smart_thread := SmartThread.get_current_smart_thread()) is not None:
@@ -637,7 +643,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             if not self.isConnected():
                 logger.error("%s detected disconnect while waiting", call_seq)
                 raise DisconnectDuringRequest
-            if self.algo_client.error_reqId == reqId:
+            if self.algo_wrapper.error_reqId == reqId:
                 raise RequestError
             if self.response_complete_event.wait(timeout=1):
                 return  # good, event completed w/o timeout
@@ -947,7 +953,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         """
         self.request_symbols(search_string)
         # if self.num_symbols_received > 15:  # possibly more to find
-        if self.algo_client.num_symbols_received > 15:  # possibly more to find
+        if self.algo_wrapper.num_symbols_received > 15:  # possibly more to find
             # call recursively to get more symbols for this char sequence
             for add_char in string.ascii_uppercase + ".":
                 longer_search_string = search_string + add_char

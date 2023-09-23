@@ -258,7 +258,7 @@ def verify_algo_app_initialized(algo_app: "AlgoApp") -> None:
 
     """
     assert len(algo_app.ds_catalog) > 0
-    assert algo_app.algo_client.request_id == 0
+    assert algo_app.algo_wrapper.request_id == 0
     assert algo_app.symbols.empty
     assert algo_app.stock_symbols.empty
     assert algo_app.response_complete_event.is_set() is False
@@ -275,7 +275,7 @@ def verify_algo_app_connected(algo_app: "AlgoApp") -> None:
     """
     assert algo_app.algo_client.thread.is_alive()
     assert algo_app.algo_client.isConnected()
-    assert algo_app.algo_client.request_id == 1
+    assert algo_app.algo_wrapper.request_id == 1
 
 
 def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
