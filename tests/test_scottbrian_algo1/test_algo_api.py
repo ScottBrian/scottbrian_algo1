@@ -258,11 +258,10 @@ def verify_algo_app_initialized(algo_app: "AlgoApp") -> None:
 
     """
     assert len(algo_app.ds_catalog) > 0
-    assert algo_app.request_id == 0
+    assert algo_app.algo_client.request_id == 0
     assert algo_app.symbols.empty
     assert algo_app.stock_symbols.empty
     assert algo_app.response_complete_event.is_set() is False
-    assert algo_app.nextValidId_event.is_set() is False
     assert algo_app.__repr__() == "AlgoApp(ds_catalog)"
     # assert algo_app.ibapi_client_smart_thread.thread is None
 
@@ -274,9 +273,9 @@ def verify_algo_app_connected(algo_app: "AlgoApp") -> None:
         algo_app: instance of AlgoApp that is to be checked
 
     """
-    assert algo_app.ibapi_client_smart_thread.thread.is_alive()
-    assert algo_app.isConnected()
-    assert algo_app.request_id == 1
+    assert algo_app.algo_client.thread.is_alive()
+    assert algo_app.algo_client.isConnected()
+    assert algo_app.algo_client.request_id == 1
 
 
 def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
@@ -286,8 +285,8 @@ def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
         algo_app: instance of AlgoApp that is to be checked
 
     """
-    assert not algo_app.ibapi_client_smart_thread.thread.is_alive()
-    assert not algo_app.isConnected()
+    assert not algo_app.algo_client.thread.is_alive()
+    assert not algo_app.algo_client.isConnected()
 
 
 ###############################################################################

@@ -96,6 +96,8 @@ from scottbrian_algo1.algo_maps import get_contract_dict
 from scottbrian_algo1.algo_maps import get_contract_details_dict
 from scottbrian_algo1.algo_maps import get_contract_description_dict
 
+from scottbrian_algo1.algo_client import AlgoClient
+
 
 ########################################################################
 # logging
@@ -176,8 +178,8 @@ def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
                     args,
                     kwargs,
                 )
-                caller_smart_thread.smart_send(msg=cmd_tuple, receivers=self.algo1_name)
-                ret_value = caller_smart_thread.smart_recv(senders=self.algo1_name)
+                caller_smart_thread.smart_send(msg=cmd_tuple, receivers=self.algo_name)
+                ret_value = caller_smart_thread.smart_recv(senders=self.algo_name)
                 if ret_value == "NONE":
                     ret_value = None
             else:
@@ -194,7 +196,8 @@ def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
 ########################################################################
 # AlgoApp
 ########################################################################
-class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
+# class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
+class AlgoApp(SmartThread, Thread):  # type: ignore
     """AlgoApp class."""
 
     PORT_FOR_LIVE_TRADING = 7496
@@ -228,8 +231,8 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         AlgoApp(ds_catalog)
 
         """
-        EWrapper.__init__(self)
-        EClient.__init__(self, wrapper=self)
+        # EWrapper.__init__(self)
+        # EClient.__init__(self, wrapper=self)
         Thread.__init__(self)
         # threading.current_thread().name = algo_name
         SmartThread.__init__(
@@ -238,13 +241,13 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
             thread=self,
             auto_start=False,
         )
-        self.algo1_name = algo_name
+        self.algo_name = algo_name
         self.disconnect_lock = Lock()
         self.ds_catalog = ds_catalog
-        self.request_id: int = 0
+        # self.request_id: int = 0
         self.error_reqId: int = 0
         self.response_complete_event = Event()
-        self.nextValidId_event = Event()
+        # self.nextValidId_event = Event()
 
         # stock symbols
         self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
@@ -263,24 +266,33 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         self.handle_cmds: bool = False
 
         self.client_name = "ibapi_client"
-        self.ibapi_client_smart_thread = SmartThread(
-            name=self.client_name,
-            target=EClient.run,
-            args=(self,),
-            auto_start=False,
+        # self.ibapi_client_smart_thread = SmartThread(
+        #     name=self.client_name,
+        #     target=EClient.run,
+        #     args=(self,),
+        #     auto_start=False,
+        # )
+        self.algo_client = AlgoClient(
+            algo_name=self.algo_name,
+            client_name=self.client_name,
+            disconnect_lock=self.disconnect_lock,
+            response_complete_event=self.response_complete_event,
+            symbols=self.symbols,
+            stock_symbols=self.stock_symbols,
+            contracts=self.contracts,
+            contract_details=self.contract_details,
         )
-
         # if thread_config == ThreadConfig.CurrentThread:
         #     if (smart_thread := SmartThread.get_current_smart_thread()) is not None:
-        #         self.algo1_name = smart_thread.name
+        #         self.algo_name = smart_thread.name
         #         self.algo1_smart_thread = smart_thread
         #     else:
-        #         self.algo1_name = algo_name
-        #         self.algo1_smart_thread = SmartThread(name=self.algo1_name)
+        #         self.algo_name = algo_name
+        #         self.algo1_smart_thread = SmartThread(name=self.algo_name)
         # elif thread_config == ThreadConfig.RemoteThread:
-        #     self.algo1_name = algo_name
+        #     self.algo_name = algo_name
         #     self.algo1_smart_thread = SmartThread(
-        #         name=self.algo1_name,
+        #         name=self.algo_name,
         #         target=self.cmd_loop,
         #         thread_parm_name="algo_smart_thread",
         #     )
@@ -321,7 +333,7 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         """Handle commands for the AlgoApp."""
         logger.debug("run entered")
 
-        exclude_names: set[str] = {self.algo1_name, self.client_name}
+        exclude_names: set[str] = {self.algo_name, self.client_name}
         recv_msgs: dict[str, list[Any]] = {}
         self.handle_cmds = True
         while self.handle_cmds:
@@ -364,65 +376,65 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
 
         logger.debug("run exiting")
 
-    ####################################################################
-    # error
-    ####################################################################
-    def error(
-        self,
-        reqId: ibcommon.TickerId,
-        errorCode: int,
-        errorString: str,
-        advancedOrderRejectJson="",
-    ) -> None:
-        """Receive error from IB and print it.
+    # ####################################################################
+    # # error
+    # ####################################################################
+    # def error(
+    #     self,
+    #     reqId: ibcommon.TickerId,
+    #     errorCode: int,
+    #     errorString: str,
+    #     advancedOrderRejectJson="",
+    # ) -> None:
+    #     """Receive error from IB and print it.
+    #
+    #     Args:
+    #         reqId: the id of the failing request
+    #         errorCode: the error code
+    #         errorString: text to explain the error
+    #
+    #     """
+    #     super(EWrapper, self).wrapper.error(
+    #         reqId,
+    #         errorCode,
+    #         errorString,
+    #         advancedOrderRejectJson,
+    #     )
+    #
+    #     self.error_reqId = reqId
+    #
+    # ###########################################################################
+    # # nextValidId
+    # ###########################################################################
+    # def nextValidId(self, request_id: int) -> None:
+    #     """Receive next valid ID from IB and save it.
+    #
+    #     Args:
+    #         request_id: next id to use for a request to IB
+    #
+    #     """
+    #     logger.info(
+    #         f"next valid ID is {request_id}, {threading.current_thread()=}, " f"{self=}"
+    #     )
+    #
+    #     self.request_id = request_id
+    #     # self.nextValidId_event.set()
+    #     self.ibapi_client_smart_thread.smart_resume(waiters=self.algo_name)
 
-        Args:
-            reqId: the id of the failing request
-            errorCode: the error code
-            errorString: text to explain the error
-
-        """
-        super(EWrapper, self).wrapper.error(
-            reqId,
-            errorCode,
-            errorString,
-            advancedOrderRejectJson,
-        )
-
-        self.error_reqId = reqId
-
-    ###########################################################################
-    # nextValidId
-    ###########################################################################
-    def nextValidId(self, request_id: int) -> None:
-        """Receive next valid ID from IB and save it.
-
-        Args:
-            request_id: next id to use for a request to IB
-
-        """
-        logger.info(
-            f"next valid ID is {request_id}, {threading.current_thread()=}, " f"{self=}"
-        )
-
-        self.request_id = request_id
-        # self.nextValidId_event.set()
-        self.ibapi_client_smart_thread.smart_resume(waiters=self.algo1_name)
-
-    ###########################################################################
-    # get_reqId
-    ###########################################################################
-    def get_reqId(self) -> int:
-        """Obtain a request id to use for the current request.
-
-        The request id is bumped and then returned
-
-        Returns:
-            request id to use on the current request
-
-        """
-        self.request_id += 1
-        return self.request_id
+    # ###########################################################################
+    # # get_reqId
+    # ###########################################################################
+    # def get_reqId(self) -> int:
+    #     """Obtain a request id to use for the current request.
+    #
+    #     The request id is bumped and then returned
+    #
+    #     Returns:
+    #         request id to use on the current request
+    #
+    #     """
+    #     self.request_id += 1
+    #     return self.request_id
 
     ###########################################################################
     # prepare_to_connect
@@ -436,7 +448,8 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
                                   is held
 
         """
-        if self.isConnected():
+        # if self.isConnected():
+        if self.algo_client.isConnected():
             raise AlreadyConnected("Attempted to connect, but already connected")
 
         if self.disconnect_lock.locked():
@@ -444,12 +457,12 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
                 "Attempted to connect while the disconnect lock is held"
             )
 
-        self.request_id = 0
+        # self.request_id = 0
         self.num_stock_symbols_received = 0
         self.stock_symbols = pd.DataFrame()
         self.symbols = pd.DataFrame()
         self.response_complete_event.clear()
-        self.nextValidId_event.clear()
+        # self.nextValidId_event.clear()
 
     ###########################################################################
     # connect_to_ib
@@ -469,7 +482,8 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         """
         self.prepare_to_connect()  # verification and initialization
 
-        self.connect(ip_addr, port, client_id)
+        # self.connect(ip_addr, port, client_id)
+        self.algo_client.connect(ip_addr, port, client_id)
 
         logger.info("starting run thread")
         # the following try will succeed for the first connect only
@@ -482,16 +496,27 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         #         target=self.run,
         #     )
         #     self.ibapi_client_smart_thread.smart_start()
-        if self.ibapi_client_smart_thread.st_state == ThreadState.Registered:
-            self.ibapi_client_smart_thread.smart_start()
+        # if self.ibapi_client_smart_thread.st_state == ThreadState.Registered:
+        #     self.ibapi_client_smart_thread.smart_start()
+        # else:
+        #     self.ibapi_client_smart_thread = SmartThread(
+        #         name="ibapi_client",
+        #         target=EClient.run,
+        #         args=(self,),
+        #     )
+        if self.algo_client.st_state == ThreadState.Registered:
+            self.algo_client.smart_start()
         else:
-            self.ibapi_client_smart_thread = SmartThread(
-                name="ibapi_client",
-                target=EClient.run,
-                args=(self,),
+            self.algo_client = AlgoClient(
+                algo_name=self.algo_name,
+                client_name=self.client_name,
+                disconnect_lock=self.disconnect_lock,
             )
+            self.algo_client.smart_start()
+
         # we will wait on the first requestID here for 10 seconds
-        logger.debug("id of nextValidId_event %d", id(self.nextValidId_event))
+        # logger.debug("id of nextValidId_event %d",
+        # id(self.nextValidId_event))
         try:
             self.smart_wait(resumers="ibapi_client", timeout=10)
         except SmartThreadRequestTimedOut:
@@ -514,15 +539,15 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         """Disconnect from ib."""
         logger.info("calling EClient disconnect")
 
-        self.disconnect()  # call our disconnect (overrides EClient)
+        self.algo_client.disconnect()  # call our disconnect (overrides EClient)
 
-        logger.info("join ibapi_client_smart_thread to wait for it to come home")
+        logger.info("join algo_client to wait for it to come home")
         # self.algo1_smart_thread.smart_join(
         #     targets="ibapi_client",
         #     timeout=60,
         # )
         self.smart_join(
-            targets="ibapi_client",
+            targets=self.client_name,
             timeout=60,
         )
         # tell run (if running) to exit
@@ -541,55 +566,55 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         """
         logger.info("algo_join entered")
 
-        caller_smart_thread.smart_join(targets=self.algo1_name)
+        caller_smart_thread.smart_join(targets=[self.algo_name, self.client_name])
 
         logger.info("algo_join exiting")
 
-    ###########################################################################
-    # disconnect
-    ###########################################################################
-    def disconnect(self) -> None:
-        """Call this function to terminate the connections with TWS."""
-        # We would like to call EClient.disconnect, but it does not wait for
-        # the reader thread to come home which leads to problems if a connect
-        # is done immediately after the disconnect. The still running reader
-        # thread snatches the early handshaking messages and leaves the
-        # connect hanging. The following code is from client.py and is
-        # modified here to add the thread join to ensure the reader comes
-        # home before the disconnect returns.
-        # Note also the use of the disconnect lock to serialize the two known
-        # cases of disconnect being called from different threads (one from
-        # mainline through disconnect_from_ib in AlgoApp, and one from the
-        # EClient run method in the run thread.
-        call_seq = get_formatted_call_sequence()
-        logger.debug("%s entered disconnect", call_seq)
-        with self.disconnect_lock:
-            logger.debug("%s setting conn state", call_seq)
-            self.setConnState(EClient.DISCONNECTED)
-            if self.conn is not None:
-                logger.info("%s disconnecting", call_seq)
-                self.conn.disconnect()
-                self.wrapper.connectionClosed()
-                reader_id = id(self.reader)
-                my_id = get_ident()
-                my_native_id = get_native_id()
-                logger.debug(
-                    "about to join reader id %d for self id %d to"
-                    " wait for it to come home on thread %d %d",
-                    reader_id,
-                    id(self),
-                    my_id,
-                    my_native_id,
-                )
-                self.reader.join()
-                logger.debug(
-                    "reader id %d came home for id(self) %d " "thread id %d %d",
-                    reader_id,
-                    id(self),
-                    my_id,
-                    my_native_id,
-                )
-                self.reset()
+    # ###########################################################################
+    # # disconnect
+    # ###########################################################################
+    # def disconnect(self) -> None:
+    #     """Call this function to terminate the connections with TWS."""
+    #     # We would like to call EClient.disconnect, but it does not wait for
+    #     # the reader thread to come home which leads to problems if a connect
+    #     # is done immediately after the disconnect. The still running reader
+    #     # thread snatches the early handshaking messages and leaves the
+    #     # connect hanging. The following code is from client.py and is
+    #     # modified here to add the thread join to ensure the reader comes
+    #     # home before the disconnect returns.
+    #     # Note also the use of the disconnect lock to serialize the two known
+    #     # cases of disconnect being called from different threads (one from
+    #     # mainline through disconnect_from_ib in AlgoApp, and one from the
+    #     # EClient run method in the run thread.
+    #     call_seq = get_formatted_call_sequence()
+    #     logger.debug("%s entered disconnect", call_seq)
+    #     with self.disconnect_lock:
+    #         logger.debug("%s setting conn state", call_seq)
+    #         self.setConnState(EClient.DISCONNECTED)
+    #         if self.conn is not None:
+    #             logger.info("%s disconnecting", call_seq)
+    #             self.conn.disconnect()
+    #             self.wrapper.connectionClosed()
+    #             reader_id = id(self.reader)
+    #             my_id = get_ident()
+    #             my_native_id = get_native_id()
+    #             logger.debug(
+    #                 "about to join reader id %d for self id %d to"
+    #                 " wait for it to come home on thread %d %d",
+    #                 reader_id,
+    #                 id(self),
+    #                 my_id,
+    #                 my_native_id,
+    #             )
+    #             self.reader.join()
+    #             logger.debug(
+    #                 "reader id %d came home for id(self) %d " "thread id %d %d",
+    #                 reader_id,
+    #                 id(self),
+    #                 my_id,
+    #                 my_native_id,
+    #             )
+    #             self.reset()
 
     ###########################################################################
     # wait_for_request_completion
@@ -612,7 +637,7 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
             if not self.isConnected():
                 logger.error("%s detected disconnect while waiting", call_seq)
                 raise DisconnectDuringRequest
-            if self.error_reqId == reqId:
+            if self.algo_client.error_reqId == reqId:
                 raise RequestError
             if self.response_complete_event.wait(timeout=1):
                 return  # good, event completed w/o timeout
@@ -921,7 +946,8 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
 
         """
         self.request_symbols(search_string)
-        if self.num_symbols_received > 15:  # possibly more to find
+        # if self.num_symbols_received > 15:  # possibly more to find
+        if self.algo_client.num_symbols_received > 15:  # possibly more to find
             # call recursively to get more symbols for this char sequence
             for add_char in string.ascii_uppercase + ".":
                 longer_search_string = search_string + add_char
@@ -943,7 +969,8 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         # send request to IB
         #######################################################################
         self.response_complete_event.clear()  # reset the wait bit first
-        reqId = self.get_reqId()  # bump reqId and return it
+        # reqId = self.get_reqId()  # bump reqId and return it
+        reqId = self.algo_client.get_reqId()  # bump reqId and return it
         self.reqMatchingSymbols(reqId, symbol_to_get)
         # the following sleep for 1 second is required to avoid
         # overloading IB with requests (they ask for 1 second). Note that we
@@ -955,73 +982,73 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         time.sleep(self.request_throttle_secs)  # avoid overloading IB
         self.wait_for_request_completion(reqId)
 
-    ###########################################################################
-    # symbolSamples - callback
-    ###########################################################################
-    def symbolSamples(
-        self, request_id: int, contract_descriptions: ListOfContractDescription
-    ) -> None:
-        """Receive IB reply for reqMatchingSymbols request.
-
-        Args:
-            request_id: the id used on the request
-            contract_descriptions: contains a list of contract descriptions.
-                                     Each description includes the symbol,
-                                     conId, security type, primary exchange,
-                                     currency, and derivative security
-                                     types.
-
-        The contracts are filtered for stocks traded in the USA and are
-        stored into a data frame as contracts that can be used later to
-        request additional information or to make trades.
-        """
-        logger.info("entered for request_id %d", request_id)
-        self.num_symbols_received = len(contract_descriptions)
-        logger.info("Number of descriptions received: %d", self.num_symbols_received)
-
-        for desc in contract_descriptions:
-            logger.debug("Symbol: {}".format(desc.contract.symbol))
-
-            conId = desc.contract.conId
-
-            if (
-                desc.contract.secType == "STK"
-                and desc.contract.currency == "USD"
-                and "OPT" in desc.derivativeSecTypes
-            ):
-                if conId in self.stock_symbols.index:
-                    self.stock_symbols.loc[conId] = pd.Series(
-                        get_contract_description_dict(desc)
-                    )
-                else:
-                    self.stock_symbols = pd.concat(
-                        [
-                            self.stock_symbols,
-                            pd.DataFrame(
-                                get_contract_description_dict(desc, df=True),
-                                index=[conId],
-                            ),
-                        ]
-                    )
-            else:  # all other symbols
-                # update the descriptor if it already exists in the DataFrame
-                # as we want the newest information to replace the old
-                if conId in self.symbols.index:
-                    self.symbols.loc[conId] = pd.Series(
-                        get_contract_description_dict(desc)
-                    )
-                else:
-                    self.symbols = pd.concat(
-                        [
-                            self.symbols,
-                            pd.DataFrame(
-                                get_contract_description_dict(desc, df=True),
-                                index=[conId],
-                            ),
-                        ]
-                    )
-
-        self.response_complete_event.set()
+    # ###########################################################################
+    # # symbolSamples - callback
+    # ###########################################################################
+    # def symbolSamples(
+    #     self, request_id: int, contract_descriptions: ListOfContractDescription
+    # ) -> None:
+    #     """Receive IB reply for reqMatchingSymbols request.
+    #
+    #     Args:
+    #         request_id: the id used on the request
+    #         contract_descriptions: contains a list of contract descriptions.
+    #                                  Each description includes the symbol,
+    #                                  conId, security type, primary exchange,
+    #                                  currency, and derivative security
+    #                                  types.
+    #
+    #     The contracts are filtered for stocks traded in the USA and are
+    #     stored into a data frame as contracts that can be used later to
+    #     request additional information or to make trades.
+    #     """
+    #     logger.info("entered for request_id %d", request_id)
+    #     self.num_symbols_received = len(contract_descriptions)
+    #     logger.info("Number of descriptions received: %d", self.num_symbols_received)
+    #
+    #     for desc in contract_descriptions:
+    #         logger.debug("Symbol: {}".format(desc.contract.symbol))
+    #
+    #         conId = desc.contract.conId
+    #
+    #         if (
+    #             desc.contract.secType == "STK"
+    #             and desc.contract.currency == "USD"
+    #             and "OPT" in desc.derivativeSecTypes
+    #         ):
+    #             if conId in self.stock_symbols.index:
+    #                 self.stock_symbols.loc[conId] = pd.Series(
+    #                     get_contract_description_dict(desc)
+    #                 )
+    #             else:
+    #                 self.stock_symbols = pd.concat(
+    #                     [
+    #                         self.stock_symbols,
+    #                         pd.DataFrame(
+    #                             get_contract_description_dict(desc, df=True),
+    #                             index=[conId],
+    #                         ),
+    #                     ]
+    #                 )
+    #         else:  # all other symbols
+    #             # update the descriptor if it already exists in the DataFrame
+    #             # as we want the newest information to replace the old
+    #             if conId in self.symbols.index:
+    #                 self.symbols.loc[conId] = pd.Series(
+    #                     get_contract_description_dict(desc)
+    #                 )
+    #             else:
+    #                 self.symbols = pd.concat(
+    #                     [
+    #                         self.symbols,
+    #                         pd.DataFrame(
+    #                             get_contract_description_dict(desc, df=True),
+    #                             index=[conId],
+    #                         ),
+    #                     ]
+    #                 )
+    #
+    #     self.response_complete_event.set()
 
     ###########################################################################
     ###########################################################################
@@ -1084,7 +1111,7 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         # make the request for details
         ################################################################
         self.response_complete_event.clear()
-        reqId = self.get_reqId()  # bump reqId and return it
+        reqId = self.algo_client.get_reqId()  # bump reqId and return it
         self.reqContractDetails(reqId, contract)
         self.wait_for_request_completion(reqId)
 
@@ -1094,67 +1121,67 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         self.save_contracts()
         self.save_contract_details()
 
-    ###########################################################################
-    # contractDetails callback method
-    ###########################################################################
-    def contractDetails(
-        self, request_id: int, contract_details: ContractDetails
-    ) -> None:
-        """Receive IB reply for reqContractDetails request.
-
-        Args:
-            request_id: the id used on the request
-            contract_details: contains contract and details
-
-        """
-        logger.info("entered for request_id %d", request_id)
-        logger.debug("Symbol: %s", contract_details.contract.symbol)
-        # print('contract_details:\n', contract_details)
-        # print('contract_details.__dict__:\n', contract_details.__dict__)
-
-        # get the conId to use as an index
-        conId = contract_details.contract.conId
-
-        # The contracts and contract_details DataFrames are both indexed by
-        # the conId. If an entry for the conId already exists, we will replace
-        # it with the newest information we just now received. Otherwise, we
-        # will add it. The get_contract_dict and get_contract_details_dict
-        # methods each return a dictionary that can be used to update or add
-        # to the DataFrame. Any class instances or arrays of class
-        # instances will be returned as a string so that the DataFrame can be
-        # stored and retrieved as csv files.
-        contract_dict = get_contract_dict(contract_details.contract)
-        if conId in self.contracts.index:
-            self.contracts.loc[conId] = pd.Series(contract_dict)
-        else:
-            self.contracts = pd.concat(
-                [self.contracts, pd.DataFrame(contract_dict, index=[conId])]
-            )
-
-        # add the contract details to the DataFrame
-        contract_details_dict = get_contract_details_dict(contract_details)
-        if conId in self.contract_details.index:
-            self.contract_details.loc[conId] = pd.Series(contract_details_dict)
-        else:
-            self.contract_details = pd.concat(
-                [
-                    self.contract_details,
-                    pd.DataFrame(contract_details_dict, index=[conId]),
-                ]
-            )
-
-    ###########################################################################
-    # contractDetailsEnd
-    ###########################################################################
-    def contractDetailsEnd(self, request_id: int) -> None:
-        """Receive IB reply for reqContractDetails request end.
-
-        Args:
-            request_id: the id used on the request
-
-        """
-        logger.info("entered for request_id %d", request_id)
-        self.response_complete_event.set()
+    # ###########################################################################
+    # # contractDetails callback method
+    # ###########################################################################
+    # def contractDetails(
+    #     self, request_id: int, contract_details: ContractDetails
+    # ) -> None:
+    #     """Receive IB reply for reqContractDetails request.
+    #
+    #     Args:
+    #         request_id: the id used on the request
+    #         contract_details: contains contract and details
+    #
+    #     """
+    #     logger.info("entered for request_id %d", request_id)
+    #     logger.debug("Symbol: %s", contract_details.contract.symbol)
+    #     # print('contract_details:\n', contract_details)
+    #     # print('contract_details.__dict__:\n', contract_details.__dict__)
+    #
+    #     # get the conId to use as an index
+    #     conId = contract_details.contract.conId
+    #
+    #     # The contracts and contract_details DataFrames are both indexed by
+    #     # the conId. If an entry for the conId already exists, we will replace
+    #     # it with the newest information we just now received. Otherwise, we
+    #     # will add it. The get_contract_dict and get_contract_details_dict
+    #     # methods each return a dictionary that can be used to update or add
+    #     # to the DataFrame. Any class instances or arrays of class
+    #     # instances will be returned as a string so that the DataFrame can be
+    #     # stored and retrieved as csv files.
+    #     contract_dict = get_contract_dict(contract_details.contract)
+    #     if conId in self.contracts.index:
+    #         self.contracts.loc[conId] = pd.Series(contract_dict)
+    #     else:
+    #         self.contracts = pd.concat(
+    #             [self.contracts, pd.DataFrame(contract_dict, index=[conId])]
+    #         )
+    #
+    #     # add the contract details to the DataFrame
+    #     contract_details_dict = get_contract_details_dict(contract_details)
+    #     if conId in self.contract_details.index:
+    #         self.contract_details.loc[conId] = pd.Series(contract_details_dict)
+    #     else:
+    #         self.contract_details = pd.concat(
+    #             [
+    #                 self.contract_details,
+    #                 pd.DataFrame(contract_details_dict, index=[conId]),
+    #             ]
+    #         )
+    #
+    # ###########################################################################
+    # # contractDetailsEnd
+    # ###########################################################################
+    # def contractDetailsEnd(self, request_id: int) -> None:
+    #     """Receive IB reply for reqContractDetails request end.
+    #
+    #     Args:
+    #         request_id: the id used on the request
+    #
+    #     """
+    #     logger.info("entered for request_id %d", request_id)
+    #     self.response_complete_event.set()
 
     ###########################################################################
     ###########################################################################
@@ -1192,7 +1219,7 @@ class AlgoApp(EWrapper, EClient, SmartThread, Thread):  # type: ignore
         # make the request for fundamental data
         ################################################################
         self.response_complete_event.clear()
-        reqId = self.get_reqId()  # bump reqId and return it
+        reqId = self.algo_client.get_reqId()  # bump reqId and return it
         self.reqFundamentalData(reqId, contract, report_type, [])
         self.wait_for_request_completion(reqId)
 
