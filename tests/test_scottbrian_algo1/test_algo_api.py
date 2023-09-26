@@ -87,24 +87,6 @@ class TestAlgoAppConnect:
             thread_type_arg: specifies how to setup threads
 
         """
-        # if thread_type_arg in (
-        #     TestThreadConfig.TestSmartThreadAlgoAppCurrent,
-        #     TestThreadConfig.TestSmartThreadAlgoAppRemote,
-        # ):
-        #     test_smart_thread = SmartThread(name="tester1")
-        # if thread_type_arg in (
-        #     TestThreadConfig.TestNoSmartThreadAlgoAppCurrent,
-        #     TestThreadConfig.TestSmartThreadAlgoAppCurrent,
-        # ):
-        #     algo_app = AlgoApp(
-        #         ds_catalog=cat_app,
-        #         thread_config=ThreadConfig.CurrentThread,
-        #     )
-        # else:
-        #     algo_app = AlgoApp(
-        #         ds_catalog=cat_app,
-        #         thread_config=ThreadConfig.RemoteThread,
-        #     )
         test_smart_thread = SmartThread(name="tester1")
 
         algo_app = AlgoApp(
