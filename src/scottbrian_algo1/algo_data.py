@@ -7,6 +7,19 @@ algo_data
 This class contains the data frames and methods used by the algo and
 associated classes.
 """
+########################################################################
+# Standard Library
+########################################################################
+from typing import Any, Callable, Optional, Type, TYPE_CHECKING, Union
+
+########################################################################
+# Third Party
+########################################################################
+import pandas as pd
+
+########################################################################
+# Local
+########################################################################
 
 
 ########################################################################
@@ -31,27 +44,39 @@ class MarketData:
     ####################################################################
     # symbolSamples - callback
     ####################################################################
-    def symbolSamples(
+    def update_symbols(
         self,
-        request_id: int,
-        contract_descriptions: ibcommon.ListOfContractDescription,
+        symbol_descriptions: list[dict[str, Any]],
     ) -> None:
-        """Receive IB reply for reqMatchingSymbols request.
+        """Update dataframe for symbols from reqMatchingSymbols request.
 
-            Args:
-            request_id: the id used on the request
-            contract_descriptions: contains a list of contract descriptions.
-            Each description includes the symbol,
-            conId, security type, primary exchange,
-            currency, and derivative security
-            types.
+        Args:
+            symbol_descriptions: contains a list of symbol descriptions.
+                Each description includes the condID, symbol, security
+                type, primary exchange, currency, and derivative
+                security types.
+        """
+        updates: list[dict[str, Any]] = []
+        concats: list[dict[str, Any]] = []
+        for entry in symbol_descriptions:
+            if entry["conID"] in self.stock_symbols.index:
+                updates.append(entry)
+            else:
+                concats.append(entry)
+        if updates:
+            updates_df = pd.DataFrame(updates)
+            updates_df.set_index("conID", inplace=True)
+            self.stock_symbols.update(updates_df)
 
-        The contracts are filtered for stocks traded in the USA and are
-        stored into a data frame as contracts that can be used later to
-        request additional information or to make trades."""
+        if concats:
+            concats_df = pd.DataFrame(concats)
+            concats_df.set_index("conID", inplace=True)
+            self.stock_symbols = pd.concat([self.stock_symbols,
+                                            concats,])
 
+        concates_df = pd.DataFrame(updates)
+        new_df.set_index("conID", inplace=True)
 
-        logger.info("entered for request_id %d", request_id)
         self.num_symbols_received = len(contract_descriptions)
         logger.info("Number of descriptions received: %d", self.num_symbols_received)
 
@@ -83,7 +108,9 @@ class MarketData:
                 # update the descriptor if it already exists in the DataFrame
                 # as we want the newest information to replace the old
                 if conId in self.symbols.index:
-                    self.symbols.loc[conId] = pd.Series(get_contract_description_dict(desc))
+                    self.symbols.loc[conId] = pd.Series(
+                        get_contract_description_dict(desc)
+                    )
                 else:
                     self.symbols = pd.concat(
                         [
