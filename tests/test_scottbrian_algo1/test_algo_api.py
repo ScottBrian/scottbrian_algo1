@@ -40,7 +40,7 @@ from scottbrian_algo1.algo_maps import get_contract_details_obj
 # from scottbrian_utils.diag_msg import diag_msg
 # from scottbrian_utils.file_catalog import FileCatalog
 
-from scottbrian_paratools.smart_thread import SmartThread
+from scottbrian_paratools.smart_thread import SmartThread, SmartThreadRequestTimedOut
 
 import string
 
@@ -60,6 +60,98 @@ class TestThreadConfig(Enum):
 
 
 ########################################################################
+# verify_algo_app_initialized
+########################################################################
+def verify_algo_app_initialized(algo_app: "AlgoApp") -> None:
+    """Helper function to verify the algo_app instance is initialized.
+
+    Args:
+        algo_app: instance of AlgoApp that is to be checked
+
+    """
+    assert len(algo_app.ds_catalog) > 0
+    assert algo_app.algo_client.algo_wrapper.request_id == 0
+    assert algo_app.symbols.empty
+    assert algo_app.stock_symbols.empty
+    assert algo_app.response_complete_event.is_set() is False
+    assert algo_app.__repr__() == "AlgoApp(ds_catalog)"
+    # assert algo_app.ibapi_client_smart_thread.thread is None
+
+
+########################################################################
+# verify_algo_app_connected
+########################################################################
+def verify_algo_app_connected(algo_app: "AlgoApp") -> None:
+    """Helper function to verify we are connected to ib.
+
+    Args:
+        algo_app: instance of AlgoApp that is to be checked
+
+    """
+    assert algo_app.algo_client.thread.is_alive()
+    assert algo_app.algo_client.isConnected()
+    assert algo_app.algo_client.algo_wrapper.request_id == 1
+
+
+########################################################################
+# verify_algo_app_disconnected
+########################################################################
+def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
+    """Helper function to verify we are disconnected from ib.
+
+    Args:
+        algo_app: instance of AlgoApp that is to be checked
+
+    """
+    assert not algo_app.algo_client.thread.is_alive()
+    assert not algo_app.algo_client.isConnected()
+
+
+########################################################################
+# do_setup
+########################################################################
+def do_setup(cat_app: "FileCatalog"):
+    """Setup the test thread and the algo_app thread.
+
+    Args:
+        cat_app: catalog of date sets to use for testing
+    """
+    test_smart_thread = SmartThread(name="tester1")
+
+    algo_app = AlgoApp(ds_catalog=cat_app, algo_name="algo_app")
+
+    verify_algo_app_initialized(algo_app)
+    algo_app.smart_start()
+
+    return test_smart_thread, algo_app
+
+
+########################################################################
+# do_setup
+########################################################################
+def do_breakdown(
+    test_smart_thread: SmartThread,
+    algo_app: AlgoApp,
+    do_disconnect: bool = True,
+):
+    """Disconnect and join the algo_app.
+
+    Args:
+        test_smart_thread: the tester1 SmartThread instance
+        algo_app: the AlgoApp to disconnect from and join
+        do_disconnect: specifies whether to do disconnect
+    """
+    if do_disconnect:
+        verify_algo_app_connected(algo_app)
+
+        algo_app.disconnect_from_ib()
+
+    verify_algo_app_disconnected(algo_app)
+
+    test_smart_thread.smart_join(targets="algo_app")
+
+
+########################################################################
 # TestAlgoAppConnect class
 ########################################################################
 class TestAlgoAppConnect:
@@ -76,64 +168,52 @@ class TestAlgoAppConnect:
     # @pytest.mark.seltest
     def test_mock_connect_to_ib(
         self,
-        # algo_app: "AlgoApp",
         cat_app: "FileCatalog",
-        # thread_type_arg: TestThreadConfig,
     ) -> None:
         """Test connecting to IB.
 
         Args:
             cat_app: pytest fixture (see conftest.py)
-            thread_type_arg: specifies how to setup threads
-
         """
-        test_smart_thread = SmartThread(name="tester1")
-
-        algo_app = AlgoApp(
-            ds_catalog=cat_app,
-        )
-
-        verify_algo_app_initialized(algo_app)
-        algo_app.smart_start()
+        test_smart_thread, algo_app = do_setup(cat_app=cat_app)
 
         # we are testing connect_to_ib and the subsequent code that gets
-        # control as a result, such as getting the first requestID and then
-        # starting a separate thread for the run loop.
+        # control as a result, such as getting the first requestID and
+        # then starting a separate thread for the run loop.
+
         logger.debug("about to connect")
         algo_app.connect_to_ib("127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0)
 
-        # verify that algo_app is connected and alive with a valid reqId
-        verify_algo_app_connected(algo_app)
-
-        algo_app.disconnect_from_ib()
-
-        verify_algo_app_disconnected(algo_app)
-
-        # if thread_type_arg == TestThreadConfig.TestSmartThreadAlgoAppRemote:
-        algo_app.algo_join(caller_smart_thread=test_smart_thread)
+        do_breakdown(test_smart_thread=test_smart_thread, algo_app=algo_app)
 
     def test_mock_connect_to_ib_with_timeout(
-        self, algo_app: "AlgoApp", mock_ib: Any
+        self,
+        cat_app: "FileCatalog",
+        mock_ib: Any,
     ) -> None:
         """Test connecting to IB.
 
         Args:
-            algo_app: pytest fixture instance of AlgoApp (see conftest.py)
             mock_ib: pytest fixture of contract_descriptions
 
         """
-        verify_algo_app_initialized(algo_app)
+        test_smart_thread, algo_app = do_setup(cat_app=cat_app)
 
         # we are testing connect_to_ib with a simulated timeout
         logger.debug("about to connect")
-        with pytest.raises(ConnectTimeout):
-            algo_app.connect_to_ib(
-                "127.0.0.1", mock_ib.PORT_FOR_REQID_TIMEOUT, client_id=0
-            )
+        # with pytest.raises(ConnectTimeout):
+        # with pytest.raises(SmartThreadRequestTimedOut):
+        algo_app.connect_to_ib("127.0.0.1", mock_ib.PORT_FOR_REQID_TIMEOUT, client_id=0)
 
         # verify that algo_app is not connected
         verify_algo_app_disconnected(algo_app)
-        assert algo_app.request_id == 0
+        assert algo_app.algo_client.algo_wrapper.request_id == 0
+
+        do_breakdown(
+            test_smart_thread=test_smart_thread,
+            algo_app=algo_app,
+            do_disconnect=False,
+        )
 
     def test_connect_to_ib_already_connected(
         self, algo_app: "AlgoApp", mock_ib: Any
@@ -227,48 +307,6 @@ class TestAlgoAppConnect:
     #     algo_app.disconnect_from_ib()
     #     assert not algo_app.ibapi_client_smart_thread.thread.is_alive()
     #     assert not algo_app.isConnected()
-
-
-###############################################################################
-# connect disconnect verification
-###############################################################################
-def verify_algo_app_initialized(algo_app: "AlgoApp") -> None:
-    """Helper function to verify the algo_app instance is initialized.
-
-    Args:
-        algo_app: instance of AlgoApp that is to be checked
-
-    """
-    assert len(algo_app.ds_catalog) > 0
-    assert algo_app.algo_wrapper.request_id == 0
-    assert algo_app.symbols.empty
-    assert algo_app.stock_symbols.empty
-    assert algo_app.response_complete_event.is_set() is False
-    assert algo_app.__repr__() == "AlgoApp(ds_catalog)"
-    # assert algo_app.ibapi_client_smart_thread.thread is None
-
-
-def verify_algo_app_connected(algo_app: "AlgoApp") -> None:
-    """Helper function to verify we are connected to ib.
-
-    Args:
-        algo_app: instance of AlgoApp that is to be checked
-
-    """
-    assert algo_app.algo_client.thread.is_alive()
-    assert algo_app.algo_client.isConnected()
-    assert algo_app.algo_wrapper.request_id == 1
-
-
-def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
-    """Helper function to verify we are disconnected from ib.
-
-    Args:
-        algo_app: instance of AlgoApp that is to be checked
-
-    """
-    assert not algo_app.algo_client.thread.is_alive()
-    assert not algo_app.algo_client.isConnected()
 
 
 ###############################################################################

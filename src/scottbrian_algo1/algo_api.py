@@ -43,6 +43,7 @@ smart_recv request to receive the result.
 # Standard Library
 ########################################################################
 import ast
+from collections.abc import Iterable
 from enum import Enum, auto
 import logging
 from pathlib import Path
@@ -50,7 +51,18 @@ import string
 import threading
 from threading import Event, Lock, Thread
 import time
-from typing import Any, Callable, Optional, Type, TYPE_CHECKING, Union
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    NamedTuple,
+    NoReturn,
+    Optional,
+    Type,
+    TypeAlias,
+    TYPE_CHECKING,
+    Union,
+)
 
 ########################################################################
 # Third Party
@@ -98,6 +110,11 @@ from scottbrian_algo1.algo_maps import get_contract_description_dict
 from scottbrian_algo1.algo_client import AlgoClient
 from scottbrian_algo1.algo_wrapper import AlgoWrapper
 
+########################################################################
+# TypeAlias
+########################################################################
+IntFloat: TypeAlias = Union[int, float]
+OptIntFloat: TypeAlias = Optional[IntFloat]
 
 ########################################################################
 # logging
@@ -267,15 +284,15 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         self.client_name = "ibapi_client"
 
-        self.algo_wrapper = AlgoWrapper(
-            algo_name=self.algo_name,
-            client_name=self.client_name,
-            response_complete_event=self.response_complete_event,
-            symbols=self.symbols,
-            stock_symbols=self.stock_symbols,
-            contracts=self.contracts,
-            contract_details=self.contract_details,
-        )
+        # self.algo_wrapper = AlgoWrapper(
+        #     algo_name=self.algo_name,
+        #     client_name=self.client_name,
+        #     response_complete_event=self.response_complete_event,
+        #     symbols=self.symbols,
+        #     stock_symbols=self.stock_symbols,
+        #     contracts=self.contracts,
+        #     contract_details=self.contract_details,
+        # )
         # self.ibapi_client_smart_thread = SmartThread(
         #     name=self.client_name,
         #     target=EClient.run,
@@ -285,8 +302,13 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self.algo_client = AlgoClient(
             algo_name=self.algo_name,
             client_name=self.client_name,
-            wrapper=self.algo_wrapper,
+            # wrapper=self.algo_wrapper,
             disconnect_lock=self.disconnect_lock,
+            response_complete_event=self.response_complete_event,
+            symbols=self.symbols,
+            stock_symbols=self.stock_symbols,
+            contracts=self.contracts,
+            contract_details=self.contract_details,
         )
         # if thread_config == ThreadConfig.CurrentThread:
         #     if (smart_thread := SmartThread.get_current_smart_thread()) is not None:
@@ -528,7 +550,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         except SmartThreadRequestTimedOut:
             logger.debug("timed out waiting for next valid request ID")
             self.disconnect_from_ib()
-            raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
+            # raise
+            # raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
 
         # if not self.nextValidId_event.wait(timeout=10):  # if we timed out
         #     logger.debug("timed out waiting for next valid request ID")
@@ -560,21 +583,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self.handle_cmds = False
 
         logger.info("disconnect complete")
-
-    ###########################################################################
-    # algo_join
-    ###########################################################################
-    def algo_join(self, caller_smart_thread: SmartThread) -> None:
-        """Join the algo thread.
-
-        Args:
-            caller_smart_thread: smart thread instance to do join
-        """
-        logger.info("algo_join entered")
-
-        caller_smart_thread.smart_join(targets=[self.algo_name, self.client_name])
-
-        logger.info("algo_join exiting")
 
     # ###########################################################################
     # # disconnect

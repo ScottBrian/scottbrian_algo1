@@ -37,6 +37,7 @@ from scottbrian_utils.diag_msg import get_formatted_call_sequence
 ########################################################################
 # Local
 ########################################################################
+# from scottbrian_algo1.algo_client import AlgoClient
 
 ########################################################################
 # logging
@@ -63,6 +64,7 @@ class AlgoWrapper(EWrapper):  # type: ignore
         self,
         algo_name: str,
         client_name: str,
+        algo_client: Any,
         response_complete_event: Event,
         symbols: pd.DataFrame,
         stock_symbols: pd.DataFrame,
@@ -81,6 +83,7 @@ class AlgoWrapper(EWrapper):  # type: ignore
         EWrapper.__init__(self)
         self.client_name = client_name
         self.algo_name = algo_name
+        self.algo_client = algo_client
 
         # self.ds_catalog = ds_catalog
         self.request_id: int = 0
@@ -197,6 +200,7 @@ class AlgoWrapper(EWrapper):  # type: ignore
         )
 
         self.request_id = request_id
+        self.algo_client.smart_resume(waiters=self.algo_name)
         # self.nextValidId_event.set()
         # self.ibapi_client_smart_thread.smart_resume(waiters=self.algo_name)
         # self.smart_resume(waiters=self.algo_name)

@@ -194,7 +194,7 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
             self: instance of ib Connection class
 
         """
-        logger.debug("entered")
+        logger.debug(f"entered: {self.port=}")
         try:
             self.socket = socket.socket()
         # TO DO list the exceptions you want to catch
@@ -427,7 +427,7 @@ class MockIB:
         # b'\x00\x00\x00\x0871\x002\x000\x00\x00'
         #######################################################################
         elif int(fields[0]) == OUT.START_API:
-            logger.info("startAPI detected")
+            logger.info(f"startAPI detected: {self.reqId_timeout=}")
             # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
             if self.reqId_timeout:  # if testing timeout case
                 recv_msg = make_msg("0")  # simulate timeout

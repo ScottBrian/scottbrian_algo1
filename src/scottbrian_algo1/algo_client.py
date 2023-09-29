@@ -64,8 +64,13 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         self,
         algo_name: str,
         client_name: str,
-        wrapper: AlgoWrapper,
+        # wrapper: AlgoWrapper,
         disconnect_lock: Lock,
+        response_complete_event: Event,
+        symbols: pd.DataFrame,
+        stock_symbols: pd.DataFrame,
+        contracts: pd.DataFrame,
+        contract_details: pd.DataFrame,
     ) -> None:
         """Instantiate the AlgoClient.
 
@@ -78,7 +83,17 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         self.specified_args = locals()  # used for __repr__, see below
         # EWrapper.__init__(self)
         # AlgoWrapper.__init__(self)
-        EClient.__init__(self, wrapper=wrapper)
+        self.algo_wrapper = AlgoWrapper(
+            algo_name=algo_name,
+            client_name=client_name,
+            algo_client=self,
+            response_complete_event=response_complete_event,
+            symbols=symbols,
+            stock_symbols=stock_symbols,
+            contracts=contracts,
+            contract_details=contract_details,
+        )
+        EClient.__init__(self, wrapper=self.algo_wrapper)
         Thread.__init__(self)
         # threading.current_thread().name = algo_name
         self.client_name = client_name
@@ -166,8 +181,8 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
     ####################################################################
     # msgLoopRec
     ####################################################################
-    def msgLoopRec(self):
-        self.smart_resume(waiters=self.algo_name)
+    # def msgLoopRec(self):
+    #     self.smart_resume(waiters=self.algo_name)
 
     # ####################################################################
     # # error

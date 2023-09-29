@@ -71,55 +71,9 @@ class MarketData:
         if concats:
             concats_df = pd.DataFrame(concats)
             concats_df.set_index("conID", inplace=True)
-            self.stock_symbols = pd.concat([self.stock_symbols,
-                                            concats,])
-
-        concates_df = pd.DataFrame(updates)
-        new_df.set_index("conID", inplace=True)
-
-        self.num_symbols_received = len(contract_descriptions)
-        logger.info("Number of descriptions received: %d", self.num_symbols_received)
-
-        for desc in contract_descriptions:
-            logger.debug("Symbol: {}".format(desc.contract.symbol))
-
-            conId = desc.contract.conId
-
-            if (
-                desc.contract.secType == "STK"
-                and desc.contract.currency == "USD"
-                and "OPT" in desc.derivativeSecTypes
-            ):
-                if conId in self.stock_symbols.index:
-                    self.stock_symbols.loc[conId] = pd.Series(
-                        get_contract_description_dict(desc)
-                    )
-                else:
-                    self.stock_symbols = pd.concat(
-                        [
-                            self.stock_symbols,
-                            pd.DataFrame(
-                                get_contract_description_dict(desc, df=True),
-                                index=[conId],
-                            ),
-                        ]
-                    )
-            else:  # all other symbols
-                # update the descriptor if it already exists in the DataFrame
-                # as we want the newest information to replace the old
-                if conId in self.symbols.index:
-                    self.symbols.loc[conId] = pd.Series(
-                        get_contract_description_dict(desc)
-                    )
-                else:
-                    self.symbols = pd.concat(
-                        [
-                            self.symbols,
-                            pd.DataFrame(
-                                get_contract_description_dict(desc, df=True),
-                                index=[conId],
-                            ),
-                        ]
-                    )
-
-        self.response_complete_event.set()
+            self.stock_symbols = pd.concat(
+                [
+                    self.stock_symbols,
+                    concats,
+                ]
+            )
