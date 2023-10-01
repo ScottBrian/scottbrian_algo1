@@ -37,7 +37,7 @@ from scottbrian_utils.diag_msg import get_formatted_call_sequence
 ########################################################################
 # Local
 ########################################################################
-# from scottbrian_algo1.algo_client import AlgoClient
+from scottbrian_algo1.algo_client import AlgoClient
 
 ########################################################################
 # logging
@@ -64,7 +64,7 @@ class AlgoWrapper(EWrapper):  # type: ignore
         self,
         algo_name: str,
         client_name: str,
-        algo_client: Any,
+        algo_client: AlgoClient,
         response_complete_event: Event,
         symbols: pd.DataFrame,
         stock_symbols: pd.DataFrame,

@@ -44,6 +44,7 @@ smart_recv request to receive the result.
 ########################################################################
 import ast
 from collections.abc import Iterable
+from dataclasses import dataclass
 from enum import Enum, auto
 import logging
 from pathlib import Path
@@ -171,6 +172,17 @@ class ThreadConfig(Enum):
     CurrentThread = auto()
     RemoteThread = auto()
 
+########################################################################
+# RequestBlock
+########################################################################
+@dataclass
+class RequestBlock:
+    func_to_call: Callable[..., "RequestBock"]
+    func_args: tuple[Any]
+    func_kwargs: dict[str, Any]
+    ret_data: Optional[Any] = None
+    error_to_raise: Optional[AlgoAppError] = None
+    error_msg: Optional[str] = None
 
 ####################################################################
 # handle_thread_switching
@@ -190,15 +202,17 @@ def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
                 caller_smart_thread := SmartThread.get_current_smart_thread()
             ) is not None:
                 logger.debug(f"wrapped: {caller_smart_thread=}")
-                cmd_tuple = (
-                    func,
-                    args,
-                    kwargs,
-                )
-                caller_smart_thread.smart_send(msg=cmd_tuple, receivers=self.algo_name)
-                ret_value = caller_smart_thread.smart_recv(senders=self.algo_name)
-                if ret_value == "NONE":
-                    ret_value = None
+                req_block = RequestBlock(func_to_call=func,func_args=args,
+                                         func_kwargs=kwargs,)
+
+                caller_smart_thread.smart_send(msg=req_block, receivers=self.algo_name)
+                recv_msg: dict[str, list[RequestBlock]] = caller_smart_thread.smart_recv(
+                    senders=self.algo_name))
+                ret_block = recv_msg[caller_smart_thread.name]
+                if ret_block.ret_data is not None:
+                    ret_value = ret_block.ret_data
+                if ret_block.error_to_raise is not None:
+                    raise ret_block.error_to_raise(ret_block.error_msg)
             else:
                 raise RequestError(
                     f"{func.__name__} requires caller to have a SmartThread"
@@ -547,11 +561,13 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # id(self.nextValidId_event))
         try:
             self.smart_wait(resumers="ibapi_client", timeout=10)
+            # caller_smart_thread = SmartThread.get_current_smart_thread()
+            # caller_smart_thread.smart_wait(resumers="ibapi_client", timeout=10)
         except SmartThreadRequestTimedOut:
             logger.debug("timed out waiting for next valid request ID")
             self.disconnect_from_ib()
             # raise
-            # raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
+            raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
 
         # if not self.nextValidId_event.wait(timeout=10):  # if we timed out
         #     logger.debug("timed out waiting for next valid request ID")
@@ -575,12 +591,18 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         #     targets="ibapi_client",
         #     timeout=60,
         # )
+
         self.smart_join(
             targets=self.client_name,
             timeout=60,
         )
         # tell run (if running) to exit
         self.handle_cmds = False
+        # caller_smart_thread = SmartThread.get_current_smart_thread()
+        # caller_smart_thread.smart_join(
+        #     targets=self.client_name,
+        #     timeout=60,
+        # )
 
         logger.info("disconnect complete")
 

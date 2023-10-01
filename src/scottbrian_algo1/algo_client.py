@@ -37,7 +37,7 @@ from scottbrian_utils.diag_msg import get_formatted_call_sequence
 ########################################################################
 # Local
 ########################################################################
-from scottbrian_algo1.algo_wrapper import AlgoWrapper
+# from scottbrian_algo1.algo_wrapper import AlgoWrapper
 
 ########################################################################
 # logging
@@ -83,6 +83,8 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         self.specified_args = locals()  # used for __repr__, see below
         # EWrapper.__init__(self)
         # AlgoWrapper.__init__(self)
+        from scottbrian_algo1.algo_wrapper import AlgoWrapper
+
         self.algo_wrapper = AlgoWrapper(
             algo_name=algo_name,
             client_name=client_name,

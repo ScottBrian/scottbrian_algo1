@@ -201,9 +201,12 @@ class TestAlgoAppConnect:
 
         # we are testing connect_to_ib with a simulated timeout
         logger.debug("about to connect")
-        # with pytest.raises(ConnectTimeout):
-        # with pytest.raises(SmartThreadRequestTimedOut):
-        algo_app.connect_to_ib("127.0.0.1", mock_ib.PORT_FOR_REQID_TIMEOUT, client_id=0)
+        with pytest.raises(ConnectTimeout):
+            algo_app.connect_to_ib(
+                "127.0.0.1",
+                mock_ib.PORT_FOR_REQID_TIMEOUT,
+                client_id=0,
+            )
 
         # verify that algo_app is not connected
         verify_algo_app_disconnected(algo_app)
@@ -216,7 +219,9 @@ class TestAlgoAppConnect:
         )
 
     def test_connect_to_ib_already_connected(
-        self, algo_app: "AlgoApp", mock_ib: Any
+        self,
+        cat_app: "FileCatalog",
+        mock_ib: Any,
     ) -> None:
         """Test connecting to IB.
 
@@ -225,7 +230,8 @@ class TestAlgoAppConnect:
             mock_ib: pytest fixture of contract_descriptions
 
         """
-        verify_algo_app_initialized(algo_app)
+        # verify_algo_app_initialized(algo_app)
+        test_smart_thread, algo_app = do_setup(cat_app=cat_app)
 
         # first, connect normally to mock_ib
         logger.debug("about to connect")
@@ -242,13 +248,20 @@ class TestAlgoAppConnect:
             )
 
         # verify that algo_app is still connected and alive with a valid reqId
-        verify_algo_app_connected(algo_app)
-
-        algo_app.disconnect_from_ib()
-        verify_algo_app_disconnected(algo_app)
+        # verify_algo_app_connected(algo_app)
+        #
+        # algo_app.disconnect_from_ib()
+        # verify_algo_app_disconnected(algo_app)
+        do_breakdown(
+            test_smart_thread=test_smart_thread,
+            algo_app=algo_app,
+            do_disconnect=True,
+        )
 
     def test_connect_to_ib_with_lock_held(
-        self, algo_app: "AlgoApp", mock_ib: Any
+        self,
+        cat_app: "FileCatalog",
+        mock_ib: Any,
     ) -> None:
         """Test connecting to IB with disconnect lock held.
 
@@ -257,7 +270,7 @@ class TestAlgoAppConnect:
             mock_ib: pytest fixture of contract_descriptions
 
         """
-        verify_algo_app_initialized(algo_app)
+        test_smart_thread, algo_app = do_setup(cat_app=cat_app)
 
         # obtain the disconnect lock
         logger.debug("about to obtain disconnect lock")
@@ -348,7 +361,9 @@ class TestAlgoAppMatchingSymbols:
     """TestAlgoAppMatchingSymbols class."""
 
     def test_request_symbols_all_combos(
-        self, algo_app: "AlgoApp", mock_ib: Any
+        self,
+        cat_app: "FileCatalog",
+        mock_ib: Any,
     ) -> None:
         """Test request_symbols with all patterns.
 
