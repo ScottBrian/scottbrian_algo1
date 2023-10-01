@@ -148,21 +148,31 @@ class AlreadyConnected(AlgoAppError):
 class DisconnectLockHeld(AlgoAppError):
     """Attempted to connect while the disconnect lock is held."""
 
+    pass
+
 
 class ConnectTimeout(AlgoAppError):
     """Connect timeout waiting for nextValid_ID event."""
+
+    pass
 
 
 class DisconnectDuringRequest(AlgoAppError):
     """Request detected disconnect while waiting on event completion."""
 
+    pass
+
 
 class RequestTimeout(AlgoAppError):
     """Request timed out while waiting on event completion."""
 
+    pass
+
 
 class RequestError(AlgoAppError):
     """Request received an error while waiting on event completion."""
+
+    pass
 
 
 ########################################################################
@@ -172,6 +182,7 @@ class ThreadConfig(Enum):
     CurrentThread = auto()
     RemoteThread = auto()
 
+
 ########################################################################
 # RequestBlock
 ########################################################################
@@ -180,9 +191,17 @@ class RequestBlock:
     func_to_call: Callable[..., "RequestBock"]
     func_args: tuple[Any]
     func_kwargs: dict[str, Any]
+
+
+########################################################################
+# ResultBlock
+########################################################################
+@dataclass
+class ResultBlock:
     ret_data: Optional[Any] = None
     error_to_raise: Optional[AlgoAppError] = None
     error_msg: Optional[str] = None
+
 
 ####################################################################
 # handle_thread_switching
@@ -202,17 +221,21 @@ def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
                 caller_smart_thread := SmartThread.get_current_smart_thread()
             ) is not None:
                 logger.debug(f"wrapped: {caller_smart_thread=}")
-                req_block = RequestBlock(func_to_call=func,func_args=args,
-                                         func_kwargs=kwargs,)
+                req_block = RequestBlock(
+                    func_to_call=func,
+                    func_args=args,
+                    func_kwargs=kwargs,
+                )
 
                 caller_smart_thread.smart_send(msg=req_block, receivers=self.algo_name)
-                recv_msg: dict[str, list[RequestBlock]] = caller_smart_thread.smart_recv(
-                    senders=self.algo_name))
-                ret_block = recv_msg[caller_smart_thread.name]
-                if ret_block.ret_data is not None:
-                    ret_value = ret_block.ret_data
-                if ret_block.error_to_raise is not None:
-                    raise ret_block.error_to_raise(ret_block.error_msg)
+                recv_msg: dict[str, list[ResultBlock]] = caller_smart_thread.smart_recv(
+                    senders=self.algo_name
+                )
+                logger.debug(f"SBT_Test: {recv_msg=}")
+                result_block: list[ResultBlock] = recv_msg[self.algo_name][0]
+                ret_value = result_block.ret_data
+                if result_block.error_to_raise is not None:
+                    raise result_block.error_to_raise(result_block.error_msg)
             else:
                 raise RequestError(
                     f"{func.__name__} requires caller to have a SmartThread"
@@ -398,10 +421,16 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                     continue
 
                 for name, cmd_list in recv_msgs.items():
+                    logger.debug(f"SBT_Test: {name=}, {cmd_list=}")
                     for cmd in cmd_list:
-                        cmd_result = cmd[0](self, *cmd[1], **cmd[2])
-                        if cmd_result is None:
-                            cmd_result = "NONE"
+                        cmd_result: ResultBlock = cmd.func_to_call(
+                            self,
+                            *cmd.func_args,
+                            **cmd.func_kwargs,
+                        )
+                        # cmd_result = cmd[0](self, *cmd[1], **cmd[2])
+                        # if cmd_result is None:
+                        #     cmd_result = "NONE"
                         try:
                             # algo_smart_thread.smart_send(
                             #     msg=cmd_result,
@@ -510,7 +539,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     # connect_to_ib
     ###########################################################################
     @handle_thread_switching
-    def connect_to_ib(self, ip_addr: str, port: int, client_id: int) -> None:
+    def connect_to_ib(
+        self,
+        ip_addr: str,
+        port: int,
+        client_id: int,
+    ) -> Optional[ResultBlock]:
         """Connect to IB on the given addr and port and client id.
 
         Args:
@@ -567,20 +601,32 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             logger.debug("timed out waiting for next valid request ID")
             self.disconnect_from_ib()
             # raise
-            raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
-
-        # if not self.nextValidId_event.wait(timeout=10):  # if we timed out
+            error_msg = "connect_to_ib failed to receive nextValid_ID"
+            result_block: ResultBlock = ResultBlock(
+                ret_data=None,
+                error_to_raise=ConnectTimeout,
+                error_msg=error_msg,
+            )
+            # raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
+        else:
+            result_block: ResultBlock = ResultBlock(
+                ret_data=None,
+                error_to_raise=None,
+                error_msg=None,
+            )
+            # if not self.nextValidId_event.wait(timeout=10):  # if we timed out
         #     logger.debug("timed out waiting for next valid request ID")
         #     self.disconnect_from_ib()
         #     raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
 
         logger.info("connect success")
+        return result_block
 
     ###########################################################################
     # disconnect_from_ib
     ###########################################################################
     @handle_thread_switching
-    def disconnect_from_ib(self) -> None:
+    def disconnect_from_ib(self) -> Optional[ResultBlock]:
         """Disconnect from ib."""
         logger.info("calling EClient disconnect")
 
@@ -605,6 +651,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # )
 
         logger.info("disconnect complete")
+
+        return ResultBlock(
+            ret_data=None,
+            error_to_raise=None,
+            error_msg=None,
+        )
 
     # ###########################################################################
     # # disconnect
