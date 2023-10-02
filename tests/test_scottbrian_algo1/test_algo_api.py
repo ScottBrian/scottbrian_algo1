@@ -7,6 +7,7 @@
 # from pathlib import Path
 # import sys
 from enum import Enum, auto
+import string
 from typing import Any, List, NamedTuple
 
 # from typing_extensions import Final
@@ -41,8 +42,6 @@ from scottbrian_algo1.algo_maps import get_contract_details_obj
 # from scottbrian_utils.file_catalog import FileCatalog
 
 from scottbrian_paratools.smart_thread import SmartThread, SmartThreadRequestTimedOut
-
-import string
 
 ########################################################################
 # get logger
@@ -127,7 +126,7 @@ def do_setup(cat_app: "FileCatalog"):
 
 
 ########################################################################
-# do_setup
+# do_breakdown
 ########################################################################
 def do_breakdown(
     test_smart_thread: SmartThread,
@@ -166,6 +165,9 @@ class TestAlgoAppConnect:
     #     ],
     # )
     # @pytest.mark.seltest
+    ####################################################################
+    # test_mock_connect_to_ib
+    ####################################################################
     def test_mock_connect_to_ib(
         self,
         cat_app: "FileCatalog",
@@ -186,6 +188,9 @@ class TestAlgoAppConnect:
 
         do_breakdown(test_smart_thread=test_smart_thread, algo_app=algo_app)
 
+    ####################################################################
+    # test_mock_connect_to_ib_with_timeout
+    ####################################################################
     def test_mock_connect_to_ib_with_timeout(
         self,
         cat_app: "FileCatalog",
@@ -218,6 +223,9 @@ class TestAlgoAppConnect:
             do_disconnect=False,
         )
 
+    ####################################################################
+    # test_connect_to_ib_already_connected
+    ####################################################################
     def test_connect_to_ib_already_connected(
         self,
         cat_app: "FileCatalog",
@@ -258,6 +266,9 @@ class TestAlgoAppConnect:
             do_disconnect=True,
         )
 
+    ####################################################################
+    # test_connect_to_ib_with_lock_held
+    ####################################################################
     def test_connect_to_ib_with_lock_held(
         self,
         cat_app: "FileCatalog",
@@ -288,7 +299,14 @@ class TestAlgoAppConnect:
         logger.debug("about to free disconnect lock")
         algo_app.disconnect_lock.release()
 
-        algo_app.algo1_smart_thread.smart_unreg(targets="ibapi_client")
+        test_smart_thread.smart_unreg(targets="ibapi_client")
+        algo_app.handle_cmds = False
+
+        do_breakdown(
+            test_smart_thread=test_smart_thread,
+            algo_app=algo_app,
+            do_disconnect=False,
+        )
 
     # def test_real_connect_to_IB(self) -> None:
     #     """Test connecting to IB.
@@ -322,11 +340,9 @@ class TestAlgoAppConnect:
     #     assert not algo_app.isConnected()
 
 
-###############################################################################
-###############################################################################
-# matching symbols
-###############################################################################
-###############################################################################
+########################################################################
+# ExpCounts
+########################################################################
 class ExpCounts(NamedTuple):
     """NamedTuple for the expected counts."""
 
@@ -336,6 +352,9 @@ class ExpCounts(NamedTuple):
     stock_sym_recursive: int
 
 
+########################################################################
+# SymDfs
+########################################################################
 class SymDfs:
     """Saved sym dfs."""
 
@@ -357,9 +376,15 @@ class SymDfs:
         self.stock_sym_df = stock_sym_df
 
 
+########################################################################
+# TestAlgoAppMatchingSymbols
+########################################################################
 class TestAlgoAppMatchingSymbols:
     """TestAlgoAppMatchingSymbols class."""
 
+    ####################################################################
+    # test_request_symbols_all_combos
+    ####################################################################
     def test_request_symbols_all_combos(
         self,
         cat_app: "FileCatalog",
@@ -412,6 +437,9 @@ class TestAlgoAppMatchingSymbols:
             verify_algo_app_disconnected(algo_app)
             logger.debug("disconnected - test case returning")
 
+    ####################################################################
+    # test_request_symbols_zero_result
+    ####################################################################
     def test_request_symbols_zero_result(
         self, algo_app: "AlgoApp", mock_ib: Any
     ) -> None:
@@ -458,6 +486,9 @@ class TestAlgoAppMatchingSymbols:
             verify_algo_app_disconnected(algo_app)
             logger.debug("disconnected - test case returning")
 
+    ####################################################################
+    # test_get_symbols_timeout
+    ####################################################################
     def test_get_symbols_timeout(self, algo_app: "AlgoApp", mock_ib: Any) -> None:
         """Test get_symbols gets timeout.
 
@@ -484,6 +515,9 @@ class TestAlgoAppMatchingSymbols:
             verify_algo_app_disconnected(algo_app)
             logger.debug("disconnected - test case returning")
 
+    ####################################################################
+    # test_get_symbols_disconnect
+    ####################################################################
     def test_get_symbols_disconnect(self, algo_app: "AlgoApp", mock_ib: Any) -> None:
         """Test get_symbols gets disconnected while waiting.
 
@@ -510,6 +544,9 @@ class TestAlgoAppMatchingSymbols:
             verify_algo_app_disconnected(algo_app)
             logger.debug("disconnected - test case returning")
 
+    ####################################################################
+    # test_get_symbols
+    ####################################################################
     def test_get_symbols(self, algo_app: "AlgoApp", mock_ib: Any) -> None:
         """Test get_symbols with pattern that finds no symbols.
 
@@ -548,6 +585,9 @@ class TestAlgoAppMatchingSymbols:
             verify_algo_app_disconnected(algo_app)
             logger.debug("disconnected - test case returning")
 
+    ####################################################################
+    # test_get_symbols_with_connect_disconnect
+    ####################################################################
     def test_get_symbols_with_connect_disconnect(
         self, algo_app: "AlgoApp", mock_ib: Any
     ) -> None:
@@ -588,7 +628,7 @@ class TestAlgoAppMatchingSymbols:
 
 
 ###############################################################################
-# matching symbols verification
+# verify_match_symbols
 ###############################################################################
 def verify_match_symbols(
     algo_app: "AlgoApp",
@@ -693,6 +733,9 @@ def verify_match_symbols(
     logger.debug("all results verified for req_type %d", req_type)
 
 
+########################################################################
+# if_opt_in_derivativeSecTypes
+########################################################################
 def if_opt_in_derivativeSecTypes(df: Any) -> Any:
     """Find the symbols that have options.
 
@@ -710,6 +753,9 @@ def if_opt_in_derivativeSecTypes(df: Any) -> Any:
     return ret_array
 
 
+########################################################################
+# if_opt_not_in_derivativeSecTypes
+########################################################################
 def if_opt_not_in_derivativeSecTypes(df: Any) -> Any:
     """Find the symbols that do not have options.
 
@@ -727,6 +773,9 @@ def if_opt_not_in_derivativeSecTypes(df: Any) -> Any:
     return ret_array
 
 
+########################################################################
+# get_exp_counts
+########################################################################
 def get_exp_counts(search_pattern: str, mock_ib: Any) -> ExpCounts:
     """Helper function to get number of expected symbols.
 
@@ -782,6 +831,9 @@ def get_exp_counts(search_pattern: str, mock_ib: Any) -> ExpCounts:
     )
 
 
+########################################################################
+# verify_get_symbols
+########################################################################
 def verify_get_symbols(
     letter: str, algo_app: "AlgoApp", mock_ib: Any, sym_dfs: SymDfs
 ) -> SymDfs:
@@ -910,14 +962,15 @@ def verify_get_symbols(
     return sym_dfs
 
 
-###############################################################################
-###############################################################################
-# error path
-###############################################################################
-###############################################################################
+########################################################################
+# TestErrorPath
+########################################################################
 class TestErrorPath:
     """Class to test error path."""
 
+    ####################################################################
+    # test_error_path_by_request_when_not_connected
+    ####################################################################
     def test_error_path_by_request_when_not_connected(
         self, algo_app: "AlgoApp", capsys: Any
     ) -> None:
@@ -938,14 +991,15 @@ class TestErrorPath:
         assert captured == "Error:  -1   504   Not connected" + "\n"
 
 
-###############################################################################
-###############################################################################
-# contract details
-###############################################################################
-###############################################################################
+########################################################################
+# TestAlgoAppContractDetails
+########################################################################
 class TestAlgoAppContractDetails:
     """TestAlgoAppContractDetails class."""
 
+    ####################################################################
+    # test_get_contract_details_0_entries
+    ####################################################################
     def test_get_contract_details_0_entries(
         self, algo_app: "AlgoApp", mock_ib: Any
     ) -> None:
@@ -972,6 +1026,9 @@ class TestAlgoAppContractDetails:
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
+    ####################################################################
+    # test_get_contract_details_1_entry
+    ####################################################################
     def test_get_contract_details_1_entry(
         self, algo_app: "AlgoApp", mock_ib: Any
     ) -> None:
@@ -999,6 +1056,9 @@ class TestAlgoAppContractDetails:
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
+    ####################################################################
+    # test_get_contract_details_2_entries
+    ####################################################################
     def test_get_contract_details_2_entries(
         self, algo_app: "AlgoApp", mock_ib: Any
     ) -> None:
@@ -1031,6 +1091,9 @@ class TestAlgoAppContractDetails:
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
+    ####################################################################
+    # test_get_contract_details_duplicates
+    ####################################################################
     def test_get_contract_details_duplicates(
         self, algo_app: "AlgoApp", mock_ib: Any
     ) -> None:
@@ -1078,6 +1141,9 @@ class TestAlgoAppContractDetails:
         algo_app.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app)
 
+    ####################################################################
+    # test_get_contract_details_many_entries
+    ####################################################################
     def test_get_contract_details_many_entries(
         self, algo_app: "AlgoApp", mock_ib: Any
     ) -> None:
@@ -1110,9 +1176,9 @@ class TestAlgoAppContractDetails:
             verify_algo_app_disconnected(algo_app)
 
 
-###############################################################################
-# contract details verification
-###############################################################################
+########################################################################
+# verify_contract_details
+########################################################################
 def verify_contract_details(
     contract: "Contract", algo_app: "AlgoApp", mock_ib: Any, conId_list: List[int]
 ) -> None:
@@ -1185,7 +1251,7 @@ class TestExtraContractFields:
     """TestExtraContractFields class."""
 
     ###########################################################################
-    # test_contract_combo_legs
+    # test_contract_extra_fields
     ###########################################################################
     def test_contract_extra_fields(self, algo_app: "AlgoApp", mock_ib: Any) -> None:
         """Test combo legs in contract.

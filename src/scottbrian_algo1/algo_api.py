@@ -175,6 +175,16 @@ class RequestError(AlgoAppError):
     pass
 
 
+AlgoExceptions: TypeAlias = Union[
+    Type[AlreadyConnected],
+    Type[DisconnectLockHeld],
+    Type[ConnectTimeout],
+    Type[DisconnectDuringRequest],
+    Type[RequestTimeout],
+    Type[RequestError],
+]
+
+
 ########################################################################
 # ThreadConfig
 ########################################################################
@@ -199,7 +209,7 @@ class RequestBlock:
 @dataclass
 class ResultBlock:
     ret_data: Optional[Any] = None
-    error_to_raise: Optional[AlgoAppError] = None
+    error_to_raise: Optional[AlgoExceptions] = None
     error_msg: Optional[str] = None
 
 
@@ -556,7 +566,25 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
-        self.prepare_to_connect()  # verification and initialization
+        if self.algo_client.isConnected():
+            return ResultBlock(
+                ret_data=None,
+                error_to_raise=AlreadyConnected,
+                error_msg="Attempted to connect, but already connected",
+            )
+
+        if self.disconnect_lock.locked():
+            return ResultBlock(
+                ret_data=None,
+                error_to_raise=DisconnectLockHeld,
+                error_msg="Attempted to connect while the disconnect lock is held",
+            )
+
+        self.num_stock_symbols_received = 0
+        self.stock_symbols = pd.DataFrame()
+        self.symbols = pd.DataFrame()
+        self.response_complete_event.clear()
+        # self.prepare_to_connect()  # verification and initialization
 
         # self.connect(ip_addr, port, client_id)
         self.algo_client.connect(ip_addr, port, client_id)
