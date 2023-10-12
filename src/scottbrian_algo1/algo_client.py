@@ -62,6 +62,7 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
     ####################################################################
     def __init__(
         self,
+        group_name: str,
         algo_name: str,
         client_name: str,
         # wrapper: AlgoWrapper,
@@ -86,6 +87,7 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         from scottbrian_algo1.algo_wrapper import AlgoWrapper
 
         self.algo_wrapper = AlgoWrapper(
+            group_name=group_name,
             algo_name=algo_name,
             client_name=client_name,
             algo_client=self,
@@ -101,6 +103,7 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         self.client_name = client_name
         SmartThread.__init__(
             self,
+            group_name=group_name,
             name=self.client_name,
             thread=self,
             auto_start=False,

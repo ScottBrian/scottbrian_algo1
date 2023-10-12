@@ -219,13 +219,13 @@ class ResultBlock:
 def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
     def wrapped(self, *args, **kwargs) -> Any:
         # if self.algo1_smart_thread.thread is not threading.current_thread():
-        logger.debug(f"wrapped entry: {self.thread=}, {threading.current_thread()=}")
-        logger.debug(f"wrapped entry: {SmartThread._registry=}")
-        for key, item in SmartThread._registry.items():
-            logger.debug(
-                f"{key=}, {item=}, {item.thread=}, {id(item.thread)=}, "
-                f"{item.thread.is_alive()=}"
-            )
+        # logger.debug(f"wrapped entry: {self.thread=}, {threading.current_thread()=}")
+        # logger.debug(f"wrapped entry: {SmartThread._registry=}")
+        # for key, item in SmartThread._registry.items():
+        #     logger.debug(
+        #         f"{key=}, {item=}, {item.thread=}, {id(item.thread)=}, "
+        #         f"{item.thread.is_alive()=}"
+        #     )
         if self.thread is not threading.current_thread():
             if (
                 caller_smart_thread := SmartThread.get_current_smart_thread()
@@ -277,12 +277,15 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self,
         ds_catalog: FileCatalog,
         # thread_config: Optional[ThreadConfig] = ThreadConfig.CurrentThread,
+        group_name: str = "algo_app_group",
         algo_name: str = "algo_app",
     ) -> None:
         """Instantiate the AlgoApp.
 
         Args:
             ds_catalog: contain the paths for data sets
+            group_name: name of SmartThread group
+            algo_name: name of SmartThread instance for AlgoApp
 
         :Example: instantiate AlgoApp and print it
 
@@ -301,10 +304,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # threading.current_thread().name = algo_name
         SmartThread.__init__(
             self,
+            group_name=group_name,
             name=algo_name,
             thread=self,
             auto_start=False,
         )
+        self.group_name = group_name
         self.algo_name = algo_name
         self.disconnect_lock = Lock()
         self.ds_catalog = ds_catalog
@@ -347,6 +352,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         #     auto_start=False,
         # )
         self.algo_client = AlgoClient(
+            group_name=group_name,
             algo_name=self.algo_name,
             client_name=self.client_name,
             # wrapper=self.algo_wrapper,

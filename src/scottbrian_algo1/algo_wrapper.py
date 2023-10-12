@@ -62,6 +62,7 @@ class AlgoWrapper(EWrapper):  # type: ignore
     ####################################################################
     def __init__(
         self,
+        group_name: str,
         algo_name: str,
         client_name: str,
         algo_client: AlgoClient,
@@ -81,8 +82,9 @@ class AlgoWrapper(EWrapper):  # type: ignore
         """
         self.specified_args = locals()  # used for __repr__, see below
         EWrapper.__init__(self)
-        self.client_name = client_name
+        self.group_name = group_name
         self.algo_name = algo_name
+        self.client_name = client_name
         self.algo_client = algo_client
 
         # self.ds_catalog = ds_catalog
