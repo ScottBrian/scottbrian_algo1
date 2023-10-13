@@ -57,6 +57,7 @@ from typing import (
     Callable,
     ClassVar,
     NamedTuple,
+    NewType,
     NoReturn,
     Optional,
     Type,
@@ -114,6 +115,7 @@ from scottbrian_algo1.algo_wrapper import AlgoWrapper
 ########################################################################
 # TypeAlias
 ########################################################################
+AsyncRefNum = NewType("AsyncRefNum", int)
 IntFloat: TypeAlias = Union[int, float]
 OptIntFloat: TypeAlias = Optional[IntFloat]
 
@@ -201,6 +203,7 @@ class RequestBlock:
     func_to_call: Callable[..., "RequestBock"]
     func_args: tuple[Any]
     func_kwargs: dict[str, Any]
+    ref_num: AsyncRefNum
 
 
 ########################################################################
@@ -312,6 +315,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         )
         self.group_name = group_name
         self.algo_name = algo_name
+        self.async_ref_num: AsyncRefNum = 0
         self.disconnect_lock = Lock()
         self.ds_catalog = ds_catalog
         # self.request_id: int = 0
@@ -568,18 +572,25 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         ip_addr: str,
         port: int,
         client_id: int,
-    ) -> None:
+        async_req: bool = False,
+    ) -> Optional[AsyncRefNum]:
         """Connect to IB on the given addr and port and client id.
 
         Args:
             ip_addr: addr to connect to
             port: port to connect to
             client_id: client id to use for connection
+            async_req: if true, the request will be done asynchronously
 
         Raises:
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
+        if async_req:
+            self.start_async_request(
+                func=self.connect_to_ib, ip_addr=ip_addr, port=port, client_id=client_id
+            )
+
         # if self.algo_client.isConnected():
         #     return ResultBlock(
         #         ret_data=None,
@@ -676,9 +687,55 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         logger.info("connect success")
         # return result_block
 
-    ###########################################################################
+    ####################################################################
+    # start_async_request
+    ####################################################################
+    def start_async_request(self, func, *args, **kwargs) -> AsyncRefNum:
+        """Send request to async handler."""
+        self.async_ref_num += 1
+        ref_num: AsyncRefNum = self.async_ref_num
+        req_block = RequestBlock(
+            func_to_call=func,
+            func_args=args,
+            func_kwargs=kwargs,
+            ref_num=ref_num,
+        )
+        async_req_name = f"async_request{ref_num}"
+        SmartThread(
+            group_name=self.group_name,
+            name=async_req_name,
+            target=self.handle_async_request,
+            thread_parm_name=req_smart_thread,
+            kwargs={"req_block": req_block},
+        )
+        return ref_num
+
+    ####################################################################
+    # handle_async_request
+    ####################################################################
+    def handle_async_request(
+        self,
+        req_smart_thread: SmartThread,
+        req_block: RequestBlock,
+    ) -> None:
+        """Send request to async handler."""
+        cmd_result: ResultBlock = req_block.func_to_call(
+            self,
+            *req_block.func_args,
+            **req_block.func_kwargs,
+        )
+        self.async_ref_num += 1
+        ref_num: AsyncRefNum = self.async_ref_num
+        req_block = RequestBlock(
+            func_to_call=func,
+            func_args=args,
+            func_kwargs=kwargs,
+            ref_num=ref_num,
+        )
+
+    ####################################################################
     # disconnect_from_ib
-    ###########################################################################
+    ####################################################################
     # @handle_thread_switching
     # def disconnect_from_ib(self) -> Optional[ResultBlock]:
     def disconnect_from_ib(self) -> None:
