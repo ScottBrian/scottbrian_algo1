@@ -226,7 +226,9 @@ def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
         #         f"{key=}, {item=}, {item.thread=}, {id(item.thread)=}, "
         #         f"{item.thread.is_alive()=}"
         #     )
-        if self.thread is not threading.current_thread():
+        if self.thread is threading.current_thread():
+            ret_value = func(self, *args, **kwargs)
+        else:
             if (
                 caller_smart_thread := SmartThread.get_current_smart_thread()
             ) is not None:
@@ -250,8 +252,7 @@ def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
                 raise RequestError(
                     f"{func.__name__} requires caller to have a SmartThread"
                 )
-        else:
-            ret_value = func(self, *args, **kwargs)
+
         return ret_value
 
     return wrapped
@@ -306,8 +307,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             self,
             group_name=group_name,
             name=algo_name,
-            thread=self,
-            auto_start=False,
+            # thread=self,
+            # auto_start=False,
         )
         self.group_name = group_name
         self.algo_name = algo_name
@@ -321,8 +322,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # stock symbols
         self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
         self.symbols_status = pd.DataFrame()
-        # self.num_symbols_received = 0
+        self.num_symbols_received = 0
         self.symbols = pd.DataFrame()
+        self.num_stock_symbols_received = 0
         self.stock_symbols = pd.DataFrame()
 
         # contract details
@@ -410,58 +412,58 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     # run
     ####################################################################
     # def run(self, algo_smart_thread: SmartThread) -> None:
-    def run(self) -> None:
-        """Handle commands for the AlgoApp."""
-        logger.debug("run entered")
-
-        exclude_names: set[str] = {self.algo_name, self.client_name}
-        recv_msgs: dict[str, list[Any]] = {}
-        self.handle_cmds = True
-        while self.handle_cmds:
-            senders = SmartThread.get_active_names() - exclude_names
-            if senders:
-                try:
-                    # recv_msgs = algo_smart_thread.smart_recv(
-                    #     senders=senders,
-                    #     sender_count=1,
-                    #     timeout=2,
-                    # )
-                    recv_msgs = self.smart_recv(
-                        senders=senders,
-                        sender_count=1,
-                        timeout=2,
-                    )
-                except SmartThreadRemoteThreadNotAlive:
-                    pass
-                except SmartThreadRequestTimedOut:
-                    continue
-
-                for name, cmd_list in recv_msgs.items():
-                    logger.debug(f"SBT_Test: {name=}, {cmd_list=}")
-                    for cmd in cmd_list:
-                        cmd_result: ResultBlock = cmd.func_to_call(
-                            self,
-                            *cmd.func_args,
-                            **cmd.func_kwargs,
-                        )
-                        # cmd_result = cmd[0](self, *cmd[1], **cmd[2])
-                        # if cmd_result is None:
-                        #     cmd_result = "NONE"
-                        try:
-                            # algo_smart_thread.smart_send(
-                            #     msg=cmd_result,
-                            #     receivers=name,
-                            # )
-                            self.smart_send(
-                                msg=cmd_result,
-                                receivers=name,
-                            )
-                        except SmartThreadRemoteThreadNotAlive:
-                            continue
-            else:
-                time.sleep(1)
-
-        logger.debug("run exiting")
+    # def run(self) -> None:
+    #     """Handle commands for the AlgoApp."""
+    #     logger.debug("run entered")
+    #
+    #     exclude_names: set[str] = {self.algo_name, self.client_name}
+    #     recv_msgs: dict[str, list[Any]] = {}
+    #     self.handle_cmds = True
+    #     while self.handle_cmds:
+    #         senders = SmartThread.get_active_names() - exclude_names
+    #         if senders:
+    #             try:
+    #                 # recv_msgs = algo_smart_thread.smart_recv(
+    #                 #     senders=senders,
+    #                 #     sender_count=1,
+    #                 #     timeout=2,
+    #                 # )
+    #                 recv_msgs = self.smart_recv(
+    #                     senders=senders,
+    #                     sender_count=1,
+    #                     timeout=2,
+    #                 )
+    #             except SmartThreadRemoteThreadNotAlive:
+    #                 pass
+    #             except SmartThreadRequestTimedOut:
+    #                 continue
+    #
+    #             for name, cmd_list in recv_msgs.items():
+    #                 logger.debug(f"SBT_Test: {name=}, {cmd_list=}")
+    #                 for cmd in cmd_list:
+    #                     cmd_result: ResultBlock = cmd.func_to_call(
+    #                         self,
+    #                         *cmd.func_args,
+    #                         **cmd.func_kwargs,
+    #                     )
+    #                     # cmd_result = cmd[0](self, *cmd[1], **cmd[2])
+    #                     # if cmd_result is None:
+    #                     #     cmd_result = "NONE"
+    #                     try:
+    #                         # algo_smart_thread.smart_send(
+    #                         #     msg=cmd_result,
+    #                         #     receivers=name,
+    #                         # )
+    #                         self.smart_send(
+    #                             msg=cmd_result,
+    #                             receivers=name,
+    #                         )
+    #                     except SmartThreadRemoteThreadNotAlive:
+    #                         continue
+    #         else:
+    #             time.sleep(1)
+    #
+    #     logger.debug("run exiting")
 
     # ####################################################################
     # # error
@@ -526,41 +528,47 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # prepare_to_connect
     ###########################################################################
-    def prepare_to_connect(self) -> None:
-        """Reset the AlgoApp in preparation for connect processing.
-
-        Raises:
-            AlreadyConnected: Attempt to connect when already connected
-            DisconnectLockHeld: Attempted to connect while the disconnect lock
-                                  is held
-
-        """
-        # if self.isConnected():
-        if self.algo_client.isConnected():
-            raise AlreadyConnected("Attempted to connect, but already connected")
-
-        if self.disconnect_lock.locked():
-            raise DisconnectLockHeld(
-                "Attempted to connect while the disconnect lock is held"
-            )
-
-        # self.request_id = 0
-        self.num_stock_symbols_received = 0
-        self.stock_symbols = pd.DataFrame()
-        self.symbols = pd.DataFrame()
-        self.response_complete_event.clear()
-        # self.nextValidId_event.clear()
+    # def prepare_to_connect(self) -> None:
+    #     """Reset the AlgoApp in preparation for connect processing.
+    #
+    #     Raises:
+    #         AlreadyConnected: Attempt to connect when already connected
+    #         DisconnectLockHeld: Attempted to connect while the disconnect lock
+    #                               is held
+    #
+    #     """
+    #     # if self.isConnected():
+    #     if self.algo_client.isConnected():
+    #         raise AlreadyConnected("Attempted to connect, but already connected")
+    #
+    #     if self.disconnect_lock.locked():
+    #         raise DisconnectLockHeld(
+    #             "Attempted to connect while the disconnect lock is held"
+    #         )
+    #
+    #     # self.request_id = 0
+    #     self.num_stock_symbols_received = 0
+    #     self.stock_symbols = pd.DataFrame()
+    #     self.symbols = pd.DataFrame()
+    #     self.response_complete_event.clear()
+    #     # self.nextValidId_event.clear()
 
     ###########################################################################
     # connect_to_ib
     ###########################################################################
-    @handle_thread_switching
+    # @handle_thread_switching
+    # def connect_to_ib(
+    #     self,
+    #     ip_addr: str,
+    #     port: int,
+    #     client_id: int,
+    # ) -> Optional[ResultBlock]:
     def connect_to_ib(
         self,
         ip_addr: str,
         port: int,
         client_id: int,
-    ) -> Optional[ResultBlock]:
+    ) -> None:
         """Connect to IB on the given addr and port and client id.
 
         Args:
@@ -572,19 +580,29 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
+        # if self.algo_client.isConnected():
+        #     return ResultBlock(
+        #         ret_data=None,
+        #         error_to_raise=AlreadyConnected,
+        #         error_msg="Attempted to connect, but already connected",
+        #     )
+        #
+        # if self.disconnect_lock.locked():
+        #     return ResultBlock(
+        #         ret_data=None,
+        #         error_to_raise=DisconnectLockHeld,
+        #         error_msg="Attempted to connect while the disconnect lock is held",
+        #     )
+
         if self.algo_client.isConnected():
-            return ResultBlock(
-                ret_data=None,
-                error_to_raise=AlreadyConnected,
-                error_msg="Attempted to connect, but already connected",
-            )
+            error_msg = "connect_to_ib already connected"
+            logger.debug(error_msg)
+            raise AlreadyConnected(error_msg)
 
         if self.disconnect_lock.locked():
-            return ResultBlock(
-                ret_data=None,
-                error_to_raise=DisconnectLockHeld,
-                error_msg="Attempted to connect while the disconnect lock is held",
-            )
+            error_msg = "connect_to_ib disconnect lock is held"
+            logger.debug(error_msg)
+            raise DisconnectLockHeld(error_msg)
 
         self.num_stock_symbols_received = 0
         self.stock_symbols = pd.DataFrame()
@@ -595,7 +613,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # self.connect(ip_addr, port, client_id)
         self.algo_client.connect(ip_addr, port, client_id)
 
-        logger.info("starting run thread")
         # the following try will succeed for the first connect only
         # try:
         #     self.ibapi_client_smart_thread.smart_start()
@@ -614,10 +631,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         #         target=EClient.run,
         #         args=(self,),
         #     )
+        logger.info("starting AlgoClient thread")
         if self.algo_client.st_state == ThreadState.Registered:
             self.algo_client.smart_start()
         else:
             self.algo_client = AlgoClient(
+                group_name=self.group_name,
                 algo_name=self.algo_name,
                 client_name=self.client_name,
                 disconnect_lock=self.disconnect_lock,
@@ -632,35 +651,37 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             # caller_smart_thread = SmartThread.get_current_smart_thread()
             # caller_smart_thread.smart_wait(resumers="ibapi_client", timeout=10)
         except SmartThreadRequestTimedOut:
-            logger.debug("timed out waiting for next valid request ID")
             self.disconnect_from_ib()
-            # raise
-            error_msg = "connect_to_ib failed to receive nextValid_ID"
-            result_block: ResultBlock = ResultBlock(
-                ret_data=None,
-                error_to_raise=ConnectTimeout,
-                error_msg=error_msg,
-            )
+            error_msg = "connect_to_ib timed out waiting to receive nextValid_ID"
+            logger.debug(error_msg)
+            raise ConnectTimeout(error_msg)
             # raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
-        else:
-            result_block: ResultBlock = ResultBlock(
-                ret_data=None,
-                error_to_raise=None,
-                error_msg=None,
-            )
-            # if not self.nextValidId_event.wait(timeout=10):  # if we timed out
+            # result_block: ResultBlock = ResultBlock(
+            #     ret_data=None,
+            #     error_to_raise=ConnectTimeout,
+            #     error_msg=error_msg,
+            # )
+            # raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
+        # else:
+        #     result_block: ResultBlock = ResultBlock(
+        #         ret_data=None,
+        #         error_to_raise=None,
+        #         error_msg=None,
+        #     )
+        # if not self.nextValidId_event.wait(timeout=10):  # if we timed out
         #     logger.debug("timed out waiting for next valid request ID")
         #     self.disconnect_from_ib()
         #     raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
 
         logger.info("connect success")
-        return result_block
+        # return result_block
 
     ###########################################################################
     # disconnect_from_ib
     ###########################################################################
-    @handle_thread_switching
-    def disconnect_from_ib(self) -> Optional[ResultBlock]:
+    # @handle_thread_switching
+    # def disconnect_from_ib(self) -> Optional[ResultBlock]:
+    def disconnect_from_ib(self) -> None:
         """Disconnect from ib."""
         logger.info("calling EClient disconnect")
 
@@ -686,11 +707,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         logger.info("disconnect complete")
 
-        return ResultBlock(
-            ret_data=None,
-            error_to_raise=None,
-            error_msg=None,
-        )
+        # return ResultBlock(
+        #     ret_data=None,
+        #     error_to_raise=None,
+        #     error_msg=None,
+        # )
 
     # ###########################################################################
     # # disconnect
