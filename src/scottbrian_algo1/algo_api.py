@@ -88,6 +88,7 @@ from ibapi.contract import Contract, ContractDetails  # type: ignore
 #
 # from ibapi.account_summary_tags import *
 import pandas as pd  # type: ignore
+from scottbrian_locking import se_lock as sel
 from scottbrian_paratools.smart_thread import (
     SmartThread,
     ThreadState,
@@ -96,6 +97,7 @@ from scottbrian_paratools.smart_thread import (
 )
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
+from scottbrian_utils.unique_ts import UniqueTS, UniqueTStamp
 
 ########################################################################
 # Local
@@ -115,7 +117,7 @@ from scottbrian_algo1.algo_wrapper import AlgoWrapper
 ########################################################################
 # TypeAlias
 ########################################################################
-AsyncRefNum = NewType("AsyncRefNum", int)
+AsyncRefNum = NewType("AsyncRefNum", float)
 IntFloat: TypeAlias = Union[int, float]
 OptIntFloat: TypeAlias = Optional[IntFloat]
 
@@ -274,6 +276,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     REQUEST_TIMEOUT_SECONDS = 60
     REQUEST_THROTTLE_SECONDS = 1.0
 
+    # use class var
+    _async_ref_num: ClassVar[AsyncRefNum] = 0.0
+
+    _algo_lock: ClassVar[sel.SELock] = sel.SELock()
+
     ####################################################################
     # __init__
     ####################################################################
@@ -315,7 +322,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         )
         self.group_name = group_name
         self.algo_name = algo_name
-        self.async_ref_num: AsyncRefNum = 0
         self.disconnect_lock = Lock()
         self.ds_catalog = ds_catalog
         # self.request_id: int = 0
@@ -692,15 +698,20 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     def start_async_request(self, func, *args, **kwargs) -> AsyncRefNum:
         """Send request to async handler."""
-        self.async_ref_num += 1
-        ref_num: AsyncRefNum = self.async_ref_num
+        # get a unique time stamp for async reference number
+        with AlgoApp._algo_lock:
+            ref_num: AsyncRefNum = AlgoApp._async_ref_num
+            while ref_num == AlgoApp._async_ref_num:
+                ref_num = time.time()
+            AlgoApp._async_ref_num = ref_num
+
         req_block = RequestBlock(
             func_to_call=func,
             func_args=args,
             func_kwargs=kwargs,
             ref_num=ref_num,
         )
-        async_req_name = f"async_request{ref_num}"
+        async_req_name = f"async_request_{ref_num}"
         SmartThread(
             group_name=self.group_name,
             name=async_req_name,
