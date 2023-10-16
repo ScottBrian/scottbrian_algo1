@@ -186,8 +186,10 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
     ####################################################################
     # msgLoopRec
     ####################################################################
-    # def msgLoopRec(self):
-    #     self.smart_resume(waiters=self.algo_name)
+    def msgLoopRec(self):
+        for req_id, act_req in self.active_requests:
+            if act_req.complete:
+                self.smart_resume(waiters=act_req.requestor_name)
 
     # ####################################################################
     # # error

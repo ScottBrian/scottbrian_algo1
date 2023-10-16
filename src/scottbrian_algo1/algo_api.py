@@ -563,13 +563,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # connect_to_ib
     ###########################################################################
-    # @handle_thread_switching
-    # def connect_to_ib(
-    #     self,
-    #     ip_addr: str,
-    #     port: int,
-    #     client_id: int,
-    # ) -> Optional[ResultBlock]:
     def connect_to_ib(
         self,
         ip_addr: str,
@@ -590,9 +583,47 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         """
         if async_req:
-            self.start_async_request(
-                func=self.connect_to_ib, ip_addr=ip_addr, port=port, client_id=client_id
+            ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+
+            req_block = RequestBlock(
+                func_to_call=self.connect_to_ib,
+                func_args=tuple(),
+                func_kwargs=dict(ip_addr=ip_addr, port=port, client_id=client_id),
+                ref_num=ref_num,
             )
+            self.start_async_request(req_block=req_block)
+            return ref_num
+        else:
+            self.connect_to_ib_internal(
+                ip_addr=ip_addr,
+                port=port,
+                client_id=client_id,
+                smart_thread=self,
+            )
+
+    ###########################################################################
+    # connect_to_ib
+    ###########################################################################
+    def connect_to_ib_internal(
+        self,
+        ip_addr: str,
+        port: int,
+        client_id: int,
+        smart_thread: SmartThread,
+    ) -> None:
+        """Connect to IB on the given addr and port and client id.
+
+        Args:
+            ip_addr: addr to connect to
+            port: port to connect to
+            client_id: client id to use for connection
+            smart_thread: SmartThread to use for the wait
+
+        Raises:
+            ConnectTimeout: timed out waiting for next valid request ID
+
+        """
+        logger.debug(f"SBT {ip_addr=}, {port=}, {client_id=}, {smart_thread=}")
 
         # if self.algo_client.isConnected():
         #     return ResultBlock(
@@ -661,7 +692,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # logger.debug("id of nextValidId_event %d",
         # id(self.nextValidId_event))
         try:
-            self.smart_wait(resumers="ibapi_client", timeout=10)
+            smart_thread.smart_wait(resumers="ibapi_client", timeout=10)
             # caller_smart_thread = SmartThread.get_current_smart_thread()
             # caller_smart_thread.smart_wait(resumers="ibapi_client", timeout=10)
         except SmartThreadRequestTimedOut:
@@ -693,26 +724,34 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # start_async_request
     ####################################################################
-    def start_async_request(self, func, *args, **kwargs) -> UniqueTStamp:
+    # def start_async_request(self, func, *args, **kwargs) -> UniqueTStamp:
+    def start_async_request(self, req_block: RequestBlock) -> None:
         """Send request to async handler."""
         # get a unique time stamp for async reference number
-        ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+        # ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+        #
+        # req_block = RequestBlock(
+        #     func_to_call=func,
+        #     func_args=args,
+        #     func_kwargs=kwargs,
+        #     ref_num=ref_num,
+        # )
 
-        req_block = RequestBlock(
-            func_to_call=func,
-            func_args=args,
-            func_kwargs=kwargs,
-            ref_num=ref_num,
-        )
-
+        # SmartThread(
+        #     group_name=self.group_name,
+        #     name=f"async_request_{ref_num}",
+        #     target=self.handle_async_request,
+        #     thread_parm_name="req_smart_thread",
+        #     kwargs={"req_block": req_block},
+        # )
+        logger.debug(f"SBT {req_block=}")
         SmartThread(
             group_name=self.group_name,
-            name=f"async_request_{ref_num}",
+            name=f"async_request_{req_block.ref_num}",
             target=self.handle_async_request,
             thread_parm_name="req_smart_thread",
             kwargs={"req_block": req_block},
         )
-        return ref_num
 
     ####################################################################
     # handle_async_request
@@ -733,9 +772,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         req_result = None
         error_to_raise = None
         error_msg = ""
+        logger.debug(
+            f"{req_block.func_to_call=}, {req_block.func_args=}, "
+            f"{req_block.func_kwargs=}"
+        )
         try:
             req_result = req_block.func_to_call(
-                self,
                 *req_block.func_args,
                 **req_block.func_kwargs,
             )
