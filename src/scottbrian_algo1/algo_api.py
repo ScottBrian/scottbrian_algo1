@@ -764,6 +764,47 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             error_msg=error_msg,
         )
 
+        req_smart_thread.smart_resume(waiters=self.algo_name)
+
+    ####################################################################
+    # handle_async_request
+    ####################################################################
+    def get_async_results(
+        self,
+        req_num: UniqueTStamp,
+        raise_if_error: bool = True,
+        wait_for_results: bool = True,
+    ) -> Optional[ResultBlock]:
+        """Get results from an async request.
+
+        Args:
+            req_num: the request number for the request
+            raise_if_error: specifies whether to raise any errors that
+                had occurred during the request
+            wait_for_results: specifies whether to wait for the results
+
+        Returns:
+
+            1) If the request completed without errors, the RequestBlock is
+               returned with the request results.
+            2) If the request suffered an error and raise_if_error is
+               False, the RequestBlock is returned with the error and
+               error message.
+            3) If the request has not yet completed and wait_for_results
+               is False, None is returned.
+
+        """
+        if req_num not in self.request_results:
+            if wait_for_results:
+                self.smart_wait(resumers=f"async_request_{req_num}")
+            else:
+                return None
+
+        ret_req_block = self.request_results[req_num]
+        if ret_req_block.error_to_raise and raise_if_error:
+            raise ret_req_block.error_to_raise(ret_req_block.error_msg)
+        return ret_req_block
+
     ####################################################################
     # disconnect_from_ib
     ####################################################################

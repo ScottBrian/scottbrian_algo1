@@ -197,6 +197,42 @@ class TestAlgoAppConnect:
         # do_breakdown(test_smart_thread=test_smart_thread, algo_app=algo_app)
 
     ####################################################################
+    # test_mock_connect_to_ib_async
+    ####################################################################
+    def test_mock_connect_to_ib_async(
+        self,
+        cat_app: "FileCatalog",
+    ) -> None:
+        """Test connecting to IB.
+
+        Args:
+            cat_app: pytest fixture (see conftest.py)
+        """
+        # test_smart_thread, algo_app = do_setup(cat_app=cat_app)
+        algo_app = AlgoApp(ds_catalog=cat_app, algo_name="algo_app")
+        verify_algo_app_initialized(algo_app)
+
+        # we are testing connect_to_ib and the subsequent code that gets
+        # control as a result, such as getting the first requestID and
+        # then starting a separate thread for the run loop.
+
+        logger.debug("about to connect")
+        req_num = algo_app.connect_to_ib(
+            ip_addr="127.0.0.1",
+            port=algo_app.PORT_FOR_LIVE_TRADING,
+            client_id=0,
+            async_req=True,
+        )
+
+        algo_app.get_async_results(req_num)
+
+        verify_algo_app_connected(algo_app)
+
+        algo_app.disconnect_from_ib()
+
+        verify_algo_app_disconnected(algo_app)
+
+    ####################################################################
     # test_mock_connect_to_ib_with_timeout
     ####################################################################
     def test_mock_connect_to_ib_with_timeout(
