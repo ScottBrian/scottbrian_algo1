@@ -201,8 +201,9 @@ class AlgoWrapper(EWrapper):  # type: ignore
             f"next valid ID is {request_id}, {threading.current_thread()=}, " f"{self=}"
         )
 
-        self.request_id = request_id
-        self.algo_client.smart_resume(waiters=self.algo_name)
+        self.algo_client.request_id = request_id
+        self.algo_client.update_active_request(req_id=request_id)
+
         # self.nextValidId_event.set()
         # self.ibapi_client_smart_thread.smart_resume(waiters=self.algo_name)
         # self.smart_resume(waiters=self.algo_name)

@@ -89,7 +89,7 @@ def verify_algo_app_connected(algo_app: "AlgoApp") -> None:
     """
     assert algo_app.algo_client.thread.is_alive()
     assert algo_app.algo_client.isConnected()
-    assert algo_app.algo_client.algo_wrapper.request_id == 1
+    assert algo_app.algo_client.request_id == 1
 
 
 ########################################################################

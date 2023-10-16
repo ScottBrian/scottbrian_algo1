@@ -10,6 +10,7 @@ class.
 ########################################################################
 # Standard Library
 ########################################################################
+from dataclasses import dataclass
 import logging
 import threading
 from threading import Event, get_ident, get_native_id, Lock, Thread
@@ -33,6 +34,7 @@ from scottbrian_paratools.smart_thread import (
 
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
+from scottbrian_utils.unique_ts import UniqueTS, UniqueTStamp
 
 ########################################################################
 # Local
@@ -43,6 +45,38 @@ from scottbrian_utils.diag_msg import get_formatted_call_sequence
 # logging
 ########################################################################
 logger = logging.getLogger(__name__)
+
+
+########################################################################
+# Exceptions
+########################################################################
+class AlgoClientError(Exception):
+    """Base class for exceptions in this module."""
+
+    pass
+
+
+class RequestIdInUse(AlgoClientError):
+    """Attempt to add active request with in use req_id."""
+
+    pass
+
+
+class RequestIdNotFound(AlgoClientError):
+    """Attempt to update active request but req_id not found."""
+
+    pass
+
+
+########################################################################
+# ClientRequestBlock
+########################################################################
+@dataclass
+class ClientRequestBlock:
+    requestor_name: str
+    ref_num: UniqueTStamp
+    request_complete: bool = False
+    request_resumed: bool = False
 
 
 ########################################################################
@@ -111,8 +145,12 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         self.algo_name = algo_name
 
         self.disconnect_lock = disconnect_lock
+
+        self.active_requests: dict[int, ClientRequestBlock] = {}
+
+        self.request_id: int = 0
         # self.ds_catalog = ds_catalog
-        # self.request_id: int = 0
+
         # self.error_reqId: int = 0
         # self.nextValidId_event = Event()
         #
@@ -184,11 +222,68 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         return f"{classname}({parms})"
 
     ####################################################################
+    # add_active_request
+    ####################################################################
+    def add_active_request(self, req_id: int, req_block: ClientRequestBlock) -> None:
+        """Add an active request to the active request array.
+
+        Args:
+            req_id: request ID for the new request
+            req_block: request block for the new request
+
+        Raises:
+            RequestIdInUse: RequestID req_id already in use.
+
+        """
+        if req_id in self.active_requests:
+            raise RequestIdInUse(f"RequestID {req_id} already in use.")
+
+        self.active_requests[req_id] = req_block
+
+    ####################################################################
+    # update_active_request
+    ####################################################################
+    def update_active_request(self, req_id: int) -> None:
+        """Update an active request on the active request array.
+
+        Args:
+            req_id: request ID for the new request
+
+        Raises:
+            RequestIdNotFound: RequestID req_id not found.
+
+        """
+        if req_id not in self.active_requests:
+            raise RequestIdNotFound(f"RequestID {req_id} not found.")
+
+        self.active_requests[req_id].request_complete = True
+
+    ####################################################################
+    # pop_active_request
+    ####################################################################
+    def pop_active_request(self, req_id: int) -> ClientRequestBlock:
+        """Remove and return a request on the active request array.
+
+        Args:
+            req_id: request ID for the request to remove and return
+
+        Raises:
+            RequestIdNotFound: RequestID req_id not found.
+
+        """
+        if req_id not in self.active_requests:
+            raise RequestIdNotFound(f"RequestID {req_id} not found.")
+
+        ret_block = self.active_requests.pop(req_id)
+        return ret_block
+
+    ####################################################################
     # msgLoopRec
     ####################################################################
     def msgLoopRec(self):
-        for req_id, act_req in self.active_requests:
-            if act_req.complete:
+        for req_id, act_req in self.active_requests.items():
+            if act_req.request_complete:
+                act_req.request_resumed = True
                 self.smart_resume(waiters=act_req.requestor_name)
 
     # ####################################################################

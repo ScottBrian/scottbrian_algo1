@@ -111,7 +111,7 @@ from scottbrian_algo1.algo_maps import get_contract_dict
 from scottbrian_algo1.algo_maps import get_contract_details_dict
 from scottbrian_algo1.algo_maps import get_contract_description_dict
 
-from scottbrian_algo1.algo_client import AlgoClient
+from scottbrian_algo1.algo_client import AlgoClient, ClientRequestBlock
 from scottbrian_algo1.algo_wrapper import AlgoWrapper
 
 ########################################################################
@@ -582,11 +582,10 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
+        ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
         if async_req:
-            ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-
             req_block = RequestBlock(
-                func_to_call=self.connect_to_ib,
+                func_to_call=self.connect_to_ib_internal,
                 func_args=tuple(),
                 func_kwargs=dict(ip_addr=ip_addr, port=port, client_id=client_id),
                 ref_num=ref_num,
@@ -599,6 +598,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 port=port,
                 client_id=client_id,
                 smart_thread=self,
+                ref_num=ref_num,
             )
 
     ###########################################################################
@@ -610,6 +610,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         port: int,
         client_id: int,
         smart_thread: SmartThread,
+        ref_num: UniqueTStamp,
     ) -> None:
         """Connect to IB on the given addr and port and client id.
 
@@ -656,6 +657,10 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # self.prepare_to_connect()  # verification and initialization
 
         # self.connect(ip_addr, port, client_id)
+        client_req_block = ClientRequestBlock(
+            requestor_name=smart_thread.name, ref_num=ref_num
+        )
+        self.algo_client.add_active_request(req_id=1, req_block=client_req_block)
         self.algo_client.connect(ip_addr, port, client_id)
 
         # the following try will succeed for the first connect only
@@ -692,7 +697,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # logger.debug("id of nextValidId_event %d",
         # id(self.nextValidId_event))
         try:
-            smart_thread.smart_wait(resumers="ibapi_client", timeout=10)
+            smart_thread.smart_wait(resumers=self.client_name, timeout=10)
+            self.algo_client.pop_active_request(req_id=1)
             # caller_smart_thread = SmartThread.get_current_smart_thread()
             # caller_smart_thread.smart_wait(resumers="ibapi_client", timeout=10)
         except SmartThreadRequestTimedOut:
@@ -772,6 +778,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         req_result = None
         error_to_raise = None
         error_msg = ""
+        req_block.func_kwargs["smart_thread"] = req_smart_thread
+        req_block.func_kwargs["ref_num"] = req_block.ref_num
+
         logger.debug(
             f"{req_block.func_to_call=}, {req_block.func_args=}, "
             f"{req_block.func_kwargs=}"
