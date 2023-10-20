@@ -111,7 +111,7 @@ from scottbrian_algo1.algo_maps import get_contract_dict
 from scottbrian_algo1.algo_maps import get_contract_details_dict
 from scottbrian_algo1.algo_maps import get_contract_description_dict
 
-from scottbrian_algo1.algo_client import AlgoClient, ClientRequestBlock
+from scottbrian_algo1.algo_client import AlgoClient, ClientRequestBlock, ReqID
 from scottbrian_algo1.algo_wrapper import AlgoWrapper
 
 ########################################################################
@@ -271,6 +271,40 @@ def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
     return wrapped
 
 
+####################################################################
+# make_sync_async
+####################################################################
+def make_async(func: Callable[..., Any]) -> Callable[..., Any]:
+    def wrapped(self, *args, **kwargs) -> Any:
+        logger.debug(f"{args=}, {kwargs=}")
+        if "async_args" not in kwargs or kwargs["async_args"] is None:
+            ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+            if kwargs["async_req"]:
+                req_block = RequestBlock(
+                    func_to_call=self.connect_to_ib,
+                    func_args=args,
+                    func_kwargs=kwargs,
+                    ref_num=ref_num,
+                )
+
+                SmartThread(
+                    group_name=self.group_name,
+                    name=f"async_request_{req_block.ref_num}",
+                    target=self.handle_async_request,
+                    thread_parm_name="req_smart_thread",
+                    kwargs={"req_block": req_block},
+                )
+                return ref_num
+
+            kwargs["async_args"] = AsyncArgs(smart_thread=self, ref_num=ref_num)
+
+        ret_value = func(self, *args, **kwargs)
+
+        return ret_value
+
+    return wrapped
+
+
 ########################################################################
 # AlgoApp
 ########################################################################
@@ -354,21 +388,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         self.client_name = "ibapi_client"
 
-        # self.algo_wrapper = AlgoWrapper(
-        #     algo_name=self.algo_name,
-        #     client_name=self.client_name,
-        #     response_complete_event=self.response_complete_event,
-        #     symbols=self.symbols,
-        #     stock_symbols=self.stock_symbols,
-        #     contracts=self.contracts,
-        #     contract_details=self.contract_details,
-        # )
-        # self.ibapi_client_smart_thread = SmartThread(
-        #     name=self.client_name,
-        #     target=EClient.run,
-        #     args=(self,),
-        #     auto_start=False,
-        # )
         self.algo_client = AlgoClient(
             group_name=group_name,
             algo_name=self.algo_name,
@@ -381,20 +400,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             contracts=self.contracts,
             contract_details=self.contract_details,
         )
-        # if thread_config == ThreadConfig.CurrentThread:
-        #     if (smart_thread := SmartThread.get_current_smart_thread()) is not None:
-        #         self.algo_name = smart_thread.name
-        #         self.algo1_smart_thread = smart_thread
-        #     else:
-        #         self.algo_name = algo_name
-        #         self.algo1_smart_thread = SmartThread(name=self.algo_name)
-        # elif thread_config == ThreadConfig.RemoteThread:
-        #     self.algo_name = algo_name
-        #     self.algo1_smart_thread = SmartThread(
-        #         name=self.algo_name,
-        #         target=self.cmd_loop,
-        #         thread_parm_name="algo_smart_thread",
-        #     )
 
     ###########################################################################
     # __repr__
@@ -424,156 +429,13 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         return f"{classname}({parms})"
 
-    ####################################################################
-    # run
-    ####################################################################
-    # def run(self, algo_smart_thread: SmartThread) -> None:
-    # def run(self) -> None:
-    #     """Handle commands for the AlgoApp."""
-    #     logger.debug("run entered")
-    #
-    #     exclude_names: set[str] = {self.algo_name, self.client_name}
-    #     recv_msgs: dict[str, list[Any]] = {}
-    #     self.handle_cmds = True
-    #     while self.handle_cmds:
-    #         senders = SmartThread.get_active_names() - exclude_names
-    #         if senders:
-    #             try:
-    #                 # recv_msgs = algo_smart_thread.smart_recv(
-    #                 #     senders=senders,
-    #                 #     sender_count=1,
-    #                 #     timeout=2,
-    #                 # )
-    #                 recv_msgs = self.smart_recv(
-    #                     senders=senders,
-    #                     sender_count=1,
-    #                     timeout=2,
-    #                 )
-    #             except SmartThreadRemoteThreadNotAlive:
-    #                 pass
-    #             except SmartThreadRequestTimedOut:
-    #                 continue
-    #
-    #             for name, cmd_list in recv_msgs.items():
-    #                 logger.debug(f"SBT_Test: {name=}, {cmd_list=}")
-    #                 for cmd in cmd_list:
-    #                     cmd_result: ResultBlock = cmd.func_to_call(
-    #                         self,
-    #                         *cmd.func_args,
-    #                         **cmd.func_kwargs,
-    #                     )
-    #                     # cmd_result = cmd[0](self, *cmd[1], **cmd[2])
-    #                     # if cmd_result is None:
-    #                     #     cmd_result = "NONE"
-    #                     try:
-    #                         # algo_smart_thread.smart_send(
-    #                         #     msg=cmd_result,
-    #                         #     receivers=name,
-    #                         # )
-    #                         self.smart_send(
-    #                             msg=cmd_result,
-    #                             receivers=name,
-    #                         )
-    #                     except SmartThreadRemoteThreadNotAlive:
-    #                         continue
-    #         else:
-    #             time.sleep(1)
-    #
-    #     logger.debug("run exiting")
-
-    # ####################################################################
-    # # error
-    # ####################################################################
-    # def error(
-    #     self,
-    #     reqId: ibcommon.TickerId,
-    #     errorCode: int,
-    #     errorString: str,
-    #     advancedOrderRejectJson="",
-    # ) -> None:
-    #     """Receive error from IB and print it.
-    #
-    #     Args:
-    #         reqId: the id of the failing request
-    #         errorCode: the error code
-    #         errorString: text to explain the error
-    #
-    #     """
-    #     super(EWrapper, self).wrapper.error(
-    #         reqId,
-    #         errorCode,
-    #         errorString,
-    #         advancedOrderRejectJson,
-    #     )
-    #
-    #     self.error_reqId = reqId
-    #
-    # ###########################################################################
-    # # nextValidId
-    # ###########################################################################
-    # def nextValidId(self, request_id: int) -> None:
-    #     """Receive next valid ID from IB and save it.
-    #
-    #     Args:
-    #         request_id: next id to use for a request to IB
-    #
-    #     """
-    #     logger.info(
-    #         f"next valid ID is {request_id}, {threading.current_thread()=}, " f"{self=}"
-    #     )
-    #
-    #     self.request_id = request_id
-    #     # self.nextValidId_event.set()
-    #     self.ibapi_client_smart_thread.smart_resume(waiters=self.algo_name)
-
-    # ###########################################################################
-    # # get_reqId
-    # ###########################################################################
-    # def get_reqId(self) -> int:
-    #     """Obtain a request id to use for the current request.
-    #
-    #     The request id is bumped and then returned
-    #
-    #     Returns:
-    #         request id to use on the current request
-    #
-    #     """
-    #     self.request_id += 1
-    #     return self.request_id
-
-    ###########################################################################
-    # prepare_to_connect
-    ###########################################################################
-    # def prepare_to_connect(self) -> None:
-    #     """Reset the AlgoApp in preparation for connect processing.
-    #
-    #     Raises:
-    #         AlreadyConnected: Attempt to connect when already connected
-    #         DisconnectLockHeld: Attempted to connect while the disconnect lock
-    #                               is held
-    #
-    #     """
-    #     # if self.isConnected():
-    #     if self.algo_client.isConnected():
-    #         raise AlreadyConnected("Attempted to connect, but already connected")
-    #
-    #     if self.disconnect_lock.locked():
-    #         raise DisconnectLockHeld(
-    #             "Attempted to connect while the disconnect lock is held"
-    #         )
-    #
-    #     # self.request_id = 0
-    #     self.num_stock_symbols_received = 0
-    #     self.stock_symbols = pd.DataFrame()
-    #     self.symbols = pd.DataFrame()
-    #     self.response_complete_event.clear()
-    #     # self.nextValidId_event.clear()
-
     ###########################################################################
     # connect_to_ib
     ###########################################################################
+    @make_async
     def connect_to_ib(
         self,
+        *,
         ip_addr: str,
         port: int,
         client_id: int,
@@ -593,22 +455,10 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
-        if async_args is None:
-            ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-            if async_req:
-                req_block = RequestBlock(
-                    func_to_call=self.connect_to_ib,
-                    func_args=tuple(),
-                    func_kwargs=dict(ip_addr=ip_addr, port=port, client_id=client_id),
-                    ref_num=ref_num,
-                )
-                self.start_async_request(req_block=req_block)
-                return ref_num
-
-            async_args = AsyncArgs(smart_thread=self, ref_num=ref_num)
-
-        logger.debug(f"SBT {ip_addr=}, {port=}, {client_id=}, {async_args=}")
-
+        logger.debug(
+            f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, "
+            f"{async_req=}, {async_args=}"
+        )
         if self.algo_client.isConnected():
             error_msg = "connect_to_ib already connected"
             logger.debug(error_msg)
@@ -623,13 +473,14 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self.stock_symbols = pd.DataFrame()
         self.symbols = pd.DataFrame()
         self.response_complete_event.clear()
-        # self.prepare_to_connect()  # verification and initialization
 
-        # self.connect(ip_addr, port, client_id)
-        client_req_block = ClientRequestBlock(
+        # note that for connect we don't use the reqID, but we still
+        # need to call setup_client_request and get the req_if to use
+        # below where we pop the client request from the active requests
+        req_id = self.setup_client_request(
             requestor_name=async_args.smart_thread.name, ref_num=async_args.ref_num
         )
-        self.algo_client.add_active_request(req_id=1, req_block=client_req_block)
+
         self.algo_client.connect(ip_addr, port, client_id)
 
         logger.info("starting AlgoClient thread")
@@ -649,9 +500,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # id(self.nextValidId_event))
         try:
             async_args.smart_thread.smart_wait(resumers=self.client_name, timeout=10)
-            self.algo_client.pop_active_request(req_id=1)
-            # caller_smart_thread = SmartThread.get_current_smart_thread()
-            # caller_smart_thread.smart_wait(resumers="ibapi_client", timeout=10)
+            self.algo_client.pop_active_request(req_id=req_id)
         except SmartThreadRequestTimedOut:
             self.disconnect_from_ib()
             error_msg = "connect_to_ib timed out waiting to receive nextValid_ID"
@@ -660,155 +509,27 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         logger.info("connect success")
 
-    ###########################################################################
-    # connect_to_ib
-    ###########################################################################
-    # def connect_to_ib_internal(
-    #     self,
-    #     ip_addr: str,
-    #     port: int,
-    #     client_id: int,
-    #     async_args: AsyncArgs,
-    # ) -> None:
-    #     """Connect to IB on the given addr and port and client id.
-    #
-    #     Args:
-    #         ip_addr: addr to connect to
-    #         port: port to connect to
-    #         client_id: client id to use for connection
-    #         smart_thread: SmartThread to use for the wait
-    #
-    #     Raises:
-    #         ConnectTimeout: timed out waiting for next valid request ID
-    #
-    #     """
-    #     logger.debug(f"SBT {ip_addr=}, {port=}, {client_id=}, {async_args=}")
-    #
-    #     # if self.algo_client.isConnected():
-    #     #     return ResultBlock(
-    #     #         ret_data=None,
-    #     #         error_to_raise=AlreadyConnected,
-    #     #         error_msg="Attempted to connect, but already connected",
-    #     #     )
-    #     #
-    #     # if self.disconnect_lock.locked():
-    #     #     return ResultBlock(
-    #     #         ret_data=None,
-    #     #         error_to_raise=DisconnectLockHeld,
-    #     #         error_msg="Attempted to connect while the disconnect lock is held",
-    #     #     )
-    #
-    #     if self.algo_client.isConnected():
-    #         error_msg = "connect_to_ib already connected"
-    #         logger.debug(error_msg)
-    #         raise AlreadyConnected(error_msg)
-    #
-    #     if self.disconnect_lock.locked():
-    #         error_msg = "connect_to_ib disconnect lock is held"
-    #         logger.debug(error_msg)
-    #         raise DisconnectLockHeld(error_msg)
-    #
-    #     self.num_stock_symbols_received = 0
-    #     self.stock_symbols = pd.DataFrame()
-    #     self.symbols = pd.DataFrame()
-    #     self.response_complete_event.clear()
-    #     # self.prepare_to_connect()  # verification and initialization
-    #
-    #     # self.connect(ip_addr, port, client_id)
-    #     client_req_block = ClientRequestBlock(
-    #         requestor_name=async_args.smart_thread.name, ref_num=async_args.ref_num
-    #     )
-    #     self.algo_client.add_active_request(req_id=1, req_block=client_req_block)
-    #     self.algo_client.connect(ip_addr, port, client_id)
-    #
-    #     # the following try will succeed for the first connect only
-    #     # try:
-    #     #     self.ibapi_client_smart_thread.smart_start()
-    #     # except RuntimeError:  # must be a reconnect - we need a new thread
-    #     #     self.ibapi_client_smart_thread = SmartThread(
-    #     #         name="ibapi_client",
-    #     #         auto_start=False,
-    #     #         target=self.run,
-    #     #     )
-    #     #     self.ibapi_client_smart_thread.smart_start()
-    #     # if self.ibapi_client_smart_thread.st_state == ThreadState.Registered:
-    #     #     self.ibapi_client_smart_thread.smart_start()
-    #     # else:
-    #     #     self.ibapi_client_smart_thread = SmartThread(
-    #     #         name="ibapi_client",
-    #     #         target=EClient.run,
-    #     #         args=(self,),
-    #     #     )
-    #     logger.info("starting AlgoClient thread")
-    #     if self.algo_client.st_state == ThreadState.Registered:
-    #         self.algo_client.smart_start()
-    #     else:
-    #         self.algo_client = AlgoClient(
-    #             group_name=self.group_name,
-    #             algo_name=self.algo_name,
-    #             client_name=self.client_name,
-    #             disconnect_lock=self.disconnect_lock,
-    #         )
-    #         self.algo_client.smart_start()
-    #
-    #     # we will wait on the first requestID here for 10 seconds
-    #     # logger.debug("id of nextValidId_event %d",
-    #     # id(self.nextValidId_event))
-    #     try:
-    #         async_args.smart_thread.smart_wait(resumers=self.client_name, timeout=10)
-    #         self.algo_client.pop_active_request(req_id=1)
-    #         # caller_smart_thread = SmartThread.get_current_smart_thread()
-    #         # caller_smart_thread.smart_wait(resumers="ibapi_client", timeout=10)
-    #     except SmartThreadRequestTimedOut:
-    #         self.disconnect_from_ib()
-    #         error_msg = "connect_to_ib timed out waiting to receive nextValid_ID"
-    #         logger.debug(error_msg)
-    #         raise ConnectTimeout(error_msg)
-    #         # raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
-    #         # result_block: ResultBlock = ResultBlock(
-    #         #     ret_data=None,
-    #         #     error_to_raise=ConnectTimeout,
-    #         #     error_msg=error_msg,
-    #         # )
-    #         # raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
-    #     # else:
-    #     #     result_block: ResultBlock = ResultBlock(
-    #     #         ret_data=None,
-    #     #         error_to_raise=None,
-    #     #         error_msg=None,
-    #     #     )
-    #     # if not self.nextValidId_event.wait(timeout=10):  # if we timed out
-    #     #     logger.debug("timed out waiting for next valid request ID")
-    #     #     self.disconnect_from_ib()
-    #     #     raise ConnectTimeout("connect_to_ib failed to receive nextValid_ID")
-    #
-    #     logger.info("connect success")
-    #     # return result_block
+    ####################################################################
+    # setup_client_request
+    ####################################################################
+    # def start_async_request(self, func, *args, **kwargs) -> UniqueTStamp:
+    def setup_client_request(self, requestor_name: str, ref_num: UniqueTStamp) -> ReqID:
+        """Send request to async handler."""
+
+        req_id = self.algo_client.get_req_id()  # bump reqId and return it
+        client_req_block = ClientRequestBlock(
+            requestor_name=requestor_name, ref_num=ref_num
+        )
+        self.algo_client.add_active_request(req_id=req_id, req_block=client_req_block)
+
+        return req_id
 
     ####################################################################
     # start_async_request
     ####################################################################
-    # def start_async_request(self, func, *args, **kwargs) -> UniqueTStamp:
     def start_async_request(self, req_block: RequestBlock) -> None:
         """Send request to async handler."""
-        # get a unique time stamp for async reference number
-        # ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-        #
-        # req_block = RequestBlock(
-        #     func_to_call=func,
-        #     func_args=args,
-        #     func_kwargs=kwargs,
-        #     ref_num=ref_num,
-        # )
 
-        # SmartThread(
-        #     group_name=self.group_name,
-        #     name=f"async_request_{ref_num}",
-        #     target=self.handle_async_request,
-        #     thread_parm_name="req_smart_thread",
-        #     kwargs={"req_block": req_block},
-        # )
-        logger.debug(f"SBT {req_block=}")
         SmartThread(
             group_name=self.group_name,
             name=f"async_request_{req_block.ref_num}",
@@ -828,7 +549,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         """Handle async request.
 
         Args:
-            req_smart_thread: the SmartThread instance runnnig this
+            req_smart_thread: the SmartThread instance runnning this
                 request
             req_block: the function to call and its args
 
@@ -881,25 +602,19 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     def get_async_results(
         self,
         req_num: UniqueTStamp,
-        raise_if_error: bool = True,
         wait_for_results: bool = True,
     ) -> Optional[ResultBlock]:
         """Get results from an async request.
 
         Args:
             req_num: the request number for the request
-            raise_if_error: specifies whether to raise any errors that
-                had occurred during the request
             wait_for_results: specifies whether to wait for the results
 
         Returns:
 
-            1) If the request completed without errors, the RequestBlock is
-               returned with the request results.
-            2) If the request suffered an error and raise_if_error is
-               False, the RequestBlock is returned with the error and
-               error message.
-            3) If the request has not yet completed and wait_for_results
+            1) If the request completed without errors, the results are
+               returned.
+            2) If the request has not yet completed and wait_for_results
                is False, None is returned.
 
         """
@@ -909,9 +624,10 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             else:
                 return None
 
-        ret_req_block = self.request_results[req_num]
-        if ret_req_block.error_to_raise and raise_if_error:
+        ret_req_block = self.request_results.pop(req_num)
+        if ret_req_block.error_to_raise:
             raise ret_req_block.error_to_raise(ret_req_block.error_msg)
+
         return ret_req_block
 
     ####################################################################
@@ -1350,8 +1066,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # send request to IB
         #######################################################################
         self.response_complete_event.clear()  # reset the wait bit first
-        # reqId = self.get_reqId()  # bump reqId and return it
-        reqId = self.algo_client.get_reqId()  # bump reqId and return it
+        # reqId = self.get_req_id()  # bump reqId and return it
+        reqId = self.algo_client.get_req_id()  # bump reqId and return it
         self.reqMatchingSymbols(reqId, symbol_to_get)
         # the following sleep for 1 second is required to avoid
         # overloading IB with requests (they ask for 1 second). Note that we
@@ -1492,7 +1208,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # make the request for details
         ################################################################
         self.response_complete_event.clear()
-        reqId = self.algo_client.get_reqId()  # bump reqId and return it
+        reqId = self.algo_client.get_req_id()  # bump reqId and return it
         self.reqContractDetails(reqId, contract)
         self.wait_for_request_completion(reqId)
 
@@ -1600,7 +1316,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # make the request for fundamental data
         ################################################################
         self.response_complete_event.clear()
-        reqId = self.algo_client.get_reqId()  # bump reqId and return it
+        reqId = self.algo_client.get_req_id()  # bump reqId and return it
         self.reqFundamentalData(reqId, contract, report_type, [])
         self.wait_for_request_completion(reqId)
 

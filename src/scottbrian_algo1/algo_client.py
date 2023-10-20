@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import logging
 import threading
 from threading import Event, get_ident, get_native_id, Lock, Thread
-from typing import Any, Callable, Optional, Type, TYPE_CHECKING, Union
+from typing import Any, Callable, NewType, Optional, Type, TYPE_CHECKING, Union
 
 ########################################################################
 # Third Party
@@ -40,6 +40,11 @@ from scottbrian_utils.unique_ts import UniqueTS, UniqueTStamp
 # Local
 ########################################################################
 # from scottbrian_algo1.algo_wrapper import AlgoWrapper
+
+########################################################################
+# Types
+########################################################################
+ReqID = NewType("ReqID", int)
 
 ########################################################################
 # logging
@@ -148,7 +153,7 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
 
         self.active_requests: dict[int, ClientRequestBlock] = {}
 
-        self.request_id: int = 0
+        self.request_id: ReqID = 0
         # self.ds_catalog = ds_catalog
 
         # self.error_reqId: int = 0
@@ -286,56 +291,10 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
                 act_req.request_resumed = True
                 self.smart_resume(waiters=act_req.requestor_name)
 
-    # ####################################################################
-    # # error
-    # ####################################################################
-    # def error(
-    #     self,
-    #     reqId: ibcommon.TickerId,
-    #     errorCode: int,
-    #     errorString: str,
-    #     advancedOrderRejectJson="",
-    # ) -> None:
-    #     """Receive error from IB and print it.
-    #
-    #     Args:
-    #         reqId: the id of the failing request
-    #         errorCode: the error code
-    #         errorString: text to explain the error
-    #
-    #     """
-    #     super(EWrapper, self).wrapper.error(
-    #         reqId,
-    #         errorCode,
-    #         errorString,
-    #         advancedOrderRejectJson,
-    #     )
-    #
-    #     self.error_reqId = reqId
-    #
-    # ###########################################################################
-    # # nextValidId
-    # ###########################################################################
-    # def nextValidId(self, request_id: int) -> None:
-    #     """Receive next valid ID from IB and save it.
-    #
-    #     Args:
-    #         request_id: next id to use for a request to IB
-    #
-    #     """
-    #     logger.info(
-    #         f"next valid ID is {request_id}, {threading.current_thread()=}, " f"{self=}"
-    #     )
-    #
-    #     self.request_id = request_id
-    #     # self.nextValidId_event.set()
-    #     # self.ibapi_client_smart_thread.smart_resume(waiters=self.algo_name)
-    #     self.smart_resume(waiters=self.algo_name)
-
     ###########################################################################
-    # get_reqId
+    # get_req_id
     ###########################################################################
-    def get_reqId(self) -> int:
+    def get_req_id(self) -> ReqID:
         """Obtain a request id to use for the current request.
 
         The request id is bumped and then returned

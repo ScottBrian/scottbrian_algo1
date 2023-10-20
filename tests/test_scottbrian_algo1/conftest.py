@@ -3,6 +3,7 @@
 ########################################################################
 # Standard Library
 ########################################################################
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 import string
 import threading
@@ -148,7 +149,7 @@ def thread_exc(monkeypatch: Any) -> ExcHook:
 
     # clean the registry in SmartThread class
     SmartThread._registry = {}
-    SmartThread._pair_array = {}
+    SmartThread._pair_array = defaultdict(dict)
     # assert threading.current_thread().name == 'alpha'
     threading.current_thread().name = "MainThread"  # restore name
 

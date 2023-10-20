@@ -209,9 +209,9 @@ class AlgoWrapper(EWrapper):  # type: ignore
         # self.smart_resume(waiters=self.algo_name)
 
     # ###########################################################################
-    # # get_reqId
+    # # get_req_id
     # ###########################################################################
-    # def get_reqId(self) -> int:
+    # def get_req_id(self) -> int:
     #     """Obtain a request id to use for the current request.
     #
     #     The request id is bumped and then returned

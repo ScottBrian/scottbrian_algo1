@@ -31,6 +31,7 @@ from scottbrian_algo1.algo_api import (
     DisconnectLockHeld,
     ConnectTimeout,
     RequestTimeout,
+    ResultBlock,
     DisconnectDuringRequest,
     ThreadConfig,
 )
@@ -56,6 +57,17 @@ class TestThreadConfig(Enum):
     TestNoSmartThreadAlgoAppCurrent = auto()
     TestSmartThreadAlgoAppCurrent = auto()
     TestSmartThreadAlgoAppRemote = auto()
+
+
+########################################################################
+# sync_async style
+########################################################################
+class SyncAsync(Enum):
+    RequestSync = auto()
+    RequestAsyncNoWaitFast = auto()
+    RequestAsyncNoWaitSlow = auto()
+    RequestAsyncWaitFast = auto()
+    RequestAsyncWaitSlow = auto()
 
 
 ########################################################################
@@ -168,13 +180,25 @@ class TestAlgoAppConnect:
     ####################################################################
     # test_mock_connect_to_ib
     ####################################################################
+    @pytest.mark.parametrize(
+        "async_arg",
+        [
+            SyncAsync.RequestSync,
+            SyncAsync.RequestAsyncNoWaitFast,
+            SyncAsync.RequestAsyncNoWaitSlow,
+            SyncAsync.RequestAsyncWaitFast,
+            SyncAsync.RequestAsyncWaitSlow,
+        ],
+    )
     def test_mock_connect_to_ib(
         self,
+        async_arg: bool,
         cat_app: "FileCatalog",
     ) -> None:
         """Test connecting to IB.
 
         Args:
+            async_arg: specifies whether to make an async request
             cat_app: pytest fixture (see conftest.py)
         """
         # test_smart_thread, algo_app = do_setup(cat_app=cat_app)
@@ -185,8 +209,36 @@ class TestAlgoAppConnect:
         # control as a result, such as getting the first requestID and
         # then starting a separate thread for the run loop.
 
+        if async_arg == SyncAsync.RequestSync:
+            async_tf = False
+        else:
+            async_tf = True
+
         logger.debug("about to connect")
-        algo_app.connect_to_ib("127.0.0.1", algo_app.PORT_FOR_LIVE_TRADING, client_id=0)
+        req_num = algo_app.connect_to_ib(
+            ip_addr="127.0.0.1",
+            port=algo_app.PORT_FOR_LIVE_TRADING,
+            client_id=0,
+            async_req=async_tf,
+        )
+
+        if async_tf:
+            assert req_num is not None
+            if async_arg in [
+                SyncAsync.RequestAsyncNoWaitFast,
+                SyncAsync.RequestAsyncNoWaitSlow,
+            ]:
+                req_result = None
+                while req_result is None:
+                    req_result = algo_app.get_async_results(
+                        req_num, wait_for_results=False
+                    )
+            else:
+                req_result = algo_app.get_async_results(req_num, wait_for_results=True)
+
+            assert req_result.ret_data is None
+        else:
+            assert req_num is None
 
         verify_algo_app_connected(algo_app)
 
