@@ -64,10 +64,9 @@ class TestThreadConfig(Enum):
 ########################################################################
 class SyncAsync(Enum):
     RequestSync = auto()
-    RequestAsyncNoWaitFast = auto()
-    RequestAsyncNoWaitSlow = auto()
-    RequestAsyncWaitFast = auto()
-    RequestAsyncWaitSlow = auto()
+    RequestAsyncTimeoutNone = auto()
+    RequestAsyncTimeoutFalse = auto()
+    RequestAsyncTimeoutTrue = auto()
 
 
 ########################################################################
@@ -184,10 +183,9 @@ class TestAlgoAppConnect:
         "async_arg",
         [
             SyncAsync.RequestSync,
-            SyncAsync.RequestAsyncNoWaitFast,
-            SyncAsync.RequestAsyncNoWaitSlow,
-            SyncAsync.RequestAsyncWaitFast,
-            SyncAsync.RequestAsyncWaitSlow,
+            SyncAsync.RequestAsyncTimeoutNone,
+            SyncAsync.RequestAsyncTimeoutFalse,
+            SyncAsync.RequestAsyncTimeoutTrue,
         ],
     )
     def test_mock_connect_to_ib(
@@ -224,17 +222,12 @@ class TestAlgoAppConnect:
 
         if async_tf:
             assert req_num is not None
-            if async_arg in [
-                SyncAsync.RequestAsyncNoWaitFast,
-                SyncAsync.RequestAsyncNoWaitSlow,
-            ]:
+            if async_arg == SyncAsync.RequestAsyncTimeoutNone:
                 req_result = None
                 while req_result is None:
-                    req_result = algo_app.get_async_results(
-                        req_num, wait_for_results=False
-                    )
+                    req_result = algo_app.get_async_results(req_num)
             else:
-                req_result = algo_app.get_async_results(req_num, wait_for_results=True)
+                req_result = algo_app.get_async_results(req_num, timeout=10)
 
             assert req_result.ret_data is None
         else:

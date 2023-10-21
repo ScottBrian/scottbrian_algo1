@@ -602,25 +602,29 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     def get_async_results(
         self,
         req_num: UniqueTStamp,
-        wait_for_results: bool = True,
+        timeout: IntFloat = 0,
     ) -> Optional[ResultBlock]:
         """Get results from an async request.
 
         Args:
             req_num: the request number for the request
-            wait_for_results: specifies whether to wait for the results
+            timeout: specifies number of seconds to wait for the results
+                if not immediately available. An error is raised if the
+                results are not delivered within the timeout time. A
+                zero or negative value will not wait.
 
         Returns:
 
             1) If the request completed without errors, the results are
                returned.
-            2) If the request has not yet completed and wait_for_results
-               is False, None is returned.
+            2) If the request has not yet completed and timeout is not
+               specified, or is specified as zero or negative, None is
+               returned.
 
         """
         if req_num not in self.request_results:
-            if wait_for_results:
-                self.smart_wait(resumers=f"async_request_{req_num}")
+            if timeout > 0:
+                self.smart_wait(resumers=f"async_request_{req_num}", timeout=timeout)
             else:
                 return None
 
