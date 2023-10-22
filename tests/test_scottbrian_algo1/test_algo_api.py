@@ -188,15 +188,18 @@ class TestAlgoAppConnect:
             SyncAsync.RequestAsyncTimeoutTrue,
         ],
     )
+    @pytest.mark.parametrize("delay_arg", [0, 1, 5])
     def test_mock_connect_to_ib(
         self,
         async_arg: bool,
+        delay_arg: int,
         cat_app: "FileCatalog",
     ) -> None:
         """Test connecting to IB.
 
         Args:
             async_arg: specifies whether to make an async request
+            delay_arg: value to use for delay
             cat_app: pytest fixture (see conftest.py)
         """
         # test_smart_thread, algo_app = do_setup(cat_app=cat_app)
@@ -216,7 +219,7 @@ class TestAlgoAppConnect:
         req_num = algo_app.connect_to_ib(
             ip_addr="127.0.0.1",
             port=algo_app.PORT_FOR_LIVE_TRADING,
-            client_id=0,
+            client_id=1,
             async_req=async_tf,
         )
 

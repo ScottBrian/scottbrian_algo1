@@ -195,7 +195,7 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
             self: instance of ib Connection class
 
         """
-        logger.debug(f"entered: {self.port=}")
+        logger.debug(f"entered: {self.port=}, {self.host=}")
         try:
             self.socket = socket.socket()
         # TO DO list the exceptions you want to catch
@@ -208,6 +208,9 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
 
         if self.port == mock_ib.PORT_FOR_REQID_TIMEOUT:
             mock_ib.reqId_timeout = True  # simulate timeout
+            # get timeout value from ip_addr last segment
+            split_ip_addr = self.host.split(".")
+            mock_ib.delay_value = int(split_ip_addr[-1])
         else:
             mock_ib.reqId_timeout = False
 
@@ -355,6 +358,8 @@ class MockIB:
     PORT_FOR_REQID_TIMEOUT = 9001
     PORT_FOR_SIMULATE_REQUEST_DISCONNECT = 9002
     PORT_FOR_SIMULATE_REQUEST_TIMEOUT = 9003
+    PORT_FOR_SIMULATE_1_SECOND_DELAY = 9004
+    PORT_FOR_SIMULATE_5_SECOND_DELAY = 9005
 
     ###########################################################################
     # MockIB: __init__
@@ -368,6 +373,7 @@ class MockIB:
         self.test_cat = test_cat
         self.msg_rcv_q = queue.Queue()
         self.reqId_timeout = False
+        self.delay_value = 0
         self.simulate_request_disconnect = False
         self.simulate_request_timeout = False
         self.next_conId: int = 7000
@@ -428,11 +434,16 @@ class MockIB:
         # b'\x00\x00\x00\x0871\x002\x000\x00\x00'
         #######################################################################
         elif int(fields[0]) == OUT.START_API:
-            logger.info(f"startAPI detected: {self.reqId_timeout=}")
+            logger.info(
+                f"startAPI detected: {self.reqId_timeout=}, {self.delay_value=}"
+            )
             # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
-            if self.reqId_timeout:  # if testing timeout case
+            if self.reqId_timeout and self.delay_value == 0:  # if test timeout case
+                # zero mean infinite
                 recv_msg = make_msg("0")  # simulate timeout
             else:  # build the normal next valid id message
+                if self.reqId_timeout:  # non_zero case
+                    time.sleep(self.delay_value)
                 recv_msg = make_msg(
                     make_field(IN.NEXT_VALID_ID) + make_field("1") + make_field("1")
                 )
