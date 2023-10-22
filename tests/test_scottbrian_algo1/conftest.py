@@ -208,9 +208,6 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
 
         if self.port == mock_ib.PORT_FOR_REQID_TIMEOUT:
             mock_ib.reqId_timeout = True  # simulate timeout
-            # get timeout value from ip_addr last segment
-            split_ip_addr = self.host.split(".")
-            mock_ib.delay_value = int(split_ip_addr[-1])
         else:
             mock_ib.reqId_timeout = False
 
@@ -346,7 +343,9 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
 
     # a_algo_app = AlgoApp(catalog)
     # return a_algo_app
-    return catalog
+    # return catalog
+    mock_ib.app_cat = catalog
+    return mock_ib
 
 
 ###############################################################################
@@ -358,8 +357,6 @@ class MockIB:
     PORT_FOR_REQID_TIMEOUT = 9001
     PORT_FOR_SIMULATE_REQUEST_DISCONNECT = 9002
     PORT_FOR_SIMULATE_REQUEST_TIMEOUT = 9003
-    PORT_FOR_SIMULATE_1_SECOND_DELAY = 9004
-    PORT_FOR_SIMULATE_5_SECOND_DELAY = 9005
 
     ###########################################################################
     # MockIB: __init__
@@ -371,6 +368,7 @@ class MockIB:
             test_cat: catalog of data sets used for testing
         """
         self.test_cat = test_cat
+        self.app_cat = FileCatalog()
         self.msg_rcv_q = queue.Queue()
         self.reqId_timeout = False
         self.delay_value = 0
@@ -438,11 +436,12 @@ class MockIB:
                 f"startAPI detected: {self.reqId_timeout=}, {self.delay_value=}"
             )
             # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
-            if self.reqId_timeout and self.delay_value == 0:  # if test timeout case
-                # zero mean infinite
+            # if self.reqId_timeout:  # if test timeout case
+            # zero mean infinite
+            if self.delay_value == -1:
                 recv_msg = make_msg("0")  # simulate timeout
             else:  # build the normal next valid id message
-                if self.reqId_timeout:  # non_zero case
+                if self.delay_value > 0:  # non_zero case
                     time.sleep(self.delay_value)
                 recv_msg = make_msg(
                     make_field(IN.NEXT_VALID_ID) + make_field("1") + make_field("1")
@@ -925,9 +924,9 @@ class MockIB:
         return combos[first_char]
 
 
-###############################################################################
+########################################################################
 # mock_ib
-###############################################################################
+########################################################################
 @pytest.fixture(scope="session")
 def mock_ib() -> "MockIB":
     """Provide data and methods for testing with ib.

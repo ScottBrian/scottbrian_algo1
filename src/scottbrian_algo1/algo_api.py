@@ -439,6 +439,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         ip_addr: str,
         port: int,
         client_id: int,
+        timeout: IntFloat = 10,
         async_req: bool = False,
         async_args: Optional[AsyncArgs] = None,
     ) -> Optional[UniqueTStamp]:
@@ -499,7 +500,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # logger.debug("id of nextValidId_event %d",
         # id(self.nextValidId_event))
         try:
-            async_args.smart_thread.smart_wait(resumers=self.client_name, timeout=10)
+            async_args.smart_thread.smart_wait(
+                resumers=self.client_name, timeout=timeout
+            )
             self.algo_client.pop_active_request(req_id=req_id)
         except SmartThreadRequestTimedOut:
             self.disconnect_from_ib()
