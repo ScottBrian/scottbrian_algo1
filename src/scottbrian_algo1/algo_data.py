@@ -30,16 +30,17 @@ class MarketData:
 
     def __init__(self):
         self.symbols_status = pd.DataFrame()
-        # self.num_symbols_received = 0
+        self.num_symbols_received = 0
         self.symbols = pd.DataFrame()
         self.stock_symbols = pd.DataFrame()
+        self.num_stock_symbols_received = 0
 
         # contract details
         self.contracts = pd.DataFrame()
         self.contract_details = pd.DataFrame()
 
         # fundamental data
-        # self.fundamental_data = pd.DataFrame()
+        self.fundamental_data = pd.DataFrame()
 
     ####################################################################
     # symbolSamples - callback

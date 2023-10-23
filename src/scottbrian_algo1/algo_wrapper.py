@@ -154,9 +154,14 @@ class AlgoWrapper(EWrapper):  # type: ignore
 
         """
         if TYPE_CHECKING:
-            __class__: Type[AlgoClient]  # noqa: F842
+            __class__: Type[AlgoWrapper]  # noqa: F842
         classname = self.__class__.__name__
-        parms = f"algo_name='{self.algo_name}'"
+        parms = ""
+
+        for key, item in self.specified_args.items():
+            if item:  # if not None
+                if key in ("group_name", "algo_name", "client_name"):
+                    parms += ", " + f"{key}={item}"
 
         return f"{classname}({parms})"
 
@@ -204,74 +209,9 @@ class AlgoWrapper(EWrapper):  # type: ignore
         self.algo_client.request_id = request_id
         self.algo_client.update_active_request(req_id=request_id)
 
-        # self.nextValidId_event.set()
-        # self.ibapi_client_smart_thread.smart_resume(waiters=self.algo_name)
-        # self.smart_resume(waiters=self.algo_name)
-
-    # ###########################################################################
-    # # get_req_id
-    # ###########################################################################
-    # def get_req_id(self) -> int:
-    #     """Obtain a request id to use for the current request.
-    #
-    #     The request id is bumped and then returned
-    #
-    #     Returns:
-    #         request id to use on the current request
-    #
-    #     """
-    #     self.request_id += 1
-    #     return self.request_id
-
-    # ###########################################################################
-    # # disconnect
-    # ###########################################################################
-    # def disconnect(self) -> None:
-    #     """Call this function to terminate the connections with TWS."""
-    #     # We would like to call EClient.disconnect, but it does not wait for
-    #     # the reader thread to come home which leads to problems if a connect
-    #     # is done immediately after the disconnect. The still running reader
-    #     # thread snatches the early handshaking messages and leaves the
-    #     # connect hanging. The following code is from client.py and is
-    #     # modified here to add the thread join to ensure the reader comes
-    #     # home before the disconnect returns.
-    #     # Note also the use of the disconnect lock to serialize the two known
-    #     # cases of disconnect being called from different threads (one from
-    #     # mainline through disconnect_from_ib in AlgoApp, and one from the
-    #     # EClient run method in the run thread.
-    #     call_seq = get_formatted_call_sequence()
-    #     logger.debug("%s entered disconnect", call_seq)
-    #     with self.disconnect_lock:
-    #         logger.debug("%s setting conn state", call_seq)
-    #         self.setConnState(EClient.DISCONNECTED)
-    #         if self.conn is not None:
-    #             logger.info("%s disconnecting", call_seq)
-    #             self.conn.disconnect()
-    #             self.wrapper.connectionClosed()
-    #             reader_id = id(self.reader)
-    #             my_id = get_ident()
-    #             my_native_id = get_native_id()
-    #             logger.debug(
-    #                 "about to join reader id %d for self id %d to"
-    #                 " wait for it to come home on thread %d %d",
-    #                 reader_id,
-    #                 id(self),
-    #                 my_id,
-    #                 my_native_id,
-    #             )
-    #             self.reader.join()
-    #             logger.debug(
-    #                 "reader id %d came home for id(self) %d " "thread id %d %d",
-    #                 reader_id,
-    #                 id(self),
-    #                 my_id,
-    #                 my_native_id,
-    #             )
-    #             self.reset()
-
-    ###########################################################################
+    ####################################################################
     # symbolSamples - callback
-    ###########################################################################
+    ####################################################################
     def symbolSamples(
         self,
         request_id: int,
@@ -281,11 +221,10 @@ class AlgoWrapper(EWrapper):  # type: ignore
 
         Args:
             request_id: the id used on the request
-            contract_descriptions: contains a list of contract descriptions.
-                                     Each description includes the symbol,
-                                     conId, security type, primary exchange,
-                                     currency, and derivative security
-                                     types.
+            contract_descriptions: contains a list of contract
+                descriptions. Each description includes the symbol,
+                conId, security type, primary exchange, currency, and
+                derivative security types.
 
         The contracts are filtered for stocks traded in the USA and are
         stored into a data frame as contracts that can be used later to
@@ -339,9 +278,9 @@ class AlgoWrapper(EWrapper):  # type: ignore
 
         self.response_complete_event.set()
 
-    ###########################################################################
+    ####################################################################
     # contractDetails callback method
-    ###########################################################################
+    ####################################################################
     def contractDetails(
         self, request_id: int, contract_details: ContractDetails
     ) -> None:
@@ -388,9 +327,9 @@ class AlgoWrapper(EWrapper):  # type: ignore
                 ]
             )
 
-    ###########################################################################
+    ####################################################################
     # contractDetailsEnd
-    ###########################################################################
+    ####################################################################
     def contractDetailsEnd(self, request_id: int) -> None:
         """Receive IB reply for reqContractDetails request end.
 
@@ -400,3 +339,59 @@ class AlgoWrapper(EWrapper):  # type: ignore
         """
         logger.info("entered for request_id %d", request_id)
         self.response_complete_event.set()
+
+    ####################################################################
+    # fundamentalData callback method
+    ####################################################################
+    def fundamentalData(self, request_id: int, data: str) -> None:
+        """Receive IB reply for reqFundamentalData request.
+
+        Args:
+            request_id: the id used on the request
+            data: xml string of fundamental data
+
+        """
+        logger.info("entered for request_id %d", request_id)
+
+        print("\nfundamental data:\n", data)
+        # print('contract_details.__dict__:\n', contract_details.__dict__)
+
+        # remove the contract if it already exists in the DataFrame
+        # as we want the newest information to replace the old
+        # conId = contract_details.contract.conId
+        # self.contracts.drop(conId,
+        #                     inplace=True,
+        #                     errors='ignore')
+        # get the conId to use as an index
+
+        # Add the contract to the DataFrame using contract dict.
+        # Note that if the contract contains an array for one of the
+        # fields, the DataFrame create will reject it because if the
+        # single item conId for the index. The contract get_dict method
+        # returns a dictionary that can be used to instantiate the
+        # DataFrame item, and any class instances or arrays of class
+        # instances will be returned as a string so that the DataFrame
+        # item will work
+        # contract_dict = get_contract_dict(contract_details.contract)
+        # self.contracts = self.contracts.append(
+        #             pd.DataFrame(contract_dict,
+        #                          index=[conId]))
+
+        # remove the contract_details if it already exists in the DataFrame
+        # as we want the newest information to replace the old
+        # self.contract_details.drop(conId,
+        #                            inplace=True,
+        #                            errors='ignore')
+
+        # remove the contract from the contract_details
+        # contract_details.contract = None
+
+        # add the contract details to the DataFrame
+        # contract_details_dict = get_contract_details_dict(contract_details)
+        # self.contract_details = self.contract_details.append(
+        #             pd.DataFrame(contract_details_dict,
+        #                          index=[conId]))
+
+        # print('self.contract_details:\n', contract_details)
+        # print('self.contract_details.__dict__:\n',
+        #       self.contract_details.__dict__)

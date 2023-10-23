@@ -112,7 +112,8 @@ from scottbrian_algo1.algo_maps import get_contract_details_dict
 from scottbrian_algo1.algo_maps import get_contract_description_dict
 
 from scottbrian_algo1.algo_client import AlgoClient, ClientRequestBlock, ReqID
-from scottbrian_algo1.algo_wrapper import AlgoWrapper
+from scottbrian_algo1.algo_data import MarketData
+
 
 ########################################################################
 # TypeAlias
@@ -371,18 +372,19 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         # stock symbols
         self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
-        self.symbols_status = pd.DataFrame()
-        self.num_symbols_received = 0
-        self.symbols = pd.DataFrame()
-        self.num_stock_symbols_received = 0
-        self.stock_symbols = pd.DataFrame()
+        self.market_data = MarketData()
+        # self.symbols_status = pd.DataFrame()
+        # self.num_symbols_received = 0
+        # self.symbols = pd.DataFrame()
+        # self.num_stock_symbols_received = 0
+        # self.stock_symbols = pd.DataFrame()
 
         # contract details
-        self.contracts = pd.DataFrame()
-        self.contract_details = pd.DataFrame()
+        # self.contracts = pd.DataFrame()
+        # self.contract_details = pd.DataFrame()
 
         # fundamental data
-        self.fundamental_data = pd.DataFrame()
+        # self.fundamental_data = pd.DataFrame()
 
         self.handle_cmds: bool = False
 
@@ -470,9 +472,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             logger.debug(error_msg)
             raise DisconnectLockHeld(error_msg)
 
-        self.num_stock_symbols_received = 0
-        self.stock_symbols = pd.DataFrame()
-        self.symbols = pd.DataFrame()
+        self.market_data.num_stock_symbols_received = 0
+        self.market_data.stock_symbols = pd.DataFrame()
+        self.market_data.symbols = pd.DataFrame()
         self.response_complete_event.clear()
 
         # note that for connect we don't use the reqID, but we still
@@ -558,7 +560,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         """
         req_result = None
-        error_to_raise = None
+        error_to_raise: Optional[AlgoExceptions] = None
+
         error_msg = ""
         async_args = AsyncArgs(smart_thread=req_smart_thread, ref_num=req_block.ref_num)
         req_block.func_kwargs["async_args"] = async_args
@@ -567,6 +570,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             f"{req_block.func_to_call=}, {req_block.func_args=}, "
             f"{req_block.func_kwargs=}"
         )
+
         try:
             req_result = req_block.func_to_call(
                 *req_block.func_args,
@@ -574,22 +578,22 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             )
         except AlreadyConnected as error_text:
             error_to_raise = AlreadyConnected
-            error_msg = error_text
+            error_msg = str(error_text)
         except DisconnectLockHeld as error_text:
             error_to_raise = DisconnectLockHeld
-            error_msg = error_text
+            error_msg = str(error_text)
         except ConnectTimeout as error_text:
             error_to_raise = ConnectTimeout
-            error_msg = error_text
+            error_msg = str(error_text)
         except DisconnectDuringRequest as error_text:
             error_to_raise = DisconnectDuringRequest
-            error_msg = error_text
+            error_msg = str(error_text)
         except RequestTimeout as error_text:
             error_to_raise = RequestTimeout
-            error_msg = error_text
+            error_msg = str(error_text)
         except RequestError as error_text:
-            error_to_raise = RequestTimeout
-            error_msg = error_text
+            error_to_raise = RequestError
+            error_msg = str(error_text)
 
         self.request_results[req_block.ref_num] = ResultBlock(
             ret_data=req_result,
@@ -738,11 +742,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         call_seq = get_formatted_call_sequence()
         logger.info("%s about to wait for request event completion", call_seq)
         for i in range(self.REQUEST_TIMEOUT_SECONDS):  # try for one minute
-            if not self.isConnected():
-                logger.error("%s detected disconnect while waiting", call_seq)
-                raise DisconnectDuringRequest
-            if self.algo_wrapper.error_reqId == reqId:
-                raise RequestError
+            # if not self.isConnected():
+            #     logger.error("%s detected disconnect while waiting", call_seq)
+            #     raise DisconnectDuringRequest
+            # if self.algo_wrapper.error_reqId == reqId:
+            #     raise RequestError
             if self.response_complete_event.wait(timeout=1):
                 return  # good, event completed w/o timeout
         # if here, we timed out out while still connected
@@ -960,7 +964,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         logger.info("path: %s", symbols_path)
 
         if symbols_path.exists():
-            self.symbols = pd.read_csv(
+            self.market_data.symbols = pd.read_csv(
                 symbols_path,
                 header=0,
                 index_col=0,
@@ -973,7 +977,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         logger.info("path: %s", stock_symbols_path)
 
         if stock_symbols_path.exists():
-            self.stock_symbols = pd.read_csv(
+            self.market_data.stock_symbols = pd.read_csv(
                 stock_symbols_path,
                 header=0,
                 index_col=0,
@@ -986,11 +990,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         logger.info("symbols_status_path: %s", symbols_status_path)
 
         if symbols_status_path.exists():
-            self.symbols_status = pd.read_csv(
+            self.market_data.symbols_status = pd.read_csv(
                 symbols_status_path, header=0, index_col=0, parse_dates=True
             )
         else:
-            self.symbols_status = pd.DataFrame(
+            self.market_data.symbols_status = pd.DataFrame(
                 list(string.ascii_uppercase),
                 columns=["AlphaChar"],
                 index=pd.date_range("20000101", periods=26, freq="S"),
@@ -999,32 +1003,32 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # Get the next single uppercase letter and do the search.
         # The response from ib is handled by symbolSamples wrapper method
         #######################################################################
-        search_char = self.symbols_status.iloc[0].AlphaChar
+        search_char = self.market_data.symbols_status.iloc[0].AlphaChar
         self.get_symbols_recursive(search_char)
 
         #######################################################################
         # Save symbols DataFrame to csv
         #######################################################################
         logger.info("Symbols obtained")
-        logger.info("Number of symbol entries: %d", len(self.symbols))
+        logger.info("Number of symbol entries: %d", len(self.market_data.symbols))
 
-        if not self.symbols.empty:
-            self.symbols.sort_index(inplace=True)
+        if not self.market_data.symbols.empty:
+            self.market_data.symbols.sort_index(inplace=True)
 
         logger.info("saving symbols DataFrame to csv")
-        self.symbols.to_csv(symbols_path)
+        self.market_data.symbols.to_csv(symbols_path)
 
         #######################################################################
         # Save stock_symbols DataFrame to csv
         #######################################################################
         logger.info("Symbols obtained")
-        logger.info("Number of stoc_symbol entries: %d", len(self.stock_symbols))
+        logger.info("Number of stoc_symbol entries: %d", len(self.market_data.stock_symbols))
 
-        if not self.stock_symbols.empty:
-            self.stock_symbols.sort_index(inplace=True)
+        if not self.market_data.stock_symbols.empty:
+            self.market_data.stock_symbols.sort_index(inplace=True)
 
         logger.info("saving stock_symbols DataFrame to csv")
-        self.stock_symbols.to_csv(stock_symbols_path)
+        self.market_data.stock_symbols.to_csv(stock_symbols_path)
 
         #######################################################################
         # Update and save symbols_status DataFrame to csv. The timestamp
@@ -1032,12 +1036,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # is sorted to put that entry last and move the next letter to
         # processed into the first slot for next time we call this method.
         #######################################################################
-        self.symbols_status.index = [
+        self.market_data.symbols_status.index = [
             pd.Timestamp.now()
-        ] + self.symbols_status.index.to_list()[1:]
-        self.symbols_status.sort_index(inplace=True)
+        ] + self.market_data.symbols_status.index.to_list()[1:]
+        self.market_data.symbols_status.sort_index(inplace=True)
         logger.info("saving symbols_status DataFrame to csv")
-        self.symbols_status.to_csv(symbols_status_path)
+        self.market_data.symbols_status.to_csv(symbols_status_path)
 
     ###########################################################################
     # get_symbols_recursive
@@ -1051,7 +1055,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         """
         self.request_symbols(search_string)
         # if self.num_symbols_received > 15:  # possibly more to find
-        if self.algo_wrapper.num_symbols_received > 15:  # possibly more to find
+        if self.market_data.num_symbols_received > 15:  # possibly more to find
             # call recursively to get more symbols for this char sequence
             for add_char in string.ascii_uppercase + ".":
                 longer_search_string = search_string + add_char
@@ -1074,8 +1078,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         #######################################################################
         self.response_complete_event.clear()  # reset the wait bit first
         # reqId = self.get_req_id()  # bump reqId and return it
-        reqId = self.algo_client.get_req_id()  # bump reqId and return it
-        self.reqMatchingSymbols(reqId, symbol_to_get)
+        req_id = self.algo_client.get_req_id()  # bump reqId and return it
+        self.algo_client.reqMatchingSymbols(req_id, symbol_to_get)
         # the following sleep for 1 second is required to avoid
         # overloading IB with requests (they ask for 1 second). Note that we
         # are doing the sleep after the request is made and before we wait
@@ -1084,7 +1088,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # we sleep, thus helping to reduce the entire wait (as opposed to
         # doing the 1 second wait before making the request).
         time.sleep(self.request_throttle_secs)  # avoid overloading IB
-        self.wait_for_request_completion(reqId)
+        self.wait_for_request_completion(req_id)
 
     # ###########################################################################
     # # symbolSamples - callback
@@ -1215,9 +1219,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # make the request for details
         ################################################################
         self.response_complete_event.clear()
-        reqId = self.algo_client.get_req_id()  # bump reqId and return it
-        self.reqContractDetails(reqId, contract)
-        self.wait_for_request_completion(reqId)
+        req_id = self.algo_client.get_req_id()  # bump reqId and return it
+        self.algo_client.reqContractDetails(req_id, contract)
+        self.wait_for_request_completion(req_id)
 
         #######################################################################
         # Save contracts and contract_details DataFrames
@@ -1323,70 +1327,70 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # make the request for fundamental data
         ################################################################
         self.response_complete_event.clear()
-        reqId = self.algo_client.get_req_id()  # bump reqId and return it
-        self.reqFundamentalData(reqId, contract, report_type, [])
-        self.wait_for_request_completion(reqId)
+        req_id = self.algo_client.get_req_id()  # bump reqId and return it
+        self.algo_client.reqFundamentalData(req_id, contract, report_type, [])
+        self.wait_for_request_completion(req_id)
 
         #######################################################################
         # Save fundamental_data DataFrame
         #######################################################################
         self.save_fundamental_data()
 
-    ###########################################################################
-    # fundamentalData callback method
-    ###########################################################################
-    def fundamentalData(self, request_id: int, data: str) -> None:
-        """Receive IB reply for reqFundamentalData request.
-
-        Args:
-            request_id: the id used on the request
-            data: xml string of fundamental data
-
-        """
-        logger.info("entered for request_id %d", request_id)
-
-        print("\nfundamental data:\n", data)
-        # print('contract_details.__dict__:\n', contract_details.__dict__)
-
-        # remove the contract if it already exists in the DataFrame
-        # as we want the newest information to replace the old
-        # conId = contract_details.contract.conId
-        # self.contracts.drop(conId,
-        #                     inplace=True,
-        #                     errors='ignore')
-        # get the conId to use as an index
-
-        # Add the contract to the DataFrame using contract dict.
-        # Note that if the contract contains an array for one of the
-        # fields, the DataFrame create will reject it because if the
-        # single item conId for the index. The contract get_dict method
-        # returns a dictionary that can be used to instantiate the
-        # DataFrame item, and any class instances or arrays of class
-        # instances will be returned as a string so that the DataFrame
-        # item will work
-        # contract_dict = get_contract_dict(contract_details.contract)
-        # self.contracts = self.contracts.append(
-        #             pd.DataFrame(contract_dict,
-        #                          index=[conId]))
-
-        # remove the contract_details if it already exists in the DataFrame
-        # as we want the newest information to replace the old
-        # self.contract_details.drop(conId,
-        #                            inplace=True,
-        #                            errors='ignore')
-
-        # remove the contract from the contract_details
-        # contract_details.contract = None
-
-        # add the contract details to the DataFrame
-        # contract_details_dict = get_contract_details_dict(contract_details)
-        # self.contract_details = self.contract_details.append(
-        #             pd.DataFrame(contract_details_dict,
-        #                          index=[conId]))
-
-        # print('self.contract_details:\n', contract_details)
-        # print('self.contract_details.__dict__:\n',
-        #       self.contract_details.__dict__)
+    # ###########################################################################
+    # # fundamentalData callback method
+    # ###########################################################################
+    # def fundamentalData(self, request_id: int, data: str) -> None:
+    #     """Receive IB reply for reqFundamentalData request.
+    #
+    #     Args:
+    #         request_id: the id used on the request
+    #         data: xml string of fundamental data
+    #
+    #     """
+    #     logger.info("entered for request_id %d", request_id)
+    #
+    #     print("\nfundamental data:\n", data)
+    #     # print('contract_details.__dict__:\n', contract_details.__dict__)
+    #
+    #     # remove the contract if it already exists in the DataFrame
+    #     # as we want the newest information to replace the old
+    #     # conId = contract_details.contract.conId
+    #     # self.contracts.drop(conId,
+    #     #                     inplace=True,
+    #     #                     errors='ignore')
+    #     # get the conId to use as an index
+    #
+    #     # Add the contract to the DataFrame using contract dict.
+    #     # Note that if the contract contains an array for one of the
+    #     # fields, the DataFrame create will reject it because if the
+    #     # single item conId for the index. The contract get_dict method
+    #     # returns a dictionary that can be used to instantiate the
+    #     # DataFrame item, and any class instances or arrays of class
+    #     # instances will be returned as a string so that the DataFrame
+    #     # item will work
+    #     # contract_dict = get_contract_dict(contract_details.contract)
+    #     # self.contracts = self.contracts.append(
+    #     #             pd.DataFrame(contract_dict,
+    #     #                          index=[conId]))
+    #
+    #     # remove the contract_details if it already exists in the DataFrame
+    #     # as we want the newest information to replace the old
+    #     # self.contract_details.drop(conId,
+    #     #                            inplace=True,
+    #     #                            errors='ignore')
+    #
+    #     # remove the contract from the contract_details
+    #     # contract_details.contract = None
+    #
+    #     # add the contract details to the DataFrame
+    #     # contract_details_dict = get_contract_details_dict(contract_details)
+    #     # self.contract_details = self.contract_details.append(
+    #     #             pd.DataFrame(contract_details_dict,
+    #     #                          index=[conId]))
+    #
+    #     # print('self.contract_details:\n', contract_details)
+    #     # print('self.contract_details.__dict__:\n',
+    #     #       self.contract_details.__dict__)
 
 
 # @time_box
