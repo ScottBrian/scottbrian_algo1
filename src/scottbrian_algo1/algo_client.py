@@ -40,6 +40,7 @@ from scottbrian_utils.unique_ts import UniqueTS, UniqueTStamp
 # Local
 ########################################################################
 # from scottbrian_algo1.algo_wrapper import AlgoWrapper
+from scottbrian_algo1.algo_data import MarketData
 
 ########################################################################
 # Types
@@ -107,10 +108,11 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         # wrapper: AlgoWrapper,
         disconnect_lock: Lock,
         response_complete_event: Event,
-        symbols: pd.DataFrame,
-        stock_symbols: pd.DataFrame,
-        contracts: pd.DataFrame,
-        contract_details: pd.DataFrame,
+        market_data: MarketData,
+        # symbols: pd.DataFrame,
+        # stock_symbols: pd.DataFrame,
+        # contracts: pd.DataFrame,
+        # contract_details: pd.DataFrame,
     ) -> None:
         """Instantiate the AlgoClient.
 
@@ -131,10 +133,11 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
             client_name=client_name,
             algo_client=self,
             response_complete_event=response_complete_event,
-            symbols=symbols,
-            stock_symbols=stock_symbols,
-            contracts=contracts,
-            contract_details=contract_details,
+            market_data=market_data,
+            # symbols=symbols,
+            # stock_symbols=stock_symbols,
+            # contracts=contracts,
+            # contract_details=contract_details,
         )
         EClient.__init__(self, wrapper=self.algo_wrapper)
         Thread.__init__(self)

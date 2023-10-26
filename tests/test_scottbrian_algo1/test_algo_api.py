@@ -89,8 +89,8 @@ def verify_algo_app_initialized(algo_app: "AlgoApp") -> None:
     """
     assert len(algo_app.ds_catalog) > 0
     assert algo_app.algo_client.algo_wrapper.request_id == 0
-    assert algo_app.symbols.empty
-    assert algo_app.stock_symbols.empty
+    assert algo_app.market_data.symbols.empty
+    assert algo_app.market_data.stock_symbols.empty
     assert algo_app.response_complete_event.is_set() is False
     assert algo_app.__repr__() == "AlgoApp(ds_catalog)"
     # assert algo_app.ibapi_client_smart_thread.thread is None
@@ -187,7 +187,6 @@ class TestAlgoAppConnect:
     ####################################################################
     # test_mock_connect_to_ib
     ####################################################################
-    @pytest.mark.parametrize("async_arg", [True, False])
     @pytest.mark.parametrize("delay_arg", [0, 2, 4])
     @pytest.mark.parametrize(
         "timeout_type_arg",
@@ -199,7 +198,6 @@ class TestAlgoAppConnect:
     )
     def test_mock_connect_to_ib(
         self,
-        async_arg: bool,
         delay_arg: int,
         timeout_type_arg: int,
         cat_app: "MockIB",
@@ -208,7 +206,6 @@ class TestAlgoAppConnect:
         """Test connecting to IB.
 
         Args:
-            async_arg: specifies whether to make an async request
             delay_arg: number of seconds to delay
             timeout_type_arg: specifies whether timeout should occur
             cat_app: pytest fixture (see conftest.py)
@@ -227,63 +224,27 @@ class TestAlgoAppConnect:
         logger.debug("about to connect")
 
         if timeout_type_arg == TimeoutType.TimeoutNone:
-            req_num = algo_app.connect_to_ib(
-                ip_addr="127.0.0.1",
-                port=algo_app.PORT_FOR_LIVE_TRADING,
-                client_id=1,
-                async_req=async_arg,
+            algo_app.connect_to_ib(
+                ip_addr="127.0.0.1", port=algo_app.PORT_FOR_LIVE_TRADING, client_id=1
             )
         elif timeout_type_arg == TimeoutType.TimeoutFalse:
             timeout_value = delay_arg * 2
-            req_num = algo_app.connect_to_ib(
+            algo_app.connect_to_ib(
                 ip_addr="127.0.0.1",
                 port=algo_app.PORT_FOR_LIVE_TRADING,
                 client_id=1,
                 timeout=timeout_value,
-                async_req=async_arg,
             )
         else:
-            if async_arg:
-                timeout_value = 10
-                req_num = algo_app.connect_to_ib(
+            timeout_value = delay_arg / 2.0
+            cat_app.delay_value = -1
+            with pytest.raises(ConnectTimeout):
+                algo_app.connect_to_ib(
                     ip_addr="127.0.0.1",
                     port=algo_app.PORT_FOR_LIVE_TRADING,
                     client_id=1,
                     timeout=timeout_value,
-                    async_req=async_arg,
                 )
-            else:
-                timeout_value = delay_arg / 2.0
-                cat_app.delay_value = -1
-                with pytest.raises(ConnectTimeout):
-                    req_num = algo_app.connect_to_ib(
-                        ip_addr="127.0.0.1",
-                        port=algo_app.PORT_FOR_LIVE_TRADING,
-                        client_id=1,
-                        timeout=timeout_value,
-                        async_req=async_arg,
-                    )
-
-        if async_arg:
-            assert req_num is not None
-            if timeout_type_arg == TimeoutType.TimeoutNone:
-                req_result = None
-                while req_result is None:
-                    req_result = algo_app.get_async_results(req_num)
-                assert req_result.ret_data is None
-            elif timeout_type_arg == TimeoutType.TimeoutFalse:
-                req_result = algo_app.get_async_results(req_num, timeout=10)
-                assert req_result.ret_data is None
-            else:
-                with pytest.raises(SmartThreadRequestTimedOut):
-                    timeout_value = delay_arg / 2.0
-                    req_result = algo_app.get_async_results(
-                        req_num, timeout=timeout_value
-                    )
-
-        else:
-            if timeout_type_arg != TimeoutType.TimeoutTrue:
-                assert req_num is None
 
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
             time.sleep(delay_arg + 1)
@@ -295,12 +256,198 @@ class TestAlgoAppConnect:
 
         verify_algo_app_disconnected(algo_app)
 
-        # do_breakdown(test_smart_thread=test_smart_thread, algo_app=algo_app)
+    ####################################################################
+    # test_mock_connect_to_ib
+    ####################################################################
+    @pytest.mark.parametrize("delay_arg", [0, 2, 4])
+    @pytest.mark.parametrize(
+        "timeout_type_arg",
+        [
+            TimeoutType.TimeoutNone,
+            TimeoutType.TimeoutFalse,
+            TimeoutType.TimeoutTrue,
+        ],
+    )
+    def test_mock_connect_to_ib_async(
+        self,
+        delay_arg: int,
+        timeout_type_arg: int,
+        cat_app: "MockIB",
+    ) -> None:
+        """Test connecting to IB.
 
+        Args:
+            delay_arg: number of seconds to delay
+            timeout_type_arg: specifies whether timeout should occur
+            cat_app: pytest fixture (see conftest.py)
+        """
+        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
+            return
+
+        cat_app.delay_value = delay_arg
+
+        algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
+        verify_algo_app_initialized(algo_app)
+
+        # we are testing connect_to_ib and the subsequent code that gets
+        # control as a result, such as getting the first requestID and
+        # then starting a separate thread for the run loop.
+        logger.debug("about to connect")
+
+        if timeout_type_arg == TimeoutType.TimeoutNone:
+            req_num = algo_app.connect_to_ib_async(
+                ip_addr="127.0.0.1",
+                port=algo_app.PORT_FOR_LIVE_TRADING,
+                client_id=1,
+                async_req=True,
+            )
+        elif timeout_type_arg == TimeoutType.TimeoutFalse:
+            timeout_value = delay_arg * 2
+            req_num = algo_app.connect_to_ib_async(
+                ip_addr="127.0.0.1",
+                port=algo_app.PORT_FOR_LIVE_TRADING,
+                client_id=1,
+                timeout=timeout_value,
+            )
+        else:
+            timeout_value = 10
+            req_num = algo_app.connect_to_ib_async(
+                ip_addr="127.0.0.1",
+                port=algo_app.PORT_FOR_LIVE_TRADING,
+                client_id=1,
+                timeout=timeout_value,
+            )
+
+        assert req_num is not None
+        if timeout_type_arg == TimeoutType.TimeoutNone:
+            req_result = None
+            while req_result is None:
+                req_result = algo_app.get_async_results(req_num)
+            assert req_result.ret_data is None
+        elif timeout_type_arg == TimeoutType.TimeoutFalse:
+            req_result = algo_app.get_async_results(req_num, timeout=10)
+            assert req_result.ret_data is None
+        else:
+            with pytest.raises(SmartThreadRequestTimedOut):
+                timeout_value = delay_arg / 2.0
+                req_result = algo_app.get_async_results(req_num, timeout=timeout_value)
+
+        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
+            time.sleep(delay_arg + 1)
+
+        if cat_app.delay_value != -1:
+            verify_algo_app_connected(algo_app)
+
+            algo_app.disconnect_from_ib()
+
+        verify_algo_app_disconnected(algo_app)
+
+    # do_breakdown(test_smart_thread=test_smart_thread, algo_app=algo_app)
+
+    # @pytest.mark.parametrize("delay_arg", [0, 2, 4])
+    # @pytest.mark.parametrize(
+    #     "timeout_type_arg",
+    #     [
+    #         TimeoutType.TimeoutNone,
+    #         TimeoutType.TimeoutFalse,
+    #         TimeoutType.TimeoutTrue,
+    #     ],
+    # )
+    # def test_mock_connect_to_ib_async(
+    #     self,
+    #     delay_arg: int,
+    #     timeout_type_arg: int,
+    #     cat_app: "MockIB",
+    #     # mock_ib: "MockIB",
+    # ) -> None:
+    #     """Test connecting to IB.
+    #
+    #     Args:
+    #         delay_arg: number of seconds to delay
+    #         timeout_type_arg: specifies whether timeout should occur
+    #         cat_app: pytest fixture (see conftest.py)
+    #     """
+    #     if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
+    #         return
+    #
+    #     cat_app.delay_value = delay_arg
+    #
+    #     algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
+    #     verify_algo_app_initialized(algo_app)
+    #
+    #     # we are testing connect_to_ib and the subsequent code that gets
+    #     # control as a result, such as getting the first requestID and
+    #     # then starting a separate thread for the run loop.
+    #     logger.debug("about to connect")
+    #
+    #     if timeout_type_arg == TimeoutType.TimeoutNone:
+    #         req_num = algo_app.connect_to_ib_async(
+    #             ip_addr="127.0.0.1",
+    #             port=algo_app.PORT_FOR_LIVE_TRADING,
+    #             client_id=1)
+    #     elif timeout_type_arg == TimeoutType.TimeoutFalse:
+    #         timeout_value = delay_arg * 2
+    #         req_num = algo_app.connect_to_ib_async(
+    #             ip_addr="127.0.0.1",
+    #             port=algo_app.PORT_FOR_LIVE_TRADING,
+    #             client_id=1,
+    #             timeout=timeout_value)
+    #     else:
+    #         if async_arg:
+    #             timeout_value = 10
+    #             req_num = algo_app.connect_to_ib(
+    #                 ip_addr="127.0.0.1",
+    #                 port=algo_app.PORT_FOR_LIVE_TRADING,
+    #                 client_id=1,
+    #                 timeout=timeout_value,
+    #                 async_req=async_arg,
+    #             )
+    #         else:
+    #             timeout_value = delay_arg / 2.0
+    #             cat_app.delay_value = -1
+    #             with pytest.raises(ConnectTimeout):
+    #                 req_num = algo_app.connect_to_ib(
+    #                     ip_addr="127.0.0.1",
+    #                     port=algo_app.PORT_FOR_LIVE_TRADING,
+    #                     client_id=1,
+    #                     timeout=timeout_value,
+    #                     async_req=async_arg,
+    #                 )
+    #
+    #     if async_arg:
+    #         assert req_num is not None
+    #         if timeout_type_arg == TimeoutType.TimeoutNone:
+    #             req_result = None
+    #             while req_result is None:
+    #                 req_result = algo_app.get_async_results(req_num)
+    #             assert req_result.ret_data is None
+    #         elif timeout_type_arg == TimeoutType.TimeoutFalse:
+    #             req_result = algo_app.get_async_results(req_num, timeout=10)
+    #             assert req_result.ret_data is None
+    #         else:
+    #             with pytest.raises(SmartThreadRequestTimedOut):
+    #                 timeout_value = delay_arg / 2.0
+    #                 req_result = algo_app.get_async_results(
+    #                     req_num, timeout=timeout_value
+    #                 )
+    #
+    #     else:
+    #         if timeout_type_arg != TimeoutType.TimeoutTrue:
+    #             assert req_num is None
+    #
+    #     if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
+    #         time.sleep(delay_arg + 1)
+    #
+    #     if cat_app.delay_value != -1:
+    #         verify_algo_app_connected(algo_app)
+    #
+    #         algo_app.disconnect_from_ib()
+    #
+    #     verify_algo_app_disconnected(algo_app)
     ####################################################################
     # test_mock_connect_to_ib_async
     ####################################################################
-    def test_mock_connect_to_ib_async(
+    def test_mock_connect_to_ib_async2(
         self,
         cat_app: "FileCatalog",
     ) -> None:
@@ -559,8 +706,8 @@ class TestAlgoAppMatchingSymbols:
                     search_pattern,
                     idx,
                 )
-                algo_app.symbols = pd.DataFrame()
-                algo_app.stock_symbols = pd.DataFrame()
+                algo_app.market_data.symbols = pd.DataFrame()
+                algo_app.market_data.stock_symbols = pd.DataFrame()
                 verify_match_symbols(
                     algo_app, mock_ib, search_pattern, exp_counts=exp_counts, req_type=1
                 )
@@ -570,8 +717,8 @@ class TestAlgoAppMatchingSymbols:
                     search_pattern,
                     idx,
                 )
-                algo_app.symbols = pd.DataFrame()
-                algo_app.stock_symbols = pd.DataFrame()
+                algo_app.market_data.symbols = pd.DataFrame()
+                algo_app.market_data.stock_symbols = pd.DataFrame()
                 verify_match_symbols(
                     algo_app, mock_ib, search_pattern, exp_counts=exp_counts, req_type=2
                 )
@@ -801,7 +948,7 @@ def verify_match_symbols(
         logger.debug("about to get_symbols_recursive for %s", pattern)
         algo_app.get_symbols_recursive(pattern)
         assert algo_app.request_id >= 2
-        # algo_app.stock_symbols.drop_duplicates(inplace=True)
+        # algo_app.market_data.stock_symbols.drop_duplicates(inplace=True)
 
     logger.debug("getting stock_sym_match_descs")
     symbol_starts_with_pattern = mock_ib.contract_descriptions["symbol"].map(
@@ -842,13 +989,16 @@ def verify_match_symbols(
     logger.debug("verifying results counts")
 
     if req_type == 1:
-        assert len(algo_app.stock_symbols) == exp_counts.stock_sym_non_recursive
-        assert len(algo_app.symbols) == exp_counts.sym_non_recursive
+        assert (
+            len(algo_app.market_data.stock_symbols)
+            == exp_counts.stock_sym_non_recursive
+        )
+        assert len(algo_app.market_data.symbols) == exp_counts.sym_non_recursive
         assert len(stock_sym_match_descs) == exp_counts.stock_sym_recursive
         assert len(sym_match_descs) == exp_counts.sym_recursive
     else:
-        assert len(algo_app.stock_symbols) == exp_counts.stock_sym_recursive
-        assert len(algo_app.symbols) == exp_counts.sym_recursive
+        assert len(algo_app.market_data.stock_symbols) == exp_counts.stock_sym_recursive
+        assert len(algo_app.market_data.symbols) == exp_counts.sym_recursive
         assert len(stock_sym_match_descs) == exp_counts.stock_sym_recursive
         assert len(sym_match_descs) == exp_counts.sym_recursive
 
@@ -860,8 +1010,8 @@ def verify_match_symbols(
             ]
         stock_sym_match_descs = stock_sym_match_descs.set_index(["conId"]).sort_index()
 
-        algo_app.stock_symbols.sort_index(inplace=True)
-        comp_df = algo_app.stock_symbols.compare(stock_sym_match_descs)
+        algo_app.market_data.stock_symbols.sort_index(inplace=True)
+        comp_df = algo_app.market_data.stock_symbols.compare(stock_sym_match_descs)
         assert comp_df.empty
 
     if exp_counts.sym_recursive > 0:
@@ -869,9 +1019,9 @@ def verify_match_symbols(
             sym_match_descs = sym_match_descs.iloc[0 : exp_counts.sym_non_recursive]
         sym_match_descs = sym_match_descs.set_index(["conId"]).sort_index()
 
-        algo_app.symbols.sort_index(inplace=True)
-        comp_df = algo_app.symbols.compare(sym_match_descs)
-        # logger.debug(f'{algo_app.symbols=}')
+        algo_app.market_data.symbols.sort_index(inplace=True)
+        comp_df = algo_app.market_data.symbols.compare(sym_match_descs)
+        # logger.debug(f'{algo_app.market_data.symbols=}')
         # logger.debug(f'{sym_match_descs=}')
         # logger.debug(f'{comp_df=}')
         assert comp_df.empty
@@ -1048,12 +1198,14 @@ def verify_get_symbols(
     # number should now be what was there from the previous
     # iteration of this loop plus what we just now added
     assert len(stock_sym_match_descs) == exp_counts.stock_sym_recursive
-    assert len(algo_app.stock_symbols) == (
+    assert len(algo_app.market_data.stock_symbols) == (
         exp_counts.stock_sym_recursive + len(sym_dfs.stock_sym_df)
     )
 
     assert len(sym_match_descs) == exp_counts.sym_recursive
-    assert len(algo_app.symbols) == (exp_counts.sym_recursive + len(sym_dfs.sym_df))
+    assert len(algo_app.market_data.symbols) == (
+        exp_counts.sym_recursive + len(sym_dfs.sym_df)
+    )
 
     if exp_counts.stock_sym_recursive > 0:
         stock_sym_match_descs = stock_sym_match_descs.set_index(["conId"]).sort_index()
@@ -1074,10 +1226,10 @@ def verify_get_symbols(
             index_col=0,
             converters={"derivativeSecTypes": lambda x: eval(x)},
         )
-        comp_df = algo_app.stock_symbols.compare(sym_dfs.stock_sym_df)
+        comp_df = algo_app.market_data.stock_symbols.compare(sym_dfs.stock_sym_df)
         assert comp_df.empty
 
-        comp_df = algo_app.stock_symbols.compare(sym_dfs.mock_stock_sym_df)
+        comp_df = algo_app.market_data.stock_symbols.compare(sym_dfs.mock_stock_sym_df)
         assert comp_df.empty
 
     if exp_counts.sym_recursive > 0:
@@ -1098,10 +1250,10 @@ def verify_get_symbols(
             converters={"derivativeSecTypes": lambda x: eval(x)},
         )
 
-        comp_df = algo_app.symbols.compare(sym_dfs.sym_df)
+        comp_df = algo_app.market_data.symbols.compare(sym_dfs.sym_df)
         assert comp_df.empty
 
-        comp_df = algo_app.symbols.compare(sym_dfs.mock_sym_df)
+        comp_df = algo_app.market_data.symbols.compare(sym_dfs.mock_sym_df)
         assert comp_df.empty
 
     return sym_dfs

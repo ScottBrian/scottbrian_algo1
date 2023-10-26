@@ -38,6 +38,7 @@ from scottbrian_utils.diag_msg import get_formatted_call_sequence
 # Local
 ########################################################################
 from scottbrian_algo1.algo_client import AlgoClient
+from scottbrian_algo1.algo_data import MarketData
 
 ########################################################################
 # logging
@@ -67,10 +68,11 @@ class AlgoWrapper(EWrapper):  # type: ignore
         client_name: str,
         algo_client: AlgoClient,
         response_complete_event: Event,
-        symbols: pd.DataFrame,
-        stock_symbols: pd.DataFrame,
-        contracts: pd.DataFrame,
-        contract_details: pd.DataFrame,
+        market_data: MarketData,
+        # symbols: pd.DataFrame,
+        # stock_symbols: pd.DataFrame,
+        # contracts: pd.DataFrame,
+        # contract_details: pd.DataFrame,
     ) -> None:
         """Instantiate the AlgoClient.
 
@@ -91,18 +93,19 @@ class AlgoWrapper(EWrapper):  # type: ignore
         self.request_id: int = 0
         self.error_reqId: int = 0
         self.response_complete_event = response_complete_event
+        self.market_data = market_data
         # self.nextValidId_event = Event()
         #
         # # stock symbols
         # self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
         # self.symbols_status = pd.DataFrame()
-        self.num_symbols_received = 0
-        self.symbols = symbols
-        self.stock_symbols = stock_symbols
+        # self.num_symbols_received = 0
+        # self.symbols = symbols
+        # self.stock_symbols = stock_symbols
         #
         # # contract details
-        self.contracts = contracts
-        self.contract_details = contract_details
+        # self.contracts = contracts
+        # self.contract_details = contract_details
         #
         # # fundamental data
         # self.fundamental_data = pd.DataFrame()
@@ -231,8 +234,10 @@ class AlgoWrapper(EWrapper):  # type: ignore
         request additional information or to make trades.
         """
         logger.info("entered for request_id %d", request_id)
-        self.num_symbols_received = len(contract_descriptions)
-        logger.info("Number of descriptions received: %d", self.num_symbols_received)
+        self.market_data.num_symbols_received = len(contract_descriptions)
+        logger.info(
+            "Number of descriptions received: %d", self.market_data.num_symbols_received
+        )
 
         for desc in contract_descriptions:
             logger.debug("Symbol: {}".format(desc.contract.symbol))
@@ -244,14 +249,14 @@ class AlgoWrapper(EWrapper):  # type: ignore
                 and desc.contract.currency == "USD"
                 and "OPT" in desc.derivativeSecTypes
             ):
-                if conId in self.stock_symbols.index:
-                    self.stock_symbols.loc[conId] = pd.Series(
+                if conId in self.market_data.stock_symbols.index:
+                    self.market_data.stock_symbols.loc[conId] = pd.Series(
                         get_contract_description_dict(desc)
                     )
                 else:
-                    self.stock_symbols = pd.concat(
+                    self.market_data.stock_symbols = pd.concat(
                         [
-                            self.stock_symbols,
+                            self.market_data.stock_symbols,
                             pd.DataFrame(
                                 get_contract_description_dict(desc, df=True),
                                 index=[conId],
@@ -261,14 +266,14 @@ class AlgoWrapper(EWrapper):  # type: ignore
             else:  # all other symbols
                 # update the descriptor if it already exists in the DataFrame
                 # as we want the newest information to replace the old
-                if conId in self.symbols.index:
-                    self.symbols.loc[conId] = pd.Series(
+                if conId in self.market_data.symbols.index:
+                    self.market_data.symbols.loc[conId] = pd.Series(
                         get_contract_description_dict(desc)
                     )
                 else:
-                    self.symbols = pd.concat(
+                    self.market_data.symbols = pd.concat(
                         [
-                            self.symbols,
+                            self.market_data.symbols,
                             pd.DataFrame(
                                 get_contract_description_dict(desc, df=True),
                                 index=[conId],
@@ -308,21 +313,23 @@ class AlgoWrapper(EWrapper):  # type: ignore
         # instances will be returned as a string so that the DataFrame can be
         # stored and retrieved as csv files.
         contract_dict = get_contract_dict(contract_details.contract)
-        if conId in self.contracts.index:
-            self.contracts.loc[conId] = pd.Series(contract_dict)
+        if conId in self.market_data.contracts.index:
+            self.market_data.contracts.loc[conId] = pd.Series(contract_dict)
         else:
-            self.contracts = pd.concat(
-                [self.contracts, pd.DataFrame(contract_dict, index=[conId])]
+            self.market_data.contracts = pd.concat(
+                [self.market_data.contracts, pd.DataFrame(contract_dict, index=[conId])]
             )
 
         # add the contract details to the DataFrame
         contract_details_dict = get_contract_details_dict(contract_details)
-        if conId in self.contract_details.index:
-            self.contract_details.loc[conId] = pd.Series(contract_details_dict)
+        if conId in self.market_data.contract_details.index:
+            self.market_data.contract_details.loc[conId] = pd.Series(
+                contract_details_dict
+            )
         else:
-            self.contract_details = pd.concat(
+            self.market_data.contract_details = pd.concat(
                 [
-                    self.contract_details,
+                    self.market_data.contract_details,
                     pd.DataFrame(contract_details_dict, index=[conId]),
                 ]
             )
@@ -359,7 +366,7 @@ class AlgoWrapper(EWrapper):  # type: ignore
         # remove the contract if it already exists in the DataFrame
         # as we want the newest information to replace the old
         # conId = contract_details.contract.conId
-        # self.contracts.drop(conId,
+        # self.market_data.contracts.drop(conId,
         #                     inplace=True,
         #                     errors='ignore')
         # get the conId to use as an index
@@ -373,13 +380,13 @@ class AlgoWrapper(EWrapper):  # type: ignore
         # instances will be returned as a string so that the DataFrame
         # item will work
         # contract_dict = get_contract_dict(contract_details.contract)
-        # self.contracts = self.contracts.append(
+        # self.market_data.contracts = self.market_data.contracts.append(
         #             pd.DataFrame(contract_dict,
         #                          index=[conId]))
 
         # remove the contract_details if it already exists in the DataFrame
         # as we want the newest information to replace the old
-        # self.contract_details.drop(conId,
+        # self.market_data.contract_details.drop(conId,
         #                            inplace=True,
         #                            errors='ignore')
 
@@ -388,10 +395,10 @@ class AlgoWrapper(EWrapper):  # type: ignore
 
         # add the contract details to the DataFrame
         # contract_details_dict = get_contract_details_dict(contract_details)
-        # self.contract_details = self.contract_details.append(
+        # self.market_data.contract_details = self.market_data.contract_details.append(
         #             pd.DataFrame(contract_details_dict,
         #                          index=[conId]))
 
-        # print('self.contract_details:\n', contract_details)
-        # print('self.contract_details.__dict__:\n',
-        #       self.contract_details.__dict__)
+        # print('self.market_data.contract_details:\n', contract_details)
+        # print('self.market_data.contract_details.__dict__:\n',
+        #       self.market_data.contract_details.__dict__)

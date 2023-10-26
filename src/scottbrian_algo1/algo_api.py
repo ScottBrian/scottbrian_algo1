@@ -46,6 +46,7 @@ import ast
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, auto
+import functools
 import logging
 from pathlib import Path
 import string
@@ -276,6 +277,7 @@ def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
 # make_sync_async
 ####################################################################
 def make_async(func: Callable[..., Any]) -> Callable[..., Any]:
+    @functools.wraps(func)
     def wrapped(self, *args, **kwargs) -> Any:
         logger.debug(f"{args=}, {kwargs=}")
         if "async_args" not in kwargs or kwargs["async_args"] is None:
@@ -304,6 +306,45 @@ def make_async(func: Callable[..., Any]) -> Callable[..., Any]:
         return ret_value
 
     return wrapped
+
+
+####################################################################
+# make_sync_async
+####################################################################
+def make_async2(sync_func: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator_make_async(func: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(func)
+        def wrapper_make_async(self, *args, **kwargs) -> Any:
+            logger.debug(f"{args=}, {kwargs=}")
+            if "async_args" not in kwargs or kwargs["async_args"] is None:
+                ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+                # if kwargs["async_req"]:
+                if "async_req" not in kwargs or kwargs["async_req"] is True:
+                    req_block = RequestBlock(
+                        func_to_call=self.connect_to_ib,
+                        func_args=args,
+                        func_kwargs=kwargs,
+                        ref_num=ref_num,
+                    )
+
+                    SmartThread(
+                        group_name=self.group_name,
+                        name=f"async_request_{req_block.ref_num}",
+                        target=self.handle_async_request,
+                        thread_parm_name="req_smart_thread",
+                        kwargs={"req_block": req_block},
+                    )
+                    return ref_num
+
+                kwargs["async_args"] = AsyncArgs(smart_thread=self, ref_num=ref_num)
+
+            ret_value = sync_func(self, *args, **kwargs)
+
+            return ret_value
+
+        return wrapper_make_async
+
+    return decorator_make_async
 
 
 ########################################################################
@@ -370,18 +411,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self.response_complete_event = Event()
         # self.nextValidId_event = Event()
 
-        # stock symbols
         self.request_throttle_secs = AlgoApp.REQUEST_THROTTLE_SECONDS
         self.market_data = MarketData()
-        # self.symbols_status = pd.DataFrame()
-        # self.num_symbols_received = 0
-        # self.symbols = pd.DataFrame()
-        # self.num_stock_symbols_received = 0
-        # self.stock_symbols = pd.DataFrame()
-
-        # contract details
-        # self.contracts = pd.DataFrame()
-        # self.contract_details = pd.DataFrame()
 
         # fundamental data
         # self.fundamental_data = pd.DataFrame()
@@ -397,10 +428,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             # wrapper=self.algo_wrapper,
             disconnect_lock=self.disconnect_lock,
             response_complete_event=self.response_complete_event,
-            symbols=self.symbols,
-            stock_symbols=self.stock_symbols,
-            contracts=self.contracts,
-            contract_details=self.contract_details,
+            market_data=self.market_data
+            # symbols=self.symbols,
+            # stock_symbols=self.stock_symbols,
+            # contracts=self.contracts,
+            # contract_details=self.contract_details,
         )
 
     ###########################################################################
@@ -434,7 +466,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # connect_to_ib
     ###########################################################################
-    @make_async
     def connect_to_ib(
         self,
         *,
@@ -444,7 +475,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         timeout: IntFloat = 10,
         async_req: bool = False,
         async_args: Optional[AsyncArgs] = None,
-    ) -> Optional[UniqueTStamp]:
+    ) -> None:
         """Connect to IB on the given addr and port and client id.
 
         Args:
@@ -458,6 +489,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
+        if async_args is None:
+            async_args = AsyncArgs(smart_thread=self, ref_num=UniqueTS.get_unique_ts())
+
         logger.debug(
             f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, "
             f"{async_req=}, {async_args=}"
@@ -513,6 +547,32 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             raise ConnectTimeout(error_msg)
 
         logger.info("connect success")
+
+    @make_async2(connect_to_ib)
+    def connect_to_ib_async(
+        self,
+        *,
+        ip_addr: str,
+        port: int,
+        client_id: int,
+        timeout: IntFloat = 10,
+        async_req: bool = True,
+        async_args: Optional[AsyncArgs] = None,
+    ) -> UniqueTStamp:
+        """Connect to IB on the given addr and port and client id.
+
+        Args:
+            ip_addr: addr to connect to
+            port: port to connect to
+            client_id: client id to use for connection
+            async_req: if true, the request will be done asynchronously
+            async_args: args for async request
+
+        Raises:
+            ConnectTimeout: timed out waiting for next valid request ID
+
+        """
+        pass
 
     ####################################################################
     # setup_client_request
@@ -819,7 +879,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         logger.info("contract_details path: %s", contract_details_path)
 
         if contract_details_path.exists():
-            self.contract_details = pd.read_csv(
+            self.market_data.contract_details = pd.read_csv(
                 contract_details_path,
                 header=0,
                 index_col=0,
@@ -871,13 +931,13 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         #######################################################################
         # Save contracts DataFrame to csv
         #######################################################################
-        logger.info("Number of contract entries: %d", len(self.contracts))
+        logger.info("Number of contract entries: %d", len(self.market_data.contracts))
 
-        if not self.contracts.empty:
-            self.contracts.sort_index(inplace=True)
+        if not self.market_data.contracts.empty:
+            self.market_data.contracts.sort_index(inplace=True)
 
         logger.info("saving contracts DataFrame to csv")
-        self.contracts.to_csv(contracts_path)
+        self.market_data.contracts.to_csv(contracts_path)
 
     ###########################################################################
     # save_contract_details
@@ -894,14 +954,15 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # Save contract_details DataFrame to csv
         #######################################################################
         logger.info(
-            "Number of contract_details entries: %d", len(self.contract_details)
+            "Number of contract_details entries: %d",
+            len(self.market_data.contract_details),
         )
 
-        if not self.contract_details.empty:
-            self.contract_details.sort_index(inplace=True)
+        if not self.market_data.contract_details.empty:
+            self.market_data.contract_details.sort_index(inplace=True)
 
         logger.info("saving contract_details DataFrame to csv")
-        self.contract_details.to_csv(contract_details_path)
+        self.market_data.contract_details.to_csv(contract_details_path)
 
     ###########################################################################
     # save_fundamental_data
@@ -918,14 +979,15 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # Save fundamental_data DataFrame to csv
         #######################################################################
         logger.info(
-            "Number of fundamental_data entries: %d", len(self.fundamental_data)
+            "Number of fundamental_data entries: %d",
+            len(self.market_data.fundamental_data),
         )
 
-        if not self.fundamental_data.empty:
-            self.fundamental_data.sort_index(inplace=True)
+        if not self.market_data.fundamental_data.empty:
+            self.market_data.fundamental_data.sort_index(inplace=True)
 
         logger.info("saving fundamental_data DataFrame to csv")
-        self.contracts.to_csv(fundamental_data_path)
+        self.market_data.contracts.to_csv(fundamental_data_path)
 
     ###########################################################################
     ###########################################################################
@@ -1022,7 +1084,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # Save stock_symbols DataFrame to csv
         #######################################################################
         logger.info("Symbols obtained")
-        logger.info("Number of stoc_symbol entries: %d", len(self.market_data.stock_symbols))
+        logger.info(
+            "Number of stoc_symbol entries: %d", len(self.market_data.stock_symbols)
+        )
 
         if not self.market_data.stock_symbols.empty:
             self.market_data.stock_symbols.sort_index(inplace=True)
@@ -1211,7 +1275,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         logger.info("contracts path: %s", contracts_path)
 
         if contracts_path.exists():
-            self.contracts = self.load_contracts(contracts_path)
+            self.market_data.contracts = self.load_contracts(contracts_path)
 
         self.load_contract_details()
 
@@ -1259,21 +1323,21 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     #     # instances will be returned as a string so that the DataFrame can be
     #     # stored and retrieved as csv files.
     #     contract_dict = get_contract_dict(contract_details.contract)
-    #     if conId in self.contracts.index:
-    #         self.contracts.loc[conId] = pd.Series(contract_dict)
+    #     if conId in self.market_data.contracts.index:
+    #         self.market_data.contracts.loc[conId] = pd.Series(contract_dict)
     #     else:
-    #         self.contracts = pd.concat(
-    #             [self.contracts, pd.DataFrame(contract_dict, index=[conId])]
+    #         self.market_data.contracts = pd.concat(
+    #             [self.market_data.contracts, pd.DataFrame(contract_dict, index=[conId])]
     #         )
     #
     #     # add the contract details to the DataFrame
     #     contract_details_dict = get_contract_details_dict(contract_details)
-    #     if conId in self.contract_details.index:
-    #         self.contract_details.loc[conId] = pd.Series(contract_details_dict)
+    #     if conId in self.market_data.contract_details.index:
+    #         self.market_data.contract_details.loc[conId] = pd.Series(contract_details_dict)
     #     else:
-    #         self.contract_details = pd.concat(
+    #         self.market_data.contract_details = pd.concat(
     #             [
-    #                 self.contract_details,
+    #                 self.market_data.contract_details,
     #                 pd.DataFrame(contract_details_dict, index=[conId]),
     #             ]
     #         )
@@ -1321,7 +1385,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         logger.info("fundamental_data_path: %s", fundamental_data_path)
 
         if fundamental_data_path.exists():
-            self.fundamental_data = self.load_fundamental_data(fundamental_data_path)
+            self.market_data.fundamental_data = self.load_fundamental_data(
+                fundamental_data_path
+            )
 
         ################################################################
         # make the request for fundamental data
@@ -1355,7 +1421,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     #     # remove the contract if it already exists in the DataFrame
     #     # as we want the newest information to replace the old
     #     # conId = contract_details.contract.conId
-    #     # self.contracts.drop(conId,
+    #     # self.market_data.contracts.drop(conId,
     #     #                     inplace=True,
     #     #                     errors='ignore')
     #     # get the conId to use as an index
@@ -1369,13 +1435,13 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     #     # instances will be returned as a string so that the DataFrame
     #     # item will work
     #     # contract_dict = get_contract_dict(contract_details.contract)
-    #     # self.contracts = self.contracts.append(
+    #     # self.market_data.contracts = self.market_data.contracts.append(
     #     #             pd.DataFrame(contract_dict,
     #     #                          index=[conId]))
     #
     #     # remove the contract_details if it already exists in the DataFrame
     #     # as we want the newest information to replace the old
-    #     # self.contract_details.drop(conId,
+    #     # self.market_data.contract_details.drop(conId,
     #     #                            inplace=True,
     #     #                            errors='ignore')
     #
@@ -1384,13 +1450,13 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     #
     #     # add the contract details to the DataFrame
     #     # contract_details_dict = get_contract_details_dict(contract_details)
-    #     # self.contract_details = self.contract_details.append(
+    #     # self.market_data.contract_details = self.market_data.contract_details.append(
     #     #             pd.DataFrame(contract_details_dict,
     #     #                          index=[conId]))
     #
-    #     # print('self.contract_details:\n', contract_details)
-    #     # print('self.contract_details.__dict__:\n',
-    #     #       self.contract_details.__dict__)
+    #     # print('self.market_data.contract_details:\n', contract_details)
+    #     # print('self.market_data.contract_details.__dict__:\n',
+    #     #       self.market_data.contract_details.__dict__)
 
 
 # @time_box
