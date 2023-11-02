@@ -55,6 +55,7 @@ from threading import Event, Lock, Thread
 import time
 from typing import (
     Any,
+    cast,
     Callable,
     ClassVar,
     NamedTuple,
@@ -278,131 +279,45 @@ def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
 ####################################################################
 def make_async(func: Callable[..., Any]) -> Callable[..., Any]:
     @functools.wraps(func)
-    def wrapped(self, *args, **kwargs) -> Any:
-        logger.debug(f"{args=}, {kwargs=}")
-        if "async_args" not in kwargs or kwargs["async_args"] is None:
-            ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-            if kwargs["async_req"]:
-                req_block = RequestBlock(
-                    func_to_call=self.connect_to_ib,
-                    func_args=args,
-                    func_kwargs=kwargs,
-                    ref_num=ref_num,
-                )
-
-                SmartThread(
-                    group_name=self.group_name,
-                    name=f"async_request_{req_block.ref_num}",
-                    target=self.handle_async_request,
-                    thread_parm_name="req_smart_thread",
-                    kwargs={"req_block": req_block},
-                )
-                return ref_num
-
-            kwargs["async_args"] = AsyncArgs(smart_thread=self, ref_num=ref_num)
-
-        ret_value = func(self, *args, **kwargs)
-
-        return ret_value
-
-    return wrapped
-
-
-####################################################################
-# make_sync_async
-####################################################################
-def make_async2(sync_func: Callable[..., Any]) -> Callable[..., Any]:
-    def decorator_make_async(func: Callable[..., Any]) -> Callable[..., Any]:
-        @functools.wraps(func)
-        def wrapper_make_async(self, *args, **kwargs) -> Any:
-            logger.debug(f"{args=}, {kwargs=}")
-            if "async_args" not in kwargs or kwargs["async_args"] is None:
-                ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-                # if kwargs["async_req"]:
-                if "async_req" not in kwargs or kwargs["async_req"] is True:
-                    req_block = RequestBlock(
-                        func_to_call=self.connect_to_ib,
-                        func_args=args,
-                        func_kwargs=kwargs,
-                        ref_num=ref_num,
-                    )
-
-                    SmartThread(
-                        group_name=self.group_name,
-                        name=f"async_request_{req_block.ref_num}",
-                        target=self.handle_async_request,
-                        thread_parm_name="req_smart_thread",
-                        kwargs={"req_block": req_block},
-                    )
-                    return ref_num
-
-                kwargs["async_args"] = AsyncArgs(smart_thread=self, ref_num=ref_num)
-
-            ret_value = sync_func(self, *args, **kwargs)
-
-            return ret_value
-
-        return wrapper_make_async
-
-    return decorator_make_async
-
-
-####################################################################
-# make_sync_async
-####################################################################
-def make_async3(async_func: Callable[..., Any]) -> Callable[..., Any]:
-    def decorator_make_async(func: Callable[..., Any]) -> Callable[..., Any]:
-        @functools.wraps(func)
-        def wrapper_make_async(self, *args, **kwargs) -> Any:
-            logger.debug(f"{args=}, {kwargs=}")
-            if "async_args" not in kwargs or kwargs["async_args"] is None:
-                ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-                # if kwargs["async_req"]:
-                if "async_req" not in kwargs or kwargs["async_req"] is True:
-                    req_block = RequestBlock(
-                        func_to_call=self.connect_to_ib,
-                        func_args=args,
-                        func_kwargs=kwargs,
-                        ref_num=ref_num,
-                    )
-
-                    SmartThread(
-                        group_name=self.group_name,
-                        name=f"async_request_{req_block.ref_num}",
-                        target=self.handle_async_request,
-                        thread_parm_name="req_smart_thread",
-                        kwargs={"req_block": req_block},
-                    )
-                    return ref_num
-
-                kwargs["async_args"] = AsyncArgs(smart_thread=self, ref_num=ref_num)
-
-            ret_value = func(self, *args, **kwargs)
-
-            return ret_value
-
-        async_func = wrapper_make_async
-
-        return wrapper_make_async
-
-    return decorator_make_async
-
-
-####################################################################
-# make_sync_async
-####################################################################
-def setup_sync(func: Callable[..., Any]) -> Callable[..., Any]:
-    @functools.wraps(func)
-    def wrapped(self, *args, **kwargs) -> Any:
-        # logger.debug(f"{args=}, {kwargs=}")
-        smart_thread = SmartThread.get_current_smart_thread(group_name=self.group_name)
+    def wrapped_make_async(self, *args, **kwargs) -> UniqueTStamp:
         ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
 
-        ret_value = func(self, *args, **kwargs)
+        req_block = RequestBlock(
+            func_to_call=self.connect_to_ib,
+            func_args=args,
+            func_kwargs=kwargs,
+            ref_num=ref_num,
+        )
 
-        return ret_value
+        SmartThread(
+            group_name=self.group_name,
+            name=f"async_request_{req_block.ref_num}",
+            target=self.handle_async_request,
+            thread_parm_name="req_smart_thread",
+            kwargs={"req_block": req_block},
+        )
+        return ref_num
 
-    return wrapped
+    return wrapped_make_async
+
+
+# ####################################################################
+# # make_sync_async
+# ####################################################################
+# def setup_sync(func: Callable[..., Any]) -> Callable[..., Any]:
+#     @functools.wraps(func)
+#     def wrapped(self, *args, **kwargs) -> Any:
+#         smart_thread = SmartThread.get_current_smart_thread(group_name=self.group_name)
+#         if smart_thread == self:
+#             ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+#         else:
+#             ref_num = cast(UniqueTStamp, float(smart_thread.name.split("_")[-1]))
+#
+#         ret_value = func(self, *args, **kwargs)
+#
+#         return ret_value
+#
+#     return wrapped
 
 
 ########################################################################
@@ -523,6 +438,17 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         return f"{classname}({parms})"
 
+    ####################################################################
+    # setup_sync
+    ####################################################################
+    def setup_sync(self):
+        smart_thread = SmartThread.get_current_smart_thread(group_name=self.group_name)
+        if smart_thread == self:
+            ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+        else:
+            ref_num = cast(UniqueTStamp, float(smart_thread.name.split("_")[-1]))
+        return smart_thread, ref_num
+
     ###########################################################################
     # connect_to_ib
     ###########################################################################
@@ -540,26 +466,15 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ip_addr: addr to connect to
             port: port to connect to
             client_id: client id to use for connection
-            async_req: if true, the request will be done asynchronously
-            async_args: args for async request
+            timeout: specifies the amount of time allowed for the
+                request. If exceeded, a ConnectTimeout error will be
+                raised.
 
         Raises:
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
-        # if async_args is None:
-        #     async_args = AsyncArgs(smart_thread=self, ref_num=UniqueTS.get_unique_ts())
-
-        # logger.debug(
-        #     f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, "
-        #     f"{async_req=}, {async_args=}"
-        # )
-        smart_thread = SmartThread.get_current_smart_thread(group_name=self.group_name)
-        # if ref_num == 0.0:
-        if smart_thread == self:
-            ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-        else:
-            ref_num = float(smart_thread.name.split("_")[-1])
+        smart_thread, ref_num = self.setup_sync()
         if self.algo_client.isConnected():
             error_msg = "connect_to_ib already connected"
             logger.debug(error_msg)
@@ -570,17 +485,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             logger.debug(error_msg)
             raise DisconnectLockHeld(error_msg)
 
-        # self.market_data.num_stock_symbols_received = 0
-        # self.market_data.stock_symbols = pd.DataFrame()
-        # self.market_data.symbols = pd.DataFrame()
-        # self.response_complete_event.clear()
-
-        # note that for connect we don't use the reqID, but we still
-        # need to call setup_client_request and get the req_if to use
-        # below where we pop the client request from the active requests
-        # req_id = self.setup_client_request(
-        #     requestor_name=async_args.smart_thread.name, ref_num=async_args.ref_num
-        # )
         req_id = self.setup_client_request(
             requestor_name=smart_thread.name, ref_num=ref_num
         )
@@ -603,9 +507,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # logger.debug("id of nextValidId_event %d",
         # id(self.nextValidId_event))
         try:
-            # async_args.smart_thread.smart_wait(
-            #     resumers=self.client_name, timeout=timeout
-            # )
             smart_thread.smart_wait(resumers=self.client_name, timeout=timeout)
             self.algo_client.pop_active_request(req_id=req_id)
         except SmartThreadRequestTimedOut:
@@ -616,7 +517,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         logger.info("connect success")
 
-    # @make_async2(connect_to_ib)
+    @make_async
     def connect_to_ib_async(
         self,
         *,
@@ -624,8 +525,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         port: int,
         client_id: int,
         timeout: IntFloat = 10,
-        # async_req: bool = True,
-        # async_args: Optional[AsyncArgs] = None,
     ) -> UniqueTStamp:
         """Connect to IB on the given addr and port and client id.
 
@@ -633,38 +532,39 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ip_addr: addr to connect to
             port: port to connect to
             client_id: client id to use for connection
-            async_req: if true, the request will be done asynchronously
-            async_args: args for async request
+            timeout: specifies the amount of time allowed for the
+                request. If exceeded, a ConnectTimeout error will be
+                raised.
 
         Raises:
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
-        args = tuple()
-        kwargs = {
-            "ip_addr": ip_addr,
-            "port": port,
-            "client_id": client_id,
-            "timeout": timeout,
-        }
-        ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-
-        # if kwargs["async_req"]:
-        req_block = RequestBlock(
-            func_to_call=self.connect_to_ib,
-            func_args=args,
-            func_kwargs=kwargs,
-            ref_num=ref_num,
-        )
-
-        SmartThread(
-            group_name=self.group_name,
-            name=f"async_request_{req_block.ref_num}",
-            target=self.handle_async_request,
-            thread_parm_name="req_smart_thread",
-            kwargs={"req_block": req_block},
-        )
-        return ref_num
+        # args = tuple()
+        # kwargs = {
+        #     "ip_addr": ip_addr,
+        #     "port": port,
+        #     "client_id": client_id,
+        #     "timeout": timeout,
+        # }
+        # ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+        #
+        # # if kwargs["async_req"]:
+        # req_block = RequestBlock(
+        #     func_to_call=self.connect_to_ib,
+        #     func_args=args,
+        #     func_kwargs=kwargs,
+        #     ref_num=ref_num,
+        # )
+        #
+        # SmartThread(
+        #     group_name=self.group_name,
+        #     name=f"async_request_{req_block.ref_num}",
+        #     target=self.handle_async_request,
+        #     thread_parm_name="req_smart_thread",
+        #     kwargs={"req_block": req_block},
+        # )
+        return cast(UniqueTStamp, 0.0)
 
     ####################################################################
     # setup_client_request
