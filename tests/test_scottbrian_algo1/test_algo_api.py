@@ -299,7 +299,6 @@ class TestAlgoAppConnect:
                 ip_addr="127.0.0.1",
                 port=algo_app.PORT_FOR_LIVE_TRADING,
                 client_id=1,
-                async_req=True,
             )
         elif timeout_type_arg == TimeoutType.TimeoutFalse:
             timeout_value = delay_arg * 2
