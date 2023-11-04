@@ -175,15 +175,6 @@ def do_breakdown(
 class TestAlgoAppConnect:
     """TestAlgoAppConnect class."""
 
-    # @pytest.mark.parametrize(
-    #     "thread_type_arg",
-    #     [
-    #         TestThreadConfig.TestNoSmartThreadAlgoAppCurrent,
-    #         TestThreadConfig.TestSmartThreadAlgoAppCurrent,
-    #         TestThreadConfig.TestSmartThreadAlgoAppRemote,
-    #     ],
-    # )
-    # @pytest.mark.seltest
     ####################################################################
     # test_mock_connect_to_ib
     ####################################################################
@@ -295,14 +286,21 @@ class TestAlgoAppConnect:
         logger.debug("about to connect")
 
         if timeout_type_arg == TimeoutType.TimeoutNone:
-            req_num = algo_app.connect_to_ib_async(
+            # req_num = algo_app.connect_to_ib_async(
+            #     ip_addr="127.0.0.1",
+            #     port=algo_app.PORT_FOR_LIVE_TRADING,
+            #     client_id=1,
+            # )
+            req_num = algo_app.start_async_request(
+                algo_app.connect_to_ib,
                 ip_addr="127.0.0.1",
                 port=algo_app.PORT_FOR_LIVE_TRADING,
                 client_id=1,
             )
         elif timeout_type_arg == TimeoutType.TimeoutFalse:
             timeout_value = delay_arg * 2
-            req_num = algo_app.connect_to_ib_async(
+            req_num = algo_app.start_async_request(
+                algo_app.connect_to_ib,
                 ip_addr="127.0.0.1",
                 port=algo_app.PORT_FOR_LIVE_TRADING,
                 client_id=1,
@@ -310,7 +308,8 @@ class TestAlgoAppConnect:
             )
         else:
             timeout_value = 10
-            req_num = algo_app.connect_to_ib_async(
+            req_num = algo_app.start_async_request(
+                algo_app.connect_to_ib,
                 ip_addr="127.0.0.1",
                 port=algo_app.PORT_FOR_LIVE_TRADING,
                 client_id=1,

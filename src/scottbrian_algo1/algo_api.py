@@ -47,6 +47,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, auto
 import functools
+import inspect
 import logging
 from pathlib import Path
 import string
@@ -229,95 +230,19 @@ class AsyncArgs:
     ref_num: UniqueTStamp
 
 
-####################################################################
-# handle_thread_switching
-####################################################################
-def handle_thread_switching(func: Callable[..., Any]) -> Callable[..., Any]:
-    def wrapped(self, *args, **kwargs) -> Any:
-        # if self.algo1_smart_thread.thread is not threading.current_thread():
-        # logger.debug(f"wrapped entry: {self.thread=}, {threading.current_thread()=}")
-        # logger.debug(f"wrapped entry: {SmartThread._registry=}")
-        # for key, item in SmartThread._registry.items():
-        #     logger.debug(
-        #         f"{key=}, {item=}, {item.thread=}, {id(item.thread)=}, "
-        #         f"{item.thread.is_alive()=}"
-        #     )
-        if self.thread is threading.current_thread():
-            ret_value = func(self, *args, **kwargs)
-        else:
-            if (
-                caller_smart_thread := SmartThread.get_current_smart_thread()
-            ) is not None:
-                logger.debug(f"wrapped: {caller_smart_thread=}")
-                req_block = RequestBlock(
-                    func_to_call=func,
-                    func_args=args,
-                    func_kwargs=kwargs,
-                )
+def set_async_args(func: Callable[..., Any]) -> Callable[..., Any]:
+    @functools.wraps(func)
+    def wrapped_make_sync(self, *args, **kwargs) -> Any:
+        if "_async_args" not in kwargs:
+            kwargs["_async_args"] = AsyncArgs(
+                smart_thread=self, ref_num=UniqueTS.get_unique_ts()
+            )
 
-                caller_smart_thread.smart_send(msg=req_block, receivers=self.algo_name)
-                recv_msg: dict[str, list[ResultBlock]] = caller_smart_thread.smart_recv(
-                    senders=self.algo_name
-                )
-                logger.debug(f"SBT_Test: {recv_msg=}")
-                result_block: list[ResultBlock] = recv_msg[self.algo_name][0]
-                ret_value = result_block.ret_data
-                if result_block.error_to_raise is not None:
-                    raise result_block.error_to_raise(result_block.error_msg)
-            else:
-                raise RequestError(
-                    f"{func.__name__} requires caller to have a SmartThread"
-                )
+        ret_value = func(self, *args, **kwargs)
 
         return ret_value
 
-    return wrapped
-
-
-####################################################################
-# make_sync_async
-####################################################################
-def make_async(func: Callable[..., Any]) -> Callable[..., Any]:
-    @functools.wraps(func)
-    def wrapped_make_async(self, *args, **kwargs) -> UniqueTStamp:
-        ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-
-        req_block = RequestBlock(
-            func_to_call=self.connect_to_ib,
-            func_args=args,
-            func_kwargs=kwargs,
-            ref_num=ref_num,
-        )
-
-        SmartThread(
-            group_name=self.group_name,
-            name=f"async_request_{req_block.ref_num}",
-            target=self.handle_async_request,
-            thread_parm_name="req_smart_thread",
-            kwargs={"req_block": req_block},
-        )
-        return ref_num
-
-    return wrapped_make_async
-
-
-# ####################################################################
-# # make_sync_async
-# ####################################################################
-# def setup_sync(func: Callable[..., Any]) -> Callable[..., Any]:
-#     @functools.wraps(func)
-#     def wrapped(self, *args, **kwargs) -> Any:
-#         smart_thread = SmartThread.get_current_smart_thread(group_name=self.group_name)
-#         if smart_thread == self:
-#             ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-#         else:
-#             ref_num = cast(UniqueTStamp, float(smart_thread.name.split("_")[-1]))
-#
-#         ret_value = func(self, *args, **kwargs)
-#
-#         return ret_value
-#
-#     return wrapped
+    return wrapped_make_sync
 
 
 ########################################################################
@@ -439,25 +364,57 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         return f"{classname}({parms})"
 
     ####################################################################
-    # setup_sync
+    # start_async_request
     ####################################################################
-    def setup_sync(self):
-        smart_thread = SmartThread.get_current_smart_thread(group_name=self.group_name)
-        if smart_thread == self:
-            ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-        else:
-            ref_num = cast(UniqueTStamp, float(smart_thread.name.split("_")[-1]))
-        return smart_thread, ref_num
+    def start_async_request(self, func, *args, **kwargs) -> UniqueTStamp:
+        """Send request to async handler.
+
+        Args:
+            func: function to be called asynchronously
+            args: positional args to be passed to func
+            kwargs: keyword args to be passed to func
+
+        Returns:
+            reference number used to obtain the results by calling
+            get_async_results
+
+        Notes:
+
+            1) Any AlgoApp method can be called asynchronously via this
+               method provided they have _async_args in their function
+               signatures and use the set_async_args decorator.
+
+        """
+
+        ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+
+        req_block = RequestBlock(
+            func_to_call=func,
+            func_args=args,
+            func_kwargs=kwargs,
+            ref_num=ref_num,
+        )
+
+        SmartThread(
+            group_name=self.group_name,
+            name=f"async_request_{req_block.ref_num}",
+            target_rtn=self.handle_async_request,
+            thread_parm_name="req_smart_thread",
+            kwargs={"req_block": req_block},
+        )
+        return ref_num
 
     ###########################################################################
     # connect_to_ib
     ###########################################################################
+    @set_async_args
     def connect_to_ib(
         self,
         *,
         ip_addr: str,
         port: int,
         client_id: int,
+        _async_args: AsyncArgs,
         timeout: IntFloat = 10,
     ) -> None:
         """Connect to IB on the given addr and port and client id.
@@ -469,12 +426,21 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             timeout: specifies the amount of time allowed for the
                 request. If exceeded, a ConnectTimeout error will be
                 raised.
+            _async_args: contains the smart_thread and ref_num to use
+                for the request. Do not specify as this is internal use
+                only used by start_async_request.
 
         Raises:
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
-        smart_thread, ref_num = self.setup_sync()
+        # if _async_args is None:
+        #     smart_thread = self
+        #     ref_num = UniqueTS.get_unique_ts()
+        # else:
+        #     smart_thread = _async_args.smart_thread
+        #     ref_num = _async_args.ref_num
+
         if self.algo_client.isConnected():
             error_msg = "connect_to_ib already connected"
             logger.debug(error_msg)
@@ -486,7 +452,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             raise DisconnectLockHeld(error_msg)
 
         req_id = self.setup_client_request(
-            requestor_name=smart_thread.name, ref_num=ref_num
+            requestor_name=_async_args.smart_thread.name, ref_num=_async_args.ref_num
         )
 
         self.algo_client.connect(ip_addr, port, client_id)
@@ -507,7 +473,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # logger.debug("id of nextValidId_event %d",
         # id(self.nextValidId_event))
         try:
-            smart_thread.smart_wait(resumers=self.client_name, timeout=timeout)
+            _async_args.smart_thread.smart_wait(
+                resumers=self.client_name, timeout=timeout
+            )
             self.algo_client.pop_active_request(req_id=req_id)
         except SmartThreadRequestTimedOut:
             self.disconnect_from_ib()
@@ -517,59 +485,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         logger.info("connect success")
 
-    @make_async
-    def connect_to_ib_async(
-        self,
-        *,
-        ip_addr: str,
-        port: int,
-        client_id: int,
-        timeout: IntFloat = 10,
-    ) -> UniqueTStamp:
-        """Connect to IB on the given addr and port and client id.
-
-        Args:
-            ip_addr: addr to connect to
-            port: port to connect to
-            client_id: client id to use for connection
-            timeout: specifies the amount of time allowed for the
-                request. If exceeded, a ConnectTimeout error will be
-                raised.
-
-        Raises:
-            ConnectTimeout: timed out waiting for next valid request ID
-
-        """
-        # args = tuple()
-        # kwargs = {
-        #     "ip_addr": ip_addr,
-        #     "port": port,
-        #     "client_id": client_id,
-        #     "timeout": timeout,
-        # }
-        # ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-        #
-        # # if kwargs["async_req"]:
-        # req_block = RequestBlock(
-        #     func_to_call=self.connect_to_ib,
-        #     func_args=args,
-        #     func_kwargs=kwargs,
-        #     ref_num=ref_num,
-        # )
-        #
-        # SmartThread(
-        #     group_name=self.group_name,
-        #     name=f"async_request_{req_block.ref_num}",
-        #     target=self.handle_async_request,
-        #     thread_parm_name="req_smart_thread",
-        #     kwargs={"req_block": req_block},
-        # )
-        return cast(UniqueTStamp, 0.0)
-
     ####################################################################
     # setup_client_request
     ####################################################################
-    # def start_async_request(self, func, *args, **kwargs) -> UniqueTStamp:
     def setup_client_request(self, requestor_name: str, ref_num: UniqueTStamp) -> ReqID:
         """Send request to async handler."""
 
@@ -580,20 +498,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self.algo_client.add_active_request(req_id=req_id, req_block=client_req_block)
 
         return req_id
-
-    ####################################################################
-    # start_async_request
-    ####################################################################
-    def start_async_request(self, req_block: RequestBlock) -> None:
-        """Send request to async handler."""
-
-        SmartThread(
-            group_name=self.group_name,
-            name=f"async_request_{req_block.ref_num}",
-            target=self.handle_async_request,
-            thread_parm_name="req_smart_thread",
-            kwargs={"req_block": req_block},
-        )
 
     ####################################################################
     # handle_async_request
@@ -615,10 +519,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         error_to_raise: Optional[AlgoExceptions] = None
 
         error_msg = ""
-        # async_args = AsyncArgs(smart_thread=req_smart_thread,
-        # ref_num=req_block.ref_num)
-        # req_block.func_kwargs["async_args"] = async_args
-        # req_block.func_kwargs["ref_num"] = req_block.ref_num
 
         logger.debug(
             f"{req_block.func_to_call=}, {req_block.func_args=}, "
@@ -628,6 +528,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         try:
             req_result = req_block.func_to_call(
                 *req_block.func_args,
+                _async_args=AsyncArgs(
+                    smart_thread=req_smart_thread, ref_num=req_block.ref_num
+                ),
                 **req_block.func_kwargs,
             )
         except AlreadyConnected as error_text:

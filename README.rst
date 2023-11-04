@@ -36,7 +36,7 @@ Installation
 Windows:
 
 The following instructions are for the latest version of ibapi at this time, meaning version 10.24.1. The
-sccottbrian_algo1 project may be updated for newer ibapi versions as needed.
+scottbrian_algo1 project may be updated for newer ibapi versions as needed.
 
     1) You will need the ibapi package, and *not* from PyPI using pip install. Instead, go to the Interactive Brokers
        site to find it, download it, and install it. By default it should go into: C:/TWS API
