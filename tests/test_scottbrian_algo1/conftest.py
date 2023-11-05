@@ -255,6 +255,9 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
                close.
 
         """
+        if mock_ib.delay_value == -1:  # if simulate failure
+            return
+
         self.lock.acquire()
 
         # check for delay for testing a timeout case
