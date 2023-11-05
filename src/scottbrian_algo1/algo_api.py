@@ -557,6 +557,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                     group_name=self.group_name,
                     algo_name=self.algo_name,
                     client_name=self.client_name,
+                    response_complete_event=self.response_complete_event,
+                    market_data=self.market_data,
                 )
                 self.algo_client.smart_start()
 

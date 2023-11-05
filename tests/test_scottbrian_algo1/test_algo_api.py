@@ -10,6 +10,7 @@ import time
 from enum import Enum, auto
 import string
 from sys import _getframe
+import threading
 from typing import Any, List, NamedTuple
 
 # from typing_extensions import Final
@@ -187,6 +188,34 @@ def do_breakdown(
 
 
 ####################################################################
+# get_smart_thread_name
+####################################################################
+def get_smart_thread_name(
+    search_thread: threading.Thread,
+    group_name: str,
+) -> str:
+    """Get the smart thread for the search thread or None.
+
+    Args:
+        search_thread: thread to search for
+        group_name: name of group to search
+
+    Returns:
+         A list (possibly empty) of SmartThread instances that are
+             associated with the input search_thread.
+
+    Note:
+        The lock registry must be held excl or shared
+    """
+    if group_name in SmartThread._registry:
+        for name, smart_thread in SmartThread._registry[group_name].items():
+            if smart_thread.thread is search_thread:
+                return smart_thread.name
+
+    return ""
+
+
+####################################################################
 # lock_verify
 ####################################################################
 def lock_verify(exp_positions: list[str]) -> None:
@@ -208,17 +237,27 @@ def lock_verify(exp_positions: list[str]) -> None:
     del frame
     logger.debug(f"lock_verify entry: {exp_positions=}, {line_num=}")
     start_time = time.time()
-    timeout_value = 60
+    timeout_value = 15
     lock_verified = False
     while not lock_verified:
         lock_verified = True  # assume lock will verify
 
         if len(exp_positions) != len(AlgoApp._config_lock.owner_wait_q):
+            logger.debug(
+                f"lock_verify False 1: {len(exp_positions)=}, "
+                f"{len(AlgoApp._config_lock.owner_wait_q)=}"
+            )
             lock_verified = False
         else:
             for idx, expected_name in enumerate(exp_positions):
-                test_name = AlgoApp._config_lock.owner_wait_q[idx].thread.name
+                search_thread = AlgoApp._config_lock.owner_wait_q[idx].thread
+                test_name = get_smart_thread_name(
+                    search_thread=search_thread, group_name="algo_app_group"
+                )
                 if test_name != expected_name:
+                    logger.debug(
+                        f"lock_verify False 2: {test_name=}, " f"{expected_name=}"
+                    )
                     lock_verified = False
                     break
 
@@ -650,7 +689,7 @@ class TestAlgoAppConnect:
 
         cat_app.delay_value = 0
 
-        ref_num2 = algo_app.start_async_request(algo_app.disconnect_from_ib())
+        ref_num2 = algo_app.start_async_request(algo_app.disconnect_from_ib)
 
         name2 = f"async_request_{ref_num2}"
         lock_verify([name1, name2])
@@ -665,7 +704,7 @@ class TestAlgoAppConnect:
         name3 = f"async_request_{ref_num3}"
         lock_verify([name1, name2, name3])
 
-        ref_num4 = algo_app.start_async_request(algo_app.disconnect_from_ib())
+        ref_num4 = algo_app.start_async_request(algo_app.disconnect_from_ib)
 
         name4 = f"async_request_{ref_num4}"
         lock_verify([name1, name2, name3, name4])
