@@ -105,22 +105,16 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         group_name: str,
         algo_name: str,
         client_name: str,
-        # wrapper: AlgoWrapper,
-        disconnect_lock: Lock,
         response_complete_event: Event,
         market_data: MarketData,
-        # symbols: pd.DataFrame,
-        # stock_symbols: pd.DataFrame,
-        # contracts: pd.DataFrame,
-        # contract_details: pd.DataFrame,
     ) -> None:
         """Instantiate the AlgoClient.
 
         Args:
+            group_name: group_name for SmartThread
             algo_name: name of main algo
             client_name: name of client for EClient class instance
-            disconnect_lock: lock used to serialize connect and
-                disconnect
+            market_data: data frames for contacts
         """
         self.specified_args = locals()  # used for __repr__, see below
         # EWrapper.__init__(self)
@@ -151,8 +145,6 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
             auto_start=False,
         )
         self.algo_name = algo_name
-
-        self.disconnect_lock = disconnect_lock
 
         self.active_requests: dict[int, ClientRequestBlock] = {}
 
@@ -327,33 +319,33 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         # EClient run method in the run thread.
         call_seq = get_formatted_call_sequence()
         logger.debug("%s entered disconnect", call_seq)
-        with self.disconnect_lock:
-            logger.debug("%s setting conn state", call_seq)
-            self.setConnState(EClient.DISCONNECTED)
-            if self.conn is not None:
-                logger.info("%s disconnecting", call_seq)
-                self.conn.disconnect()
-                self.wrapper.connectionClosed()
-                reader_id = id(self.reader)
-                my_id = get_ident()
-                my_native_id = get_native_id()
-                logger.debug(
-                    "about to join reader id %d for self id %d to"
-                    " wait for it to come home on thread %d %d",
-                    reader_id,
-                    id(self),
-                    my_id,
-                    my_native_id,
-                )
-                self.reader.join()
-                logger.debug(
-                    "reader id %d came home for id(self) %d " "thread id %d %d",
-                    reader_id,
-                    id(self),
-                    my_id,
-                    my_native_id,
-                )
-                self.reset()
+
+        logger.debug("%s setting conn state", call_seq)
+        self.setConnState(EClient.DISCONNECTED)
+        if self.conn is not None:
+            logger.info("%s disconnecting", call_seq)
+            self.conn.disconnect()
+            self.wrapper.connectionClosed()
+            reader_id = id(self.reader)
+            my_id = get_ident()
+            my_native_id = get_native_id()
+            logger.debug(
+                "about to join reader id %d for self id %d to"
+                " wait for it to come home on thread %d %d",
+                reader_id,
+                id(self),
+                my_id,
+                my_native_id,
+            )
+            self.reader.join()
+            logger.debug(
+                "reader id %d came home for id(self) %d " "thread id %d %d",
+                reader_id,
+                id(self),
+                my_id,
+                my_native_id,
+            )
+            self.reset()
 
     # ###########################################################################
     # # symbolSamples - callback

@@ -59,6 +59,7 @@ from typing import (
     cast,
     Callable,
     ClassVar,
+    Final,
     NamedTuple,
     NewType,
     NoReturn,
@@ -152,12 +153,6 @@ class AlreadyConnected(AlgoAppError):
     pass
 
 
-class DisconnectLockHeld(AlgoAppError):
-    """Attempted to connect while the disconnect lock is held."""
-
-    pass
-
-
 class ConnectTimeout(AlgoAppError):
     """Connect timeout waiting for nextValid_ID event."""
 
@@ -190,7 +185,6 @@ class RequestError(AlgoAppError):
 
 AlgoExceptions: TypeAlias = Union[
     Type[AlreadyConnected],
-    Type[DisconnectLockHeld],
     Type[ConnectTimeout],
     Type[DisconnectDuringRequest],
     Type[RequestTimeout],
@@ -261,11 +255,13 @@ def set_async_args(func: Callable[..., Any]) -> Callable[..., Any]:
 class AlgoApp(SmartThread, Thread):  # type: ignore
     """AlgoApp class."""
 
-    PORT_FOR_LIVE_TRADING = 7496
-    PORT_FOR_PAPER_TRADING = 7497
+    PORT_FOR_LIVE_TRADING: Final[int] = 7496
+    PORT_FOR_PAPER_TRADING: Final[int] = 7497
 
-    REQUEST_TIMEOUT_SECONDS = 60
-    REQUEST_THROTTLE_SECONDS = 1.0
+    REQUEST_TIMEOUT_SECONDS: Final[int] = 60
+    REQUEST_THROTTLE_SECONDS: Final[int] = 1.0
+
+    _config_lock: ClassVar[sel.SELock] = sel.SELock()
 
     ####################################################################
     # __init__
@@ -273,7 +269,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     def __init__(
         self,
         ds_catalog: FileCatalog,
-        # thread_config: Optional[ThreadConfig] = ThreadConfig.CurrentThread,
         group_name: str = "algo_app_group",
         algo_name: str = "algo_app",
     ) -> None:
@@ -295,20 +290,14 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         AlgoApp(ds_catalog)
 
         """
-        # EWrapper.__init__(self)
-        # EClient.__init__(self, wrapper=self)
         Thread.__init__(self)
-        # threading.current_thread().name = algo_name
         SmartThread.__init__(
             self,
             group_name=group_name,
             name=algo_name,
-            # thread=self,
-            # auto_start=False,
         )
         self.group_name = group_name
         self.algo_name = algo_name
-        self.disconnect_lock = Lock()
         self.ds_catalog = ds_catalog
 
         self.request_results: dict[UniqueTStamp, ResultBlock] = {}
@@ -334,14 +323,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             group_name=group_name,
             algo_name=self.algo_name,
             client_name=self.client_name,
-            # wrapper=self.algo_wrapper,
-            disconnect_lock=self.disconnect_lock,
             response_complete_event=self.response_complete_event,
-            market_data=self.market_data
-            # symbols=self.symbols,
-            # stock_symbols=self.stock_symbols,
-            # contracts=self.contracts,
-            # contract_details=self.contract_details,
+            market_data=self.market_data,
         )
 
     ###########################################################################
@@ -464,9 +447,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         except AlreadyConnected as error_text:
             error_to_raise = AlreadyConnected
             error_msg = str(error_text)
-        except DisconnectLockHeld as error_text:
-            error_to_raise = DisconnectLockHeld
-            error_msg = str(error_text)
         except ConnectTimeout as error_text:
             error_to_raise = ConnectTimeout
             error_msg = str(error_text)
@@ -556,33 +536,29 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
-        if self.algo_client.isConnected():
-            error_msg = "connect_to_ib already connected"
-            logger.debug(error_msg)
-            raise AlreadyConnected(error_msg)
+        with sel.SELockExcl(AlgoApp._config_lock):
+            if self.algo_client.isConnected():
+                error_msg = "connect_to_ib already connected"
+                logger.debug(error_msg)
+                raise AlreadyConnected(error_msg)
 
-        if self.disconnect_lock.locked():
-            error_msg = "connect_to_ib disconnect lock is held"
-            logger.debug(error_msg)
-            raise DisconnectLockHeld(error_msg)
-
-        req_id = self.setup_client_request(
-            requestor_name=_async_args.smart_thread.name, ref_num=_async_args.ref_num
-        )
-
-        self.algo_client.connect(ip_addr, port, client_id)
-
-        logger.info("starting AlgoClient thread")
-        if self.algo_client.st_state == ThreadState.Registered:
-            self.algo_client.smart_start()
-        else:
-            self.algo_client = AlgoClient(
-                group_name=self.group_name,
-                algo_name=self.algo_name,
-                client_name=self.client_name,
-                disconnect_lock=self.disconnect_lock,
+            req_id = self.setup_client_request(
+                requestor_name=_async_args.smart_thread.name,
+                ref_num=_async_args.ref_num,
             )
-            self.algo_client.smart_start()
+
+            self.algo_client.connect(ip_addr, port, client_id)
+
+            logger.info("starting AlgoClient thread")
+            if self.algo_client.st_state == ThreadState.Registered:
+                self.algo_client.smart_start()
+            else:
+                self.algo_client = AlgoClient(
+                    group_name=self.group_name,
+                    algo_name=self.algo_name,
+                    client_name=self.client_name,
+                )
+                self.algo_client.smart_start()
 
         # we will wait on the first requestID here for 10 seconds
         # logger.debug("id of nextValidId_event %d",
@@ -622,13 +598,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         Raises:
             DisconnectTimeout: timed out waiting for join
         """
-        logger.info("calling EClient disconnect")
-
-        # req_id = self.setup_client_request(
-        #     requestor_name=_async_args.smart_thread.name, ref_num=_async_args.ref_num
-        # )
-
-        self.algo_client.disconnect()  # call our disconnect (overrides EClient)
+        with sel.SELockExcl(AlgoApp._config_lock):
+            logger.info("calling EClient disconnect")
+            self.algo_client.disconnect()  # call our disconnect (overrides EClient)
 
         logger.info("join algo_client to wait for it to come home")
         # self.algo1_smart_thread.smart_join(
@@ -648,65 +620,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         # tell run (if running) to exit
         self.handle_cmds = False
-        # caller_smart_thread = SmartThread.get_current_smart_thread()
-        # caller_smart_thread.smart_join(
-        #     targets=self.client_name,
-        #     timeout=60,
-        # )
 
         logger.info("disconnect complete")
-
-        # return ResultBlock(
-        #     ret_data=None,
-        #     error_to_raise=None,
-        #     error_msg=None,
-        # )
-
-    # ###########################################################################
-    # # disconnect
-    # ###########################################################################
-    # def disconnect(self) -> None:
-    #     """Call this function to terminate the connections with TWS."""
-    #     # We would like to call EClient.disconnect, but it does not wait for
-    #     # the reader thread to come home which leads to problems if a connect
-    #     # is done immediately after the disconnect. The still running reader
-    #     # thread snatches the early handshaking messages and leaves the
-    #     # connect hanging. The following code is from client.py and is
-    #     # modified here to add the thread join to ensure the reader comes
-    #     # home before the disconnect returns.
-    #     # Note also the use of the disconnect lock to serialize the two known
-    #     # cases of disconnect being called from different threads (one from
-    #     # mainline through disconnect_from_ib in AlgoApp, and one from the
-    #     # EClient run method in the run thread.
-    #     call_seq = get_formatted_call_sequence()
-    #     logger.debug("%s entered disconnect", call_seq)
-    #     with self.disconnect_lock:
-    #         logger.debug("%s setting conn state", call_seq)
-    #         self.setConnState(EClient.DISCONNECTED)
-    #         if self.conn is not None:
-    #             logger.info("%s disconnecting", call_seq)
-    #             self.conn.disconnect()
-    #             self.wrapper.connectionClosed()
-    #             reader_id = id(self.reader)
-    #             my_id = get_ident()
-    #             my_native_id = get_native_id()
-    #             logger.debug(
-    #                 "about to join reader id %d for self id %d to"
-    #                 " wait for it to come home on thread %d %d",
-    #                 reader_id,
-    #                 id(self),
-    #                 my_id,
-    #                 my_native_id,
-    #             )
-    #             self.reader.join()
-    #             logger.debug(
-    #                 "reader id %d came home for id(self) %d " "thread id %d %d",
-    #                 reader_id,
-    #                 id(self),
-    #                 my_id,
-    #                 my_native_id,
-    #             )
-    #             self.reset()
 
     ###########################################################################
     # wait_for_request_completion
