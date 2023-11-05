@@ -164,6 +164,12 @@ class ConnectTimeout(AlgoAppError):
     pass
 
 
+class DisconnectTimeout(AlgoAppError):
+    """Connect timeout waiting join during disconnect processing."""
+
+    pass
+
+
 class DisconnectDuringRequest(AlgoAppError):
     """Request detected disconnect while waiting on event completion."""
 
@@ -222,7 +228,7 @@ class ResultBlock:
 
 
 ########################################################################
-# ResultBlock
+# AsyncArgs
 ########################################################################
 @dataclass
 class AsyncArgs:
@@ -230,6 +236,9 @@ class AsyncArgs:
     ref_num: UniqueTStamp
 
 
+########################################################################
+# set_async_args decorator
+########################################################################
 def set_async_args(func: Callable[..., Any]) -> Callable[..., Any]:
     @functools.wraps(func)
     def wrapped_make_sync(self, *args, **kwargs) -> Any:
@@ -404,87 +413,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         )
         return ref_num
 
-    ###########################################################################
-    # connect_to_ib
-    ###########################################################################
-    @set_async_args
-    def connect_to_ib(
-        self,
-        *,
-        ip_addr: str,
-        port: int,
-        client_id: int,
-        _async_args: AsyncArgs,
-        timeout: IntFloat = 10,
-    ) -> None:
-        """Connect to IB on the given addr and port and client id.
-
-        Args:
-            ip_addr: addr to connect to
-            port: port to connect to
-            client_id: client id to use for connection
-            timeout: specifies the amount of time allowed for the
-                request. If exceeded, a ConnectTimeout error will be
-                raised.
-            _async_args: contains the smart_thread and ref_num to use
-                for the request. Do not specify as this is internal use
-                only used by start_async_request.
-
-        Raises:
-            ConnectTimeout: timed out waiting for next valid request ID
-
-        """
-        # if _async_args is None:
-        #     smart_thread = self
-        #     ref_num = UniqueTS.get_unique_ts()
-        # else:
-        #     smart_thread = _async_args.smart_thread
-        #     ref_num = _async_args.ref_num
-
-        if self.algo_client.isConnected():
-            error_msg = "connect_to_ib already connected"
-            logger.debug(error_msg)
-            raise AlreadyConnected(error_msg)
-
-        if self.disconnect_lock.locked():
-            error_msg = "connect_to_ib disconnect lock is held"
-            logger.debug(error_msg)
-            raise DisconnectLockHeld(error_msg)
-
-        req_id = self.setup_client_request(
-            requestor_name=_async_args.smart_thread.name, ref_num=_async_args.ref_num
-        )
-
-        self.algo_client.connect(ip_addr, port, client_id)
-
-        logger.info("starting AlgoClient thread")
-        if self.algo_client.st_state == ThreadState.Registered:
-            self.algo_client.smart_start()
-        else:
-            self.algo_client = AlgoClient(
-                group_name=self.group_name,
-                algo_name=self.algo_name,
-                client_name=self.client_name,
-                disconnect_lock=self.disconnect_lock,
-            )
-            self.algo_client.smart_start()
-
-        # we will wait on the first requestID here for 10 seconds
-        # logger.debug("id of nextValidId_event %d",
-        # id(self.nextValidId_event))
-        try:
-            _async_args.smart_thread.smart_wait(
-                resumers=self.client_name, timeout=timeout
-            )
-            self.algo_client.pop_active_request(req_id=req_id)
-        except SmartThreadRequestTimedOut:
-            self.disconnect_from_ib()
-            error_msg = "connect_to_ib timed out waiting to receive nextValid_ID"
-            logger.debug(error_msg)
-            raise ConnectTimeout(error_msg)
-
-        logger.info("connect success")
-
     ####################################################################
     # setup_client_request
     ####################################################################
@@ -598,14 +526,107 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         return ret_req_block
 
+    ###########################################################################
+    # connect_to_ib
+    ###########################################################################
+    @set_async_args
+    def connect_to_ib(
+        self,
+        *,
+        ip_addr: str,
+        port: int,
+        client_id: int,
+        _async_args: AsyncArgs,
+        timeout: Optional[IntFloat] = None,
+    ) -> None:
+        """Connect to IB on the given addr and port and client id.
+
+        Args:
+            ip_addr: addr to connect to
+            port: port to connect to
+            client_id: client id to use for connection
+            _async_args: contains the smart_thread and ref_num to use
+                for the request. Do not specify as this is internal use
+                only used by start_async_request.
+            timeout: specifies the amount of time allowed for the
+                request. If exceeded, a ConnectTimeout error will be
+                raised.
+
+        Raises:
+            ConnectTimeout: timed out waiting for next valid request ID
+
+        """
+        if self.algo_client.isConnected():
+            error_msg = "connect_to_ib already connected"
+            logger.debug(error_msg)
+            raise AlreadyConnected(error_msg)
+
+        if self.disconnect_lock.locked():
+            error_msg = "connect_to_ib disconnect lock is held"
+            logger.debug(error_msg)
+            raise DisconnectLockHeld(error_msg)
+
+        req_id = self.setup_client_request(
+            requestor_name=_async_args.smart_thread.name, ref_num=_async_args.ref_num
+        )
+
+        self.algo_client.connect(ip_addr, port, client_id)
+
+        logger.info("starting AlgoClient thread")
+        if self.algo_client.st_state == ThreadState.Registered:
+            self.algo_client.smart_start()
+        else:
+            self.algo_client = AlgoClient(
+                group_name=self.group_name,
+                algo_name=self.algo_name,
+                client_name=self.client_name,
+                disconnect_lock=self.disconnect_lock,
+            )
+            self.algo_client.smart_start()
+
+        # we will wait on the first requestID here for 10 seconds
+        # logger.debug("id of nextValidId_event %d",
+        # id(self.nextValidId_event))
+        try:
+            _async_args.smart_thread.smart_wait(
+                resumers=self.client_name, timeout=timeout
+            )
+            self.algo_client.pop_active_request(req_id=req_id)
+        except SmartThreadRequestTimedOut:
+            self.disconnect_from_ib()
+            error_msg = "connect_to_ib timed out waiting to receive nextValid_ID"
+            logger.debug(error_msg)
+            raise ConnectTimeout(error_msg)
+
+        logger.info("connect success")
+
     ####################################################################
     # disconnect_from_ib
     ####################################################################
-    # @handle_thread_switching
-    # def disconnect_from_ib(self) -> Optional[ResultBlock]:
-    def disconnect_from_ib(self) -> None:
-        """Disconnect from ib."""
+    @set_async_args
+    def disconnect_from_ib(
+        self,
+        _async_args: AsyncArgs,
+        timeout: Optional[IntFloat] = None,
+    ) -> None:
+        """Disconnect from ib.
+
+        Args:
+            _async_args: contains the smart_thread and ref_num to use
+                for the request. Do not specify as this is internal use
+                only used by start_async_request.
+            timeout: specifies the amount of time allowed for the
+                request. If exceeded, a DisconnectTimeout error will be
+                raised.
+
+        Raises:
+            DisconnectTimeout: timed out waiting for join
+        """
         logger.info("calling EClient disconnect")
+
+        # req_id = self.setup_client_request(
+        #     requestor_name=_async_args.smart_thread.name, ref_num=_async_args.ref_num
+        # )
 
         self.algo_client.disconnect()  # call our disconnect (overrides EClient)
 
@@ -615,10 +636,16 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         #     timeout=60,
         # )
 
-        self.smart_join(
-            targets=self.client_name,
-            timeout=60,
-        )
+        try:
+            _async_args.smart_thread.smart_join(
+                targets=self.client_name,
+                timeout=timeout,
+            )
+        except SmartThreadRequestTimedOut:
+            error_msg = "disconnect_from_ib timed out waiting for smart_join"
+            logger.debug(error_msg)
+            raise DisconnectTimeout(error_msg)
+
         # tell run (if running) to exit
         self.handle_cmds = False
         # caller_smart_thread = SmartThread.get_current_smart_thread()

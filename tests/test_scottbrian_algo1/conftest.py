@@ -194,6 +194,13 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
         Args:
             self: instance of ib Connection class
 
+        Notes:
+
+            1) This does what the Connection connect does except for
+               the lines commented out below that do the socket
+               connect. Also, extra code is inserted to set up various
+               error conditions for testing purposes.
+
         """
         logger.debug(f"entered: {self.port=}, {self.host=}")
         try:
@@ -205,6 +212,13 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
                 self.wrapper.error(
                     NO_VALID_ID, FAIL_CREATE_SOCK.code(), FAIL_CREATE_SOCK.msg()
                 )
+
+        # try:
+        #     self.socket.connect((self.host, self.port))
+        # except socket.error:
+        #     if self.wrapper:
+        #         self.wrapper.error(NO_VALID_ID, CONNECT_FAIL.code(),
+        #                            CONNECT_FAIL.msg())
 
         if self.port == mock_ib.PORT_FOR_REQID_TIMEOUT:
             mock_ib.reqId_timeout = True  # simulate timeout
@@ -234,11 +248,23 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
         Args:
             self: instance of ib Connection class
 
+        Notes:
+
+            1) This does what the Connection disconnect does except for
+               the one line commented out below that does the socket
+               close.
+
         """
         self.lock.acquire()
+
+        # check for delay for testing a timeout case
+        if mock_ib.delay_value > 0:
+            time.sleep(mock_ib.delay_value)
+
         try:
             if self.socket is not None:
                 logger.debug("disconnecting")
+                # self.socket.close()
                 self.socket = None
                 logger.debug("disconnected")
                 if self.wrapper:
