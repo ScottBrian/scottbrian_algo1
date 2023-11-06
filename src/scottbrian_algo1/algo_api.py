@@ -43,6 +43,7 @@ smart_recv request to receive the result.
 # Standard Library
 ########################################################################
 import ast
+from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -261,6 +262,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     REQUEST_TIMEOUT_SECONDS: Final[int] = 60
     REQUEST_THROTTLE_SECONDS: Final[int] = 1.0
 
+    K_LOOP_IDLE_TIME: Final[IntFloat] = 1.0
+
     _config_lock: ClassVar[sel.SELock] = sel.SELock()
 
     ####################################################################
@@ -316,6 +319,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # self.fundamental_data = pd.DataFrame()
 
         self.handle_cmds: bool = False
+        self.completed_async_names: deque = deque()
+        self.loop_idle_event: threading.Event = threading.Event()
+        self.stop_monitor: bool = False
 
         self.client_name = "ibapi_client"
 
@@ -354,6 +360,31 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         parms = "ds_catalog"
 
         return f"{classname}({parms})"
+
+    ####################################################################
+    # monitor
+    ####################################################################
+    def monitor(self, smart_thread: SmartThread) -> None:
+        """Loop to do various tasks."""
+        while True:
+            self.loop_idle_event.clear()
+            names_to_join: list[str] = []
+            while len(self.completed_async_names) > 0:
+                names_to_join.append(self.completed_async_names.pop())
+            if names_to_join:
+                smart_thread.smart_join(targets=names_to_join)
+
+            if self.stop_monitor:
+                break
+
+            self.loop_idle_event.wait(timeout=AlgoApp.K_LOOP_IDLE_TIME)
+
+    ####################################################################
+    # shut_down
+    ####################################################################
+    def shut_down(self) -> None:
+        """Shut down the AlgoApp."""
+        self.stop_monitor = True
 
     ####################################################################
     # start_async_request
@@ -468,6 +499,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         req_smart_thread.smart_resume(waiters=self.algo_name)
 
+        self.completed_async_names.append(req_smart_thread.name)
+        self.loop_idle_event.set()
+
     ####################################################################
     # handle_async_request
     ####################################################################
@@ -542,15 +576,13 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 logger.debug(error_msg)
                 raise AlreadyConnected(error_msg)
 
-            req_id = self.setup_client_request(
-                requestor_name=_async_args.smart_thread.name,
-                ref_num=_async_args.ref_num,
-            )
-
-            self.algo_client.connect(ip_addr, port, client_id)
-
-            logger.info("starting AlgoClient thread")
             if self.algo_client.st_state == ThreadState.Registered:
+                req_id = self.setup_client_request(
+                    requestor_name=_async_args.smart_thread.name,
+                    ref_num=_async_args.ref_num,
+                )
+                self.algo_client.connect(ip_addr, port, client_id)
+                logger.info("starting AlgoClient thread 1")
                 self.algo_client.smart_start()
             else:
                 self.algo_client = AlgoClient(
@@ -560,21 +592,25 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                     response_complete_event=self.response_complete_event,
                     market_data=self.market_data,
                 )
+                req_id = self.setup_client_request(
+                    requestor_name=_async_args.smart_thread.name,
+                    ref_num=_async_args.ref_num,
+                )
+                self.algo_client.connect(ip_addr, port, client_id)
+                logger.info("starting AlgoClient thread 2")
                 self.algo_client.smart_start()
 
-        # we will wait on the first requestID here for 10 seconds
-        # logger.debug("id of nextValidId_event %d",
-        # id(self.nextValidId_event))
-        try:
-            _async_args.smart_thread.smart_wait(
-                resumers=self.client_name, timeout=timeout
-            )
-            self.algo_client.pop_active_request(req_id=req_id)
-        except SmartThreadRequestTimedOut:
-            self.disconnect_from_ib()
-            error_msg = "connect_to_ib timed out waiting to receive nextValid_ID"
-            logger.debug(error_msg)
-            raise ConnectTimeout(error_msg)
+            # we will wait on the first requestID here
+            try:
+                _async_args.smart_thread.smart_wait(
+                    resumers=self.client_name, timeout=timeout
+                )
+                self.algo_client.pop_active_request(req_id=req_id)
+            except SmartThreadRequestTimedOut:
+                self.disconnect_from_ib()
+                error_msg = "connect_to_ib timed out waiting to receive nextValid_ID"
+                logger.debug(error_msg)
+                raise ConnectTimeout(error_msg)
 
         logger.info("connect success")
 
@@ -604,24 +640,24 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             logger.info("calling EClient disconnect")
             self.algo_client.disconnect()  # call our disconnect (overrides EClient)
 
-        logger.info("join algo_client to wait for it to come home")
-        # self.algo1_smart_thread.smart_join(
-        #     targets="ibapi_client",
-        #     timeout=60,
-        # )
+            logger.info("join algo_client to wait for it to come home")
+            # self.algo1_smart_thread.smart_join(
+            #     targets="ibapi_client",
+            #     timeout=60,
+            # )
 
-        try:
-            _async_args.smart_thread.smart_join(
-                targets=self.client_name,
-                timeout=timeout,
-            )
-        except SmartThreadRequestTimedOut:
-            error_msg = "disconnect_from_ib timed out waiting for smart_join"
-            logger.debug(error_msg)
-            raise DisconnectTimeout(error_msg)
+            try:
+                _async_args.smart_thread.smart_join(
+                    targets=self.client_name,
+                    timeout=timeout,
+                )
+            except SmartThreadRequestTimedOut:
+                error_msg = "disconnect_from_ib timed out waiting for smart_join"
+                logger.debug(error_msg)
+                raise DisconnectTimeout(error_msg)
 
-        # tell run (if running) to exit
-        self.handle_cmds = False
+            # tell run (if running) to exit
+            self.handle_cmds = False
 
         logger.info("disconnect complete")
 

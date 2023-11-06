@@ -673,9 +673,9 @@ class TestAlgoAppConnect:
         # we are testing connect_to_ib and the subsequent code that gets
         # control as a result, such as getting the first requestID and
         # then starting a separate thread for the run loop.
-        logger.debug("about to connect")
+        logger.debug("about to connect 1")
 
-        cat_app.delay_value = 5
+        cat_app.delay_value = 1005
 
         ref_num1 = algo_app.start_async_request(
             algo_app.connect_to_ib,
@@ -687,13 +687,13 @@ class TestAlgoAppConnect:
         name1 = f"async_request_{ref_num1}"
         lock_verify([name1])
 
-        cat_app.delay_value = 0
-
+        logger.debug("about to disconnect 1")
         ref_num2 = algo_app.start_async_request(algo_app.disconnect_from_ib)
 
         name2 = f"async_request_{ref_num2}"
         lock_verify([name1, name2])
 
+        logger.debug("about to connect 2")
         ref_num3 = algo_app.start_async_request(
             algo_app.connect_to_ib,
             ip_addr="127.0.0.1",
@@ -704,6 +704,7 @@ class TestAlgoAppConnect:
         name3 = f"async_request_{ref_num3}"
         lock_verify([name1, name2, name3])
 
+        logger.debug("about to disconnect 2")
         ref_num4 = algo_app.start_async_request(algo_app.disconnect_from_ib)
 
         name4 = f"async_request_{ref_num4}"

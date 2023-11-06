@@ -468,10 +468,16 @@ class MockIB:
             # if self.reqId_timeout:  # if test timeout case
             # zero mean infinite
             if self.delay_value == -1:
+                logger.debug(f"preventing connect ack with {self.delay_value=}")
                 recv_msg = make_msg("0")  # simulate timeout
             else:  # build the normal next valid id message
                 if self.delay_value > 0:  # non_zero case
-                    time.sleep(self.delay_value)
+                    logger.debug(f"delaying connect ack with {self.delay_value=}")
+                    sleep_time = self.delay_value
+                    if self.delay_value > 1000:
+                        sleep_time -= 1000
+                        self.delay_value = 0
+                    time.sleep(sleep_time)
                 recv_msg = make_msg(
                     make_field(IN.NEXT_VALID_ID) + make_field("1") + make_field("1")
                 )
