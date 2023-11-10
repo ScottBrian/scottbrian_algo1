@@ -325,6 +325,13 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         self.client_name = "ibapi_client"
 
+        self.monitor_smart_thread = SmartThread(
+            group_name=self.group_name,
+            name="algo_monitor",
+            target_rtn=self.monitor,
+            thread_parm_name="smart_thread",
+        )
+
         self.algo_client = AlgoClient(
             group_name=group_name,
             algo_name=self.algo_name,
@@ -385,6 +392,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     def shut_down(self) -> None:
         """Shut down the AlgoApp."""
         self.stop_monitor = True
+        self.smart_join(targets="algo_monitor", timeout=60)
 
     ####################################################################
     # start_async_request
@@ -570,6 +578,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
+        error_msg = ""
         with sel.SELockExcl(AlgoApp._config_lock):
             if self.algo_client.isConnected():
                 error_msg = "connect_to_ib already connected"
@@ -607,10 +616,14 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 )
                 self.algo_client.pop_active_request(req_id=req_id)
             except SmartThreadRequestTimedOut:
-                self.disconnect_from_ib()
                 error_msg = "connect_to_ib timed out waiting to receive nextValid_ID"
-                logger.debug(error_msg)
-                raise ConnectTimeout(error_msg)
+
+        if error_msg:
+            # we need to have dropped the lock since disconnect_from_ib
+            # will need to acquire it
+            self.disconnect_from_ib()
+            logger.debug(error_msg)
+            raise ConnectTimeout(error_msg)
 
         logger.info("connect success")
 

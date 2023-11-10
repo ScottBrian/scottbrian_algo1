@@ -255,14 +255,18 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
                close.
 
         """
-        if mock_ib.delay_value == -1:  # if simulate failure
+        if mock_ib.delay_value == -2:  # if simulate failure
             return
 
         self.lock.acquire()
 
         # check for delay for testing a timeout case
         if mock_ib.delay_value > 0:
-            time.sleep(mock_ib.delay_value)
+            sleep_time = mock_ib.delay_value
+            if mock_ib.delay_value > 1000:
+                sleep_time -= 1000
+                mock_ib.delay_value = 0
+            time.sleep(sleep_time)
 
         try:
             if self.socket is not None:
