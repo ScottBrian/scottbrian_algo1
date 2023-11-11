@@ -202,6 +202,16 @@ class ThreadConfig(Enum):
 
 
 ########################################################################
+# AsynThreadBlock
+########################################################################
+@dataclass
+class AsyncThreadBlock:
+    smart_thread: SmartThread
+    in_use: bool = False
+    time_freed: float = 0.0
+
+
+########################################################################
 # RequestBlock
 ########################################################################
 @dataclass
@@ -319,6 +329,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # self.fundamental_data = pd.DataFrame()
 
         self.handle_cmds: bool = False
+        self.thread_blocks: list[AsyncThreadBlock] = []
         self.completed_async_names: deque = deque()
         self.loop_idle_event: threading.Event = threading.Event()
         self.stop_monitor: bool = False
@@ -397,6 +408,47 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # start_async_request
     ####################################################################
+    # def start_async_request(self, func, *args, **kwargs) -> UniqueTStamp:
+    #     """Send request to async handler.
+    #
+    #     Args:
+    #         func: function to be called asynchronously
+    #         args: positional args to be passed to func
+    #         kwargs: keyword args to be passed to func
+    #
+    #     Returns:
+    #         reference number used to obtain the results by calling
+    #         get_async_results
+    #
+    #     Notes:
+    #
+    #         1) Any AlgoApp method can be called asynchronously via this
+    #            method provided they have _async_args in their function
+    #            signatures and use the set_async_args decorator.
+    #
+    #     """
+    #
+    #     ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+    #
+    #     req_block = RequestBlock(
+    #         func_to_call=func,
+    #         func_args=args,
+    #         func_kwargs=kwargs,
+    #         ref_num=ref_num,
+    #     )
+    #
+    #     SmartThread(
+    #         group_name=self.group_name,
+    #         name=f"async_request_{req_block.ref_num}",
+    #         target_rtn=self.handle_async_request,
+    #         thread_parm_name="req_smart_thread",
+    #         kwargs={"req_block": req_block},
+    #     )
+    #     return ref_num
+
+    ####################################################################
+    # start_async_request
+    ####################################################################
     def start_async_request(self, func, *args, **kwargs) -> UniqueTStamp:
         """Send request to async handler.
 
@@ -426,13 +478,28 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ref_num=ref_num,
         )
 
-        SmartThread(
-            group_name=self.group_name,
-            name=f"async_request_{req_block.ref_num}",
-            target_rtn=self.handle_async_request,
-            thread_parm_name="req_smart_thread",
-            kwargs={"req_block": req_block},
-        )
+        with sel.SELockExcl(AlgoApp._config_lock):
+            async_thread_block = None
+            for thread_block in self.thread_blocks:
+                if not thread_block.in_use:
+                    thread_block.in_use = True
+                    async_thread_block = thread_block
+                    break
+
+            if async_thread_block is None:
+                smart_thread = SmartThread(
+                    group_name=self.group_name,
+                    name=f"async_request_{req_block.ref_num}",
+                    target_rtn=self.handle_async_request,
+                    thread_parm_name="req_smart_thread",
+                )
+                async_thread_block = AsyncThreadBlock(
+                    smart_thread=smart_thread, in_use=True
+                )
+                self.thread_blocks.append(async_thread_block)
+
+            self.smart_send(msg=req_block,
+                            receivers=async_thread_block.smart_thread.name)
         return ref_num
 
     ####################################################################
