@@ -74,6 +74,7 @@ from typing import (
 ########################################################################
 # Third Party
 ########################################################################
+from bidict import bidict
 from ibapi.client import EClient  # type: ignore
 from ibapi.wrapper import EWrapper  # type: ignore
 from ibapi.utils import current_fn_name  # type: ignore
@@ -97,6 +98,7 @@ from scottbrian_locking import se_lock as sel
 from scottbrian_paratools.smart_thread import (
     SmartThread,
     ThreadState,
+    SmartThreadNotFound,
     SmartThreadRemoteThreadNotAlive,
     SmartThreadRequestTimedOut,
 )
@@ -184,6 +186,12 @@ class RequestError(AlgoAppError):
     pass
 
 
+class RequestAfterShutdown(AlgoAppError):
+    """Request received an error while waiting on event completion."""
+
+    pass
+
+
 AlgoExceptions: TypeAlias = Union[
     Type[AlreadyConnected],
     Type[ConnectTimeout],
@@ -208,6 +216,7 @@ class ThreadConfig(Enum):
 class AsyncThreadBlock:
     smart_thread: SmartThread
     in_use: bool = False
+    req_name: str = ""
     create_time: float = 0.0
     start_time: float = 0.0
     time_freed: float = 0.0
@@ -218,7 +227,7 @@ class AsyncThreadBlock:
 ########################################################################
 @dataclass
 class AsyncRefBlock:
-    smart_thread_name: str
+    req_smart_thread: SmartThread
     ref_num: UniqueTStamp
 
 
@@ -231,6 +240,8 @@ class RequestBlock:
     func_args: tuple[Any]
     func_kwargs: dict[str, Any]
     ref_num: UniqueTStamp
+    req_name: str
+    req_waiting: bool = False
 
 
 ########################################################################
@@ -324,6 +335,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self.algo_name = algo_name
         self.ds_catalog = ds_catalog
 
+        # self.req_async_association: bidict[str, str] = bidict()
+        self.async_handlers: dict[str, SmartThread] = {}
+        self.req_thread_array: dict[str, SmartThread] = {}
         self.request_results: dict[UniqueTStamp, ResultBlock] = {}
 
         self.thread_req_nums: dict[str, UniqueTStamp] = {}
@@ -339,7 +353,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # fundamental data
         # self.fundamental_data = pd.DataFrame()
 
-        self.shut_down: bool = False
+        self.results_lock: threading.Lock = threading.Lock()
         self.handle_cmds: bool = False
         self.thread_blocks: dict[str, AsyncThreadBlock] = {}
         self.completed_async_names: deque = deque()
@@ -418,7 +432,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     def shut_down(self) -> None:
         """Shut down the AlgoApp."""
         self.stop_monitor = True
-        self.shut_down = True
         self.smart_join(targets="algo_monitor", timeout=60)
 
     ####################################################################
@@ -438,6 +451,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 AsyncRefBlock is used later to obtain the request
                 results by calling get_async_results.
 
+        Raises:
+            RequestAfterShutdown: An async request was made after
+                shutdown
         Notes:
 
             1) Any AlgoApp method can be called asynchronously via this
@@ -445,37 +461,46 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                signatures and use the set_async_args decorator.
 
         """
+        if self.stop_monitor:
+            raise RequestAfterShutdown("An async request was made after shutdown")
+
+        try:
+            req_smart_thread = SmartThread.get_current_smart_thread(
+                group_name=self.group_name
+            )
+            # thread_num: UniqueTStamp = float(req_smart_thread.name.split("_")[-1])
+        except SmartThreadNotFound:
+            req_thread_num = UniqueTS.get_unique_ts()
+            req_smart_thread_name = f"algo_requestor_{req_thread_num}"
+            req_smart_thread = SmartThread(
+                group_name=self.group_name, name=req_smart_thread_name
+            )
 
         ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-
         req_block = RequestBlock(
             func_to_call=func,
             func_args=args,
             func_kwargs=kwargs,
             ref_num=ref_num,
+            req_name=req_smart_thread.name,
         )
 
         with sel.SELockExcl(AlgoApp._config_lock):
-            for smart_thread_name, thread_block in self.thread_blocks.items():
-                if not thread_block.in_use:
-                    thread_block.in_use = True
-                    self.smart_send(msg=req_block, receivers=smart_thread_name)
-                    return AsyncRefBlock(
-                        smart_thread_name=smart_thread_name, ref_num=ref_num
-                    )
+            async_handler_name = f"async_{req_smart_thread.name}"
+            if async_handler_name in self.async_handlers:
+                req_smart_thread.smart_send(msg=req_block, receivers=async_handler_name)
+            else:
+                self.async_handlers[async_handler_name] = SmartThread(
+                    group_name=self.group_name,
+                    name=async_handler_name,
+                    auto_start=False,
+                    target_rtn=self.handle_async_request,
+                    thread_parm_name="async_handler_smart_thread",
+                    kwargs={"req_block": req_block},
+                )
+                self.async_handlers[async_handler_name].smart_start()
 
-            new_name = f"async_request_{req_block.ref_num}"
-            smart_thread = SmartThread(
-                group_name=self.group_name,
-                name=new_name,
-                target_rtn=self.handle_async_request,
-                thread_parm_name="req_smart_thread",
-                kwargs={"req_block": req_block},
-            )
-            self.thread_blocks[new_name] = AsyncThreadBlock(
-                smart_thread=smart_thread, in_use=True
-            )
-            return AsyncRefBlock(smart_thread_name=new_name, ref_num=ref_num)
+            return AsyncRefBlock(req_smart_thread=req_smart_thread, ref_num=ref_num)
 
     ####################################################################
     # setup_client_request
@@ -496,30 +521,20 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     def handle_async_request(
         self,
-        req_smart_thread: SmartThread,
+        async_handler_smart_thread: SmartThread,
         req_block: RequestBlock,
     ) -> None:
         """Handle async request.
 
         Args:
-            req_smart_thread: the SmartThread instance running this
+            async_handler_smart_thread: the SmartThread instance running this
                 request
             req_block: the function to call and its args
 
         """
-        first_time: bool = True
+        req_smart_thread_name = async_handler_smart_thread.name[6:]
+        req_block_msg: dict[str, list[RequestBlock]] = {req_smart_thread_name: []}
         while True:
-            if first_time:
-                first_time = False
-            else:
-                while True:
-                    try:
-                        msg = req_smart_thread.smart_recv(senders=self.algo_name, timeout=1)
-                        req_block = msg[self.algo_name][0]
-                    except SmartThreadRequestTimedOut:
-                        if self.shut_down:
-                            return
-
             req_result = None
             error_to_raise: Optional[AlgoExceptions] = None
 
@@ -534,7 +549,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 req_result = req_block.func_to_call(
                     *req_block.func_args,
                     _async_args=AsyncArgs(
-                        smart_thread=req_smart_thread, ref_num=req_block.ref_num
+                        smart_thread=async_handler_smart_thread,
+                        ref_num=req_block.ref_num,
                     ),
                     **req_block.func_kwargs,
                 )
@@ -554,16 +570,34 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 error_to_raise = RequestError
                 error_msg = str(error_text)
 
-            self.request_results[req_block.ref_num] = ResultBlock(
-                ret_data=req_result,
-                error_to_raise=error_to_raise,
-                error_msg=error_msg,
-            )
+            with self.results_lock:
+                self.request_results[req_block.ref_num] = ResultBlock(
+                    ret_data=req_result,
+                    error_to_raise=error_to_raise,
+                    error_msg=error_msg,
+                )
 
-            req_smart_thread.smart_resume(waiters=self.algo_name)
+                if req_block.req_waiting:
+                    async_handler_smart_thread.smart_resume(
+                        waiters=req_smart_thread_name
+                    )
 
-            self.completed_async_names.append(req_smart_thread.name)
-            self.loop_idle_event.set()
+            if not req_block_msg[req_smart_thread_name]:
+                while True:
+                    if self.stop_monitor:
+                        self.completed_async_names.append(
+                            async_handler_smart_thread.name
+                        )
+                        self.loop_idle_event.set()
+                        return
+                    try:
+                        req_block_msg = async_handler_smart_thread.smart_recv(
+                            senders=req_smart_thread_name, timeout=1
+                        )
+                        break
+                    except SmartThreadRequestTimedOut:
+                        pass
+            req_block = req_block_msg[req_smart_thread_name].pop(0)
 
     ####################################################################
     # handle_async_request
