@@ -223,24 +223,15 @@ class AsyncThreadBlock:
 
 
 ########################################################################
-# AsyncRefBlock
+# AsyncRequestBlock
 ########################################################################
 @dataclass
-class AsyncRefBlock:
-    req_smart_thread: SmartThread
-    req_num: UniqueTStamp
-
-
-########################################################################
-# RequestBlock
-########################################################################
-@dataclass
-class RequestBlock:
+class AsyncRequestBlock:
     func_to_call: Callable[..., "RequestBock"]
     func_args: tuple[Any]
     func_kwargs: dict[str, Any]
     req_num: UniqueTStamp
-    req_name: str
+    req_smart_thread: SmartThread
     req_waiting: bool = False
 
 
@@ -437,7 +428,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # start_async_request
     ####################################################################
-    def start_async_request(self, func, *args, **kwargs) -> AsyncRefBlock:
+    def start_async_request(self, func, *args, **kwargs) -> AsyncRequestBlock:
         """Send request to async handler.
 
         Args:
@@ -446,9 +437,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             kwargs: keyword args to be passed to func
 
         Returns:
-            AsyncRefBlock that contain the smart_thread name doing the
+            AsyncRequestBlock that contain the smart_thread name doing the
                 async request and the reference number. The
-                AsyncRefBlock is used later to obtain the request
+                AsyncRequestBlock is used later to obtain the request
                 results by calling get_async_results.
 
         Raises:
@@ -461,6 +452,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                signatures and use the set_async_args decorator.
 
         """
+        logger.debug(f"start_async_request entry: {func=}, {args=}, {kwargs=}")
         if self.stop_monitor:
             raise RequestAfterShutdown("An async request was made after shutdown")
 
@@ -476,12 +468,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             )
 
         req_num: UniqueTStamp = UniqueTS.get_unique_ts()
-        req_block = RequestBlock(
+        req_block = AsyncRequestBlock(
             func_to_call=func,
             func_args=args,
             func_kwargs=kwargs,
             req_num=req_num,
-            req_name=req_smart_thread.name,
+            req_smart_thread=req_smart_thread,
         )
 
         with sel.SELockExcl(AlgoApp._config_lock):
@@ -499,7 +491,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 )
                 self.async_handlers[async_handler_name].smart_start()
 
-            return AsyncRefBlock(req_smart_thread=req_smart_thread, req_num=req_num)
+            logger.debug(
+                f"start_async_request exit: {req_smart_thread.name=}, "
+                f"{async_handler_name=}, {req_num=}"
+            )
+            return req_block
 
     ####################################################################
     # setup_client_request
@@ -521,7 +517,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     def handle_async_request(
         self,
         async_handler_smart_thread: SmartThread,
-        req_block: RequestBlock,
+        req_block: AsyncRequestBlock,
     ) -> None:
         """Handle async request.
 
@@ -531,8 +527,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             req_block: the function to call and its args
 
         """
+        logger.debug(
+            f"handle_async_request entry: "
+            f"{async_handler_smart_thread.name=}, {req_block=}"
+        )
         req_smart_thread_name = async_handler_smart_thread.name[6:]
-        req_block_msg: dict[str, list[RequestBlock]] = {req_smart_thread_name: []}
+        req_block_msg: dict[str, list[AsyncRequestBlock]] = {req_smart_thread_name: []}
         while True:
             req_result = None
             error_to_raise: Optional[AlgoExceptions] = None
@@ -588,6 +588,10 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                             async_handler_smart_thread.name
                         )
                         self.loop_idle_event.set()
+                        logger.debug(
+                            f"handle_async_request exit: "
+                            f"{async_handler_smart_thread.name=}, {req_block=}"
+                        )
                         return
                     try:
                         req_block_msg = async_handler_smart_thread.smart_recv(
@@ -597,19 +601,23 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                     except SmartThreadRequestTimedOut:
                         pass
             req_block = req_block_msg[req_smart_thread_name].pop(0)
+            logger.debug(
+                f"handle_async_request recv new request: "
+                f"{async_handler_smart_thread.name=}, {req_block=}"
+            )
 
     ####################################################################
     # handle_async_request
     ####################################################################
     def get_async_results(
         self,
-        ref_block: AsyncRefBlock,
+        req_block: AsyncRequestBlock,
         timeout: IntFloat = 0,
     ) -> Optional[ResultBlock]:
         """Get results from an async request.
 
         Args:
-            ref_block: contain the smart_thread name doing the
+            req_block: contain the smart_thread name doing the
                 async request and the reference number
             timeout: specifies number of seconds to wait for the results
                 if not immediately available. An error is raised if the
@@ -625,23 +633,27 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                returned.
 
         """
-        async_handler_name = f"async_{ref_block.req_smart_thread.name}"
+        logger.debug(f"get_async_results entry: {req_block=}, {timeout=}")
+        async_handler_name = f"async_{req_block.req_smart_thread.name}"
         with self.results_lock:
-            if ref_block.req_num not in self.request_results:
+            if req_block.req_num not in self.request_results:
                 if timeout > 0:
-                    ref_block.req_waiting = True
+                    req_block.req_waiting = True
                 else:
+                    logger.debug(f"get_async_results exit 1: {req_block=}")
                     return None
-        if ref_block.req_waiting:
-            ref_block.req_smart_thread.smart_wait(
+        if req_block.req_waiting:
+            logger.debug(f"get_async_results waiting: {req_block=}, {timeout=}")
+            req_block.req_smart_thread.smart_wait(
                 resumers=async_handler_name, timeout=timeout
             )
 
-        ret_req_block = self.request_results.pop(ref_block.req_num)
-        if ret_req_block.error_to_raise:
-            raise ret_req_block.error_to_raise(ret_req_block.error_msg)
+        ret_result_block = self.request_results.pop(req_block.req_num)
+        if ret_result_block.error_to_raise:
+            raise ret_result_block.error_to_raise(ret_result_block.error_msg)
 
-        return ret_req_block
+        logger.debug(f"get_async_results exit 2: {ret_result_block=}")
+        return ret_result_block
 
     ###########################################################################
     # connect_to_ib
@@ -673,6 +685,10 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
+        logger.debug(
+            f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, "
+            f"{_async_args=}, {timeout=}"
+        )
         error_msg = ""
         with sel.SELockExcl(AlgoApp._config_lock):
             if self.algo_client.isConnected():
@@ -721,6 +737,10 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             raise ConnectTimeout(error_msg)
 
         logger.info("connect success")
+        logger.debug(
+            f"connect_to_ib exit: {ip_addr=}, {port=}, {client_id=}, "
+            f"{_async_args=}, {timeout=}"
+        )
 
     ####################################################################
     # disconnect_from_ib
@@ -744,6 +764,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         Raises:
             DisconnectTimeout: timed out waiting for join
         """
+        logger.debug(f"disconnect_from_ib entry: {_async_args=}, {timeout=}")
         with sel.SELockExcl(AlgoApp._config_lock):
             logger.info("calling EClient disconnect")
             self.algo_client.disconnect()  # call our disconnect (overrides EClient)
@@ -768,6 +789,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             self.handle_cmds = False
 
         logger.info("disconnect complete")
+        logger.debug(f"disconnect_from_ib exit: {_async_args=}, {timeout=}")
 
     ###########################################################################
     # wait_for_request_completion

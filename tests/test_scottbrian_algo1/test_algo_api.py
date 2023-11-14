@@ -31,6 +31,7 @@ import pytest
 from scottbrian_algo1.algo_api import (
     AlgoApp,
     AlreadyConnected,
+    AsyncRequestBlock,
     ConnectTimeout,
     RequestTimeout,
     ResultBlock,
@@ -47,6 +48,7 @@ from scottbrian_algo1.algo_maps import get_contract_details_obj
 from scottbrian_paratools.smart_thread import SmartThread, SmartThreadRequestTimedOut
 
 from scottbrian_utils.diag_msg import get_caller_info
+from scottbrian_utils.msgs import Msgs
 
 ########################################################################
 # get logger
@@ -483,6 +485,7 @@ class TestAlgoAppConnect:
             req_result = None
             while req_result is None:
                 req_result = algo_app.get_async_results(req_num)
+                time.sleep(0.2)
             assert req_result.ret_data is None
         elif timeout_type_arg == TimeoutType.TimeoutFalse:
             req_result = algo_app.get_async_results(req_num, timeout=10)
@@ -570,6 +573,7 @@ class TestAlgoAppConnect:
             req_result = None
             while req_result is None:
                 req_result = algo_app.get_async_results(req_num)
+                time.sleep(0.2)
             assert req_result.ret_data is None
         elif timeout_type_arg == TimeoutType.TimeoutFalse:
             req_result = algo_app.get_async_results(req_num, timeout=10)
@@ -683,6 +687,65 @@ class TestAlgoAppConnect:
         """
         algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
         verify_algo_app_initialized(algo_app)
+        msgs = Msgs()
+
+        def do_disconnect2(smart_thread: SmartThread):
+            """Do disconnect from ib.
+
+            Args:
+                smart_thread: SmartThread that is running
+
+            """
+            logger.debug("do_disconnect2 entry:")
+            req_num2 = algo_app.start_async_request(algo_app.disconnect_from_ib)
+            msgs.queue_msg(target="mainline", msg=req_num2.req_smart_thread.name)
+            req_result2 = algo_app.get_async_results(req_num2, timeout=10)
+            assert req_result2.ret_data is None
+
+            smart_thread.smart_wait(resumers="mainline")
+
+            logger.debug("do_disconnect2 exit:")
+
+        def do_connect3(smart_thread: SmartThread):
+            """Do connect to ib.
+
+            Args:
+                smart_thread: SmartThread that is running
+
+            """
+            logger.debug("do_connect3 entry:")
+            req_num3 = algo_app.start_async_request(
+                algo_app.connect_to_ib,
+                ip_addr="127.0.0.1",
+                port=algo_app.PORT_FOR_LIVE_TRADING,
+                client_id=1,
+            )
+            msgs.queue_msg(target="mainline", msg=req_num3.req_smart_thread.name)
+            req_result3 = algo_app.get_async_results(req_num3, timeout=10)
+            assert req_result3.ret_data is None
+
+            smart_thread.smart_wait(resumers="mainline")
+
+            logger.debug("do_connect2 exit:")
+
+        def do_disconnect4(smart_thread: SmartThread):
+            """Do disconnect from ib.
+
+            Args:
+                smart_thread: SmartThread that is running
+
+            """
+            logger.debug("do_disconnect4 entry:")
+            req_num4 = algo_app.start_async_request(algo_app.disconnect_from_ib)
+            msgs.queue_msg(target="mainline", msg=req_num4.req_smart_thread.name)
+            req_result4 = algo_app.get_async_results(req_num4, timeout=10)
+            assert req_result4.ret_data is None
+
+            smart_thread.smart_wait(resumers="mainline")
+
+            logger.debug("do_disconnect4 exit:")
+
+        mainline_smart_thread = SmartThread(group_name="test1", name="mainline")
 
         # we are testing connect_to_ib and the subsequent code that gets
         # control as a result, such as getting the first requestID and
@@ -698,47 +761,68 @@ class TestAlgoAppConnect:
             client_id=1,
         )
 
-        name1 = f"async_request_{req_num1}"
+        name1 = "async_algo_app"
         lock_verify([name1])
 
-        logger.debug("about to disconnect 1")
-        req_num2 = algo_app.start_async_request(algo_app.disconnect_from_ib)
+        # logger.debug("about to disconnect 1")
+        # req_num2 = algo_app.start_async_request(algo_app.disconnect_from_ib)
+        SmartThread(
+            group_name="test1",
+            name="disc2",
+            target_rtn=do_disconnect2,
+            thread_parm_name="smart_thread",
+        )
+        name2 = msgs.get_msg("mainline", timeout=10)
 
-        name2 = f"async_request_{req_num2}"
         lock_verify([name1, name2])
 
         logger.debug("about to connect 2")
-        req_num3 = algo_app.start_async_request(
-            algo_app.connect_to_ib,
-            ip_addr="127.0.0.1",
-            port=algo_app.PORT_FOR_LIVE_TRADING,
-            client_id=1,
+        # req_num3 = algo_app.start_async_request(
+        #     algo_app.connect_to_ib,
+        #     ip_addr="127.0.0.1",
+        #     port=algo_app.PORT_FOR_LIVE_TRADING,
+        #     client_id=1,
+        # )
+        SmartThread(
+            group_name="test1",
+            name="conn3",
+            target_rtn=do_connect3,
+            thread_parm_name="smart_thread",
         )
+        name3 = msgs.get_msg("mainline", timeout=10)
 
-        name3 = f"async_request_{req_num3}"
         lock_verify([name1, name2, name3])
 
         logger.debug("about to disconnect 2")
-        req_num4 = algo_app.start_async_request(algo_app.disconnect_from_ib)
+        # req_num4 = algo_app.start_async_request(algo_app.disconnect_from_ib)
+        SmartThread(
+            group_name="test1",
+            name="disc4",
+            target_rtn=do_disconnect4,
+            thread_parm_name="smart_thread",
+        )
+        name4 = msgs.get_msg("mainline", timeout=10)
 
-        name4 = f"async_request_{req_num4}"
         lock_verify([name1, name2, name3, name4])
 
         req_result1 = algo_app.get_async_results(req_num1, timeout=10)
         assert req_result1.ret_data is None
 
-        req_result2 = algo_app.get_async_results(req_num2, timeout=10)
-        assert req_result2.ret_data is None
+        # req_result2 = algo_app.get_async_results(req_num2, timeout=10)
+        # assert req_result2.ret_data is None
 
-        req_result3 = algo_app.get_async_results(req_num3, timeout=10)
-        assert req_result3.ret_data is None
-
-        req_result4 = algo_app.get_async_results(req_num4, timeout=10)
-        assert req_result4.ret_data is None
+        # req_result3 = algo_app.get_async_results(req_num3, timeout=10)
+        # assert req_result3.ret_data is None
+        #
+        # req_result4 = algo_app.get_async_results(req_num4, timeout=10)
+        # assert req_result4.ret_data is None
 
         verify_algo_app_disconnected(algo_app)
 
         algo_app.shut_down()
+
+        mainline_smart_thread.smart_resume(waiters=["disc2", "conn3", "disc4"])
+        mainline_smart_thread.smart_join(targets=["disc2", "conn3", "disc4"])
 
     @pytest.mark.skip(reason="enable only when Trader Workstation is open")
     def test_real_connect_to_ib(self) -> None:
