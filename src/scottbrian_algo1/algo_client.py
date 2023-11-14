@@ -80,7 +80,7 @@ class RequestIdNotFound(AlgoClientError):
 @dataclass
 class ClientRequestBlock:
     requestor_name: str
-    ref_num: UniqueTStamp
+    req_num: UniqueTStamp
     request_complete: bool = False
     request_resumed: bool = False
 

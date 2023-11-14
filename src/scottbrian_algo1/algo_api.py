@@ -228,7 +228,7 @@ class AsyncThreadBlock:
 @dataclass
 class AsyncRefBlock:
     req_smart_thread: SmartThread
-    ref_num: UniqueTStamp
+    req_num: UniqueTStamp
 
 
 ########################################################################
@@ -239,7 +239,7 @@ class RequestBlock:
     func_to_call: Callable[..., "RequestBock"]
     func_args: tuple[Any]
     func_kwargs: dict[str, Any]
-    ref_num: UniqueTStamp
+    req_num: UniqueTStamp
     req_name: str
     req_waiting: bool = False
 
@@ -260,7 +260,7 @@ class ResultBlock:
 @dataclass
 class AsyncArgs:
     smart_thread: SmartThread
-    ref_num: UniqueTStamp
+    req_num: UniqueTStamp
 
 
 ########################################################################
@@ -271,7 +271,7 @@ def set_async_args(func: Callable[..., Any]) -> Callable[..., Any]:
     def wrapped_make_sync(self, *args, **kwargs) -> Any:
         if "_async_args" not in kwargs:
             kwargs["_async_args"] = AsyncArgs(
-                smart_thread=self, ref_num=UniqueTS.get_unique_ts()
+                smart_thread=self, req_num=UniqueTS.get_unique_ts()
             )
 
         ret_value = func(self, *args, **kwargs)
@@ -468,7 +468,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             req_smart_thread = SmartThread.get_current_smart_thread(
                 group_name=self.group_name
             )
-            # thread_num: UniqueTStamp = float(req_smart_thread.name.split("_")[-1])
         except SmartThreadNotFound:
             req_thread_num = UniqueTS.get_unique_ts()
             req_smart_thread_name = f"algo_requestor_{req_thread_num}"
@@ -476,12 +475,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 group_name=self.group_name, name=req_smart_thread_name
             )
 
-        ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+        req_num: UniqueTStamp = UniqueTS.get_unique_ts()
         req_block = RequestBlock(
             func_to_call=func,
             func_args=args,
             func_kwargs=kwargs,
-            ref_num=ref_num,
+            req_num=req_num,
             req_name=req_smart_thread.name,
         )
 
@@ -500,17 +499,17 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 )
                 self.async_handlers[async_handler_name].smart_start()
 
-            return AsyncRefBlock(req_smart_thread=req_smart_thread, ref_num=ref_num)
+            return AsyncRefBlock(req_smart_thread=req_smart_thread, req_num=req_num)
 
     ####################################################################
     # setup_client_request
     ####################################################################
-    def setup_client_request(self, requestor_name: str, ref_num: UniqueTStamp) -> ReqID:
+    def setup_client_request(self, requestor_name: str, req_num: UniqueTStamp) -> ReqID:
         """Send request to async handler."""
 
         req_id = self.algo_client.get_req_id()  # bump reqId and return it
         client_req_block = ClientRequestBlock(
-            requestor_name=requestor_name, ref_num=ref_num
+            requestor_name=requestor_name, req_num=req_num
         )
         self.algo_client.add_active_request(req_id=req_id, req_block=client_req_block)
 
@@ -550,7 +549,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                     *req_block.func_args,
                     _async_args=AsyncArgs(
                         smart_thread=async_handler_smart_thread,
-                        ref_num=req_block.ref_num,
+                        req_num=req_block.req_num,
                     ),
                     **req_block.func_kwargs,
                 )
@@ -571,7 +570,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 error_msg = str(error_text)
 
             with self.results_lock:
-                self.request_results[req_block.ref_num] = ResultBlock(
+                self.request_results[req_block.req_num] = ResultBlock(
                     ret_data=req_result,
                     error_to_raise=error_to_raise,
                     error_msg=error_msg,
@@ -626,13 +625,19 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                returned.
 
         """
-        if req_num not in self.request_results:
-            if timeout > 0:
-                self.smart_wait(resumers=f"async_request_{req_num}", timeout=timeout)
-            else:
-                return None
+        async_handler_name = f"async_{ref_block.req_smart_thread.name}"
+        with self.results_lock:
+            if ref_block.req_num not in self.request_results:
+                if timeout > 0:
+                    ref_block.req_waiting = True
+                else:
+                    return None
+        if ref_block.req_waiting:
+            ref_block.req_smart_thread.smart_wait(
+                resumers=async_handler_name, timeout=timeout
+            )
 
-        ret_req_block = self.request_results.pop(req_num)
+        ret_req_block = self.request_results.pop(ref_block.req_num)
         if ret_req_block.error_to_raise:
             raise ret_req_block.error_to_raise(ret_req_block.error_msg)
 
@@ -657,7 +662,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ip_addr: addr to connect to
             port: port to connect to
             client_id: client id to use for connection
-            _async_args: contains the smart_thread and ref_num to use
+            _async_args: contains the smart_thread and req_num to use
                 for the request. Do not specify as this is internal use
                 only used by start_async_request.
             timeout: specifies the amount of time allowed for the
@@ -678,7 +683,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             if self.algo_client.st_state == ThreadState.Registered:
                 req_id = self.setup_client_request(
                     requestor_name=_async_args.smart_thread.name,
-                    ref_num=_async_args.ref_num,
+                    req_num=_async_args.req_num,
                 )
                 self.algo_client.connect(ip_addr, port, client_id)
                 logger.info("starting AlgoClient thread 1")
@@ -693,7 +698,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 )
                 req_id = self.setup_client_request(
                     requestor_name=_async_args.smart_thread.name,
-                    ref_num=_async_args.ref_num,
+                    req_num=_async_args.req_num,
                 )
                 self.algo_client.connect(ip_addr, port, client_id)
                 logger.info("starting AlgoClient thread 2")
@@ -729,7 +734,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         """Disconnect from ib.
 
         Args:
-            _async_args: contains the smart_thread and ref_num to use
+            _async_args: contains the smart_thread and req_num to use
                 for the request. Do not specify as this is internal use
                 only used by start_async_request.
             timeout: specifies the amount of time allowed for the

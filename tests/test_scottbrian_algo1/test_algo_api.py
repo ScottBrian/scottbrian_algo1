@@ -691,49 +691,49 @@ class TestAlgoAppConnect:
 
         cat_app.delay_value = 1005
 
-        ref_num1 = algo_app.start_async_request(
+        req_num1 = algo_app.start_async_request(
             algo_app.connect_to_ib,
             ip_addr="127.0.0.1",
             port=algo_app.PORT_FOR_LIVE_TRADING,
             client_id=1,
         )
 
-        name1 = f"async_request_{ref_num1}"
+        name1 = f"async_request_{req_num1}"
         lock_verify([name1])
 
         logger.debug("about to disconnect 1")
-        ref_num2 = algo_app.start_async_request(algo_app.disconnect_from_ib)
+        req_num2 = algo_app.start_async_request(algo_app.disconnect_from_ib)
 
-        name2 = f"async_request_{ref_num2}"
+        name2 = f"async_request_{req_num2}"
         lock_verify([name1, name2])
 
         logger.debug("about to connect 2")
-        ref_num3 = algo_app.start_async_request(
+        req_num3 = algo_app.start_async_request(
             algo_app.connect_to_ib,
             ip_addr="127.0.0.1",
             port=algo_app.PORT_FOR_LIVE_TRADING,
             client_id=1,
         )
 
-        name3 = f"async_request_{ref_num3}"
+        name3 = f"async_request_{req_num3}"
         lock_verify([name1, name2, name3])
 
         logger.debug("about to disconnect 2")
-        ref_num4 = algo_app.start_async_request(algo_app.disconnect_from_ib)
+        req_num4 = algo_app.start_async_request(algo_app.disconnect_from_ib)
 
-        name4 = f"async_request_{ref_num4}"
+        name4 = f"async_request_{req_num4}"
         lock_verify([name1, name2, name3, name4])
 
-        req_result1 = algo_app.get_async_results(ref_num1, timeout=10)
+        req_result1 = algo_app.get_async_results(req_num1, timeout=10)
         assert req_result1.ret_data is None
 
-        req_result2 = algo_app.get_async_results(ref_num2, timeout=10)
+        req_result2 = algo_app.get_async_results(req_num2, timeout=10)
         assert req_result2.ret_data is None
 
-        req_result3 = algo_app.get_async_results(ref_num3, timeout=10)
+        req_result3 = algo_app.get_async_results(req_num3, timeout=10)
         assert req_result3.ret_data is None
 
-        req_result4 = algo_app.get_async_results(ref_num4, timeout=10)
+        req_result4 = algo_app.get_async_results(req_num4, timeout=10)
         assert req_result4.ret_data is None
 
         verify_algo_app_disconnected(algo_app)
@@ -741,14 +741,8 @@ class TestAlgoAppConnect:
         algo_app.shut_down()
 
     @pytest.mark.skip(reason="enable only when Trader Workstation is open")
-    def test_real_connect_to_IB(self) -> None:
-        """Test connecting to IB.
-
-        Args:
-            algo_app: instance of AlgoApp from conftest pytest fixture
-            monkeypatch: pytest fixture
-
-        """
+    def test_real_connect_to_ib(self) -> None:
+        """Test connecting to IB."""
         proj_dir = Path.cwd().resolve().parents[1]  # back two directories
         test_cat = FileCatalog({"symbols": Path(proj_dir / "t_datasets/symbols.csv")})
         algo_app = AlgoApp(test_cat)
