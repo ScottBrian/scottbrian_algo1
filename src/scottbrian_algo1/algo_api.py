@@ -260,9 +260,19 @@ class AsyncArgs:
 def set_async_args(func: Callable[..., Any]) -> Callable[..., Any]:
     @functools.wraps(func)
     def wrapped_make_sync(self, *args, **kwargs) -> Any:
+        try:
+            req_smart_thread = SmartThread.get_current_smart_thread(
+                group_name=self.group_name
+            )
+        except SmartThreadNotFound:
+            req_thread_num = UniqueTS.get_unique_ts()
+            req_smart_thread_name = f"algo_requestor_{req_thread_num}"
+            req_smart_thread = SmartThread(
+                group_name=self.group_name, name=req_smart_thread_name
+            )
         if "_async_args" not in kwargs:
             kwargs["_async_args"] = AsyncArgs(
-                smart_thread=self, req_num=UniqueTS.get_unique_ts()
+                smart_thread=req_smart_thread, req_num=UniqueTS.get_unique_ts()
             )
 
         ret_value = func(self, *args, **kwargs)
