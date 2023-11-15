@@ -327,6 +327,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self.ds_catalog = ds_catalog
 
         # self.req_async_association: bidict[str, str] = bidict()
+        self.async_handler_lock: threading.Lock = threading.Lock()
         self.async_handlers: dict[str, SmartThread] = {}
         self.req_thread_array: dict[str, SmartThread] = {}
         self.request_results: dict[UniqueTStamp, ResultBlock] = {}
@@ -476,7 +477,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             req_smart_thread=req_smart_thread,
         )
 
-        with sel.SELockExcl(AlgoApp._config_lock):
+        with self.async_handler_lock:
             async_handler_name = f"async_{req_smart_thread.name}"
             if async_handler_name in self.async_handlers:
                 req_smart_thread.smart_send(msg=req_block, receivers=async_handler_name)

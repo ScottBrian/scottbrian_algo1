@@ -697,8 +697,11 @@ class TestAlgoAppConnect:
 
             """
             logger.debug("do_disconnect2 entry:")
+            logger.debug("about to disconnect 2")
             req_num2 = algo_app.start_async_request(algo_app.disconnect_from_ib)
-            msgs.queue_msg(target="mainline", msg=req_num2.req_smart_thread.name)
+            msgs.queue_msg(
+                target="mainline", msg=f"async_{req_num2.req_smart_thread.name}"
+            )
             req_result2 = algo_app.get_async_results(req_num2, timeout=10)
             assert req_result2.ret_data is None
 
@@ -720,7 +723,9 @@ class TestAlgoAppConnect:
                 port=algo_app.PORT_FOR_LIVE_TRADING,
                 client_id=1,
             )
-            msgs.queue_msg(target="mainline", msg=req_num3.req_smart_thread.name)
+            msgs.queue_msg(
+                target="mainline", msg=f"async_{req_num3.req_smart_thread.name}"
+            )
             req_result3 = algo_app.get_async_results(req_num3, timeout=10)
             assert req_result3.ret_data is None
 
@@ -737,10 +742,13 @@ class TestAlgoAppConnect:
             """
             logger.debug("do_disconnect4 entry:")
             req_num4 = algo_app.start_async_request(algo_app.disconnect_from_ib)
-            msgs.queue_msg(target="mainline", msg=req_num4.req_smart_thread.name)
+            msgs.queue_msg(
+                target="mainline", msg=f"async_{req_num4.req_smart_thread.name}"
+            )
             req_result4 = algo_app.get_async_results(req_num4, timeout=10)
             assert req_result4.ret_data is None
 
+            smart_thread.smart_resume(waiters="mainline")
             smart_thread.smart_wait(resumers="mainline")
 
             logger.debug("do_disconnect4 exit:")
@@ -766,6 +774,7 @@ class TestAlgoAppConnect:
 
         # logger.debug("about to disconnect 1")
         # req_num2 = algo_app.start_async_request(algo_app.disconnect_from_ib)
+        logger.debug("about to disconnect 2")
         SmartThread(
             group_name="test1",
             name="disc2",
@@ -816,6 +825,8 @@ class TestAlgoAppConnect:
         #
         # req_result4 = algo_app.get_async_results(req_num4, timeout=10)
         # assert req_result4.ret_data is None
+
+        mainline_smart_thread.smart_wait(resumers="disc4")
 
         verify_algo_app_disconnected(algo_app)
 
