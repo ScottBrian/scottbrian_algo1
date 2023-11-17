@@ -103,6 +103,7 @@ from scottbrian_paratools.smart_thread import (
 )
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
+from scottbrian_utils.timer import Timer
 from scottbrian_utils.unique_ts import UniqueTS, UniqueTStamp
 
 ########################################################################
@@ -243,6 +244,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     REQUEST_THROTTLE_SECONDS: Final[int] = 1.0
 
     K_LOOP_IDLE_TIME: Final[IntFloat] = 1.0
+    K_DEFAULT_TIMEOUT: Final[IntFloat] = 30
 
     _config_lock: ClassVar[sel.SELock] = sel.SELock()
 
@@ -254,6 +256,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         ds_catalog: FileCatalog,
         group_name: str = "algo_app_group",
         algo_name: str = "algo_app",
+        default_timeout: OptIntFloat = K_DEFAULT_TIMEOUT,
     ) -> None:
         """Instantiate the AlgoApp.
 
@@ -261,6 +264,10 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ds_catalog: contain the paths for data sets
             group_name: name of SmartThread group
             algo_name: name of SmartThread instance for AlgoApp
+            default_timeout: number of seconds to use as a timeout
+                value if timeout is not specifies on a method that
+                provides a timeout parameter. If this default_timeout is
+                not specifies, the default_tineout is set to 30 seconds.
 
         :Example: instantiate AlgoApp and print it
 
@@ -282,6 +289,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         self.group_name = group_name
         self.algo_name = algo_name
         self.ds_catalog = ds_catalog
+
+        self.default_timeout = default_timeout
 
         self.request_threads: dict[str, ThreadBlock] = {}
         self.request_threads_lock: threading.Lock = threading.Lock()
@@ -521,15 +530,33 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             DisconnectTimeout: timed out waiting for join
         """
         logger.debug(f"disconnect_from_ib entry: {timeout=}")
+        timer = Timer(timeout=timeout, default_timeout=self.default_timeout)
 
         setup_args = self.get_setup_args()
 
-        with self.request_threads_lock:
-            self.shut_down_in_progress = True
+        self.shut_down_in_progress = True
 
-        smart_threads_to_remove = SmartThread.get_smart_thread_names(
-            group_name=self.group_name, state=ThreadState.Stopped
-        )
+        while True:
+            names_to_remove: set[str] = set()
+            pending_threads: int = 0
+            with self.request_threads_lock:
+                for key, item in self.request_threads.items():
+                    if item.smart_thread is not setup_args.smart_thread:
+                        if item.in_use:
+                            pending_threads += 1
+                        else:
+                            names_to_remove |= item.smart_thread.name
+            setup_args.smart_thread.smart_remove(targets=names_to_remove)
+            if pending_threads == 0:
+                break
+            if timer.is_expired():
+                error_msg = (
+                    f"disconnect_from_ib raising DisconnectTimeout waiting for"
+                    f"pending requests to complete"
+                )
+                logging.error(error_msg)
+                raise DisconnectTimeout(error_msg)
+            time.sleep(0.2)
 
         with sel.SELockExcl(AlgoApp._config_lock):
             logger.info("calling EClient disconnect")
@@ -540,7 +567,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             try:
                 setup_args.smart_thread.smart_join(
                     targets=self.client_name,
-                    timeout=timeout,
+                    timeout=timer.remaining_time(),
                 )
             except SmartThreadRequestTimedOut:
                 error_msg = "disconnect_from_ib timed out waiting for smart_join"
@@ -548,10 +575,10 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 raise DisconnectTimeout(error_msg)
 
         with self.request_threads_lock:
-            self.shut_down_in_progress = False
             if setup_args.smart_thread is not self:
                 del self.request_threads[setup_args.smart_thread.name]
                 self.smart_remove(targets=setup_args.smart_thread.name)
+            self.shut_down_in_progress = False
 
         logger.info("disconnect complete")
         logger.debug(f"disconnect_from_ib exit: {timeout=}")
