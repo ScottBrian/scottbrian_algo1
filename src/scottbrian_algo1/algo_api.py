@@ -360,13 +360,22 @@ def get_setup_args(func: Callable[..., Any]) -> Callable[..., Any]:
                     start_time=req_num,
                 )
 
-            kwargs["setup_args"] = SetupArgs(
-                smart_thread=req_smart_thread, req_num=req_num
-            )
+        kwargs["setup_args"] = SetupArgs(smart_thread=req_smart_thread, req_num=req_num)
 
+        try:
             ret_value = func(self, *args, **kwargs)
+        except Exception:
+            with self.request_threads_lock:
+                if req_smart_thread is not self:
+                    self.request_threads[req_smart_thread.name].in_use = False
+                raise
 
-            return ret_value
+        with self.request_threads_lock:
+            if req_smart_thread is not self:
+                self.request_threads[req_smart_thread.name].in_use = False
+                self.request_threads[req_smart_thread.name].time_freed = time.time()
+
+        return ret_value
 
     # return SetupArgs(smart_thread=req_smart_thread, req_num=req_num)
     return decorator_get_setup_args
@@ -613,7 +622,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         """
         logger.debug(
-            f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, {timeout=}"
+            f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, {timeout=} "
+            f"{setup_args=}"
         )
 
         # setup_args = self.get_setup_args()
@@ -652,7 +662,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             # we will wait on the first requestID here
             try:
                 setup_args.smart_thread.smart_wait(
-                    resumers=self.client_name, timeout=timeout
+                    resumers=self.client_name,
+                    timeout=timeout,
+                    log_msg="connect_to_ib wait for nextValid_ID",
                 )
                 self.algo_client.pop_active_request(req_id=req_id)
             except SmartThreadRequestTimedOut:
@@ -667,12 +679,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         logger.info("connect success")
 
-        with self.request_threads_lock:
-            if setup_args.smart_thread is not self:
-                self.request_threads[setup_args.smart_thread.name].in_use = False
-                self.request_threads[
-                    setup_args.smart_thread.name
-                ].time_freed = time.time()
+        # with self.request_threads_lock:
+        #     if setup_args.smart_thread is not self:
+        #         self.request_threads[setup_args.smart_thread.name].in_use = False
+        #         self.request_threads[
+        #             setup_args.smart_thread.name
+        #         ].time_freed = time.time()
 
         logger.debug(
             f"connect_to_ib exit: {ip_addr=}, {port=}, {client_id=}, {timeout=}"
@@ -681,9 +693,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # disconnect_from_ib
     ####################################################################
+    @get_setup_args
     def disconnect_from_ib(
         self,
         timeout: Optional[IntFloat] = None,
+        setup_args: SetupArgs = dummy_setup_args,
     ) -> None:
         """Disconnect from ib.
 
@@ -698,7 +712,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         logger.debug(f"disconnect_from_ib entry: {timeout=}")
         timer = Timer(timeout=timeout, default_timeout=self.default_timeout)
 
-        setup_args = self.get_setup_args()
+        # setup_args = self.get_setup_args()
 
         self.shut_down_in_progress = True
 
@@ -712,9 +726,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                             pending_threads += 1
                         else:
                             names_to_remove |= item.smart_thread.name
-            setup_args.smart_thread.smart_unreg(targets=names_to_remove)
+            if names_to_remove:
+                setup_args.smart_thread.smart_unreg(targets=names_to_remove)
+
             if pending_threads == 0:
                 break
+
             if timer.is_expired():
                 error_msg = (
                     f"disconnect_from_ib raising DisconnectTimeout waiting for"

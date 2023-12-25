@@ -341,6 +341,8 @@ class TestAlgoAppConnect:
                     timeout=timeout_value,
                 )
 
+        logger.debug("back from connect")
+
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
             time.sleep(delay_arg + 1)
 
@@ -351,7 +353,7 @@ class TestAlgoAppConnect:
 
         verify_algo_app_disconnected(algo_app)
 
-        algo_app.shut_down()
+        # algo_app.shut_down()
 
     ####################################################################
     # test_mock_disconnect_from_ib
@@ -410,7 +412,7 @@ class TestAlgoAppConnect:
 
         verify_algo_app_disconnected(algo_app)
 
-        algo_app.shut_down()
+        # algo_app.shut_down()
 
     ####################################################################
     # test_mock_connect_to_ib_async
@@ -509,7 +511,7 @@ class TestAlgoAppConnect:
 
         verify_algo_app_disconnected(algo_app)
 
-        algo_app.shut_down()
+        # algo_app.shut_down()
 
     ####################################################################
     # test_mock_disconnect_from_ib_async
@@ -588,7 +590,7 @@ class TestAlgoAppConnect:
 
         verify_algo_app_disconnected(algo_app)
 
-        algo_app.shut_down()
+        # algo_app.shut_down()
 
     ####################################################################
     # test_connect_to_ib_already_connected
@@ -668,7 +670,7 @@ class TestAlgoAppConnect:
 
         verify_algo_app_disconnected(algo_app)
 
-        algo_app.shut_down()
+        # algo_app.shut_down()
 
     ####################################################################
     # test_connect_to_ib_with_lock_held
@@ -911,7 +913,7 @@ class TestAlgoAppConnect:
 
         verify_algo_app_disconnected(algo_app)
 
-        algo_app.shut_down()
+        # algo_app.shut_down()
 
         mainline_smart_thread.smart_resume(waiters=["conn1", "disc2", "conn3", "disc4"])
         mainline_smart_thread.smart_join(targets=["conn1", "disc2", "conn3", "disc4"])
