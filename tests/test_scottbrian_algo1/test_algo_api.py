@@ -31,10 +31,8 @@ import pytest
 from scottbrian_algo1.algo_api import (
     AlgoApp,
     AlreadyConnected,
-    AsyncRequestBlock,
     ConnectTimeout,
     RequestTimeout,
-    ResultBlock,
     DisconnectDuringRequest,
     ThreadConfig,
 )

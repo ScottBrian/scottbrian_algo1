@@ -53,8 +53,8 @@ scottbrian_algo1 project may be updated for newer ibapi versions as needed.
 Note that the scottbrian_algo1 pyproject.toml file [project] section has a dependencies specification for:
 "ibapi @ file://localhost/TWS%20API/source/pythonclient/dist/ibapi-10.24.1-py3-none-any.whl"
 
-To install ibapi into venv311:
-    1) get into venv311 folder
+To install ibapi into venv312:
+    1) get into venv312 folder
     2) run: py -m pip install file:///C:/TWS%20API/source/pythonclient/dist/ibapi-10.24.1-py3-none-any.whl
 
 To install paratools for testing:
