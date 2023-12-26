@@ -429,7 +429,7 @@ class TestAlgoAppConnect:
     def test_mock_connect_to_ib_async(
         self,
         delay_arg: int,
-        timeout_type_arg: int,
+        timeout_type_arg: TimeoutType,
         cat_app: "MockIB",
     ) -> None:
         """Test connecting to IB.
@@ -439,10 +439,51 @@ class TestAlgoAppConnect:
             timeout_type_arg: specifies whether timeout should occur
             cat_app: pytest fixture (see conftest.py)
         """
+
+        def f1(smart_thread: SmartThread, timeout_type_arg: TimeoutType):
+            if timeout_type_arg == TimeoutType.TimeoutNone:
+                req_num = algo_app.start_async_request(
+                    algo_app.connect_to_ib,
+                    ip_addr="127.0.0.1",
+                    port=algo_app.PORT_FOR_LIVE_TRADING,
+                    client_id=1,
+                )
+            elif timeout_type_arg == TimeoutType.TimeoutFalse:
+                timeout_value = delay_arg * 2
+                req_num = algo_app.start_async_request(
+                    algo_app.connect_to_ib,
+                    ip_addr="127.0.0.1",
+                    port=algo_app.PORT_FOR_LIVE_TRADING,
+                    client_id=1,
+                    timeout=timeout_value,
+                )
+            else:
+                # set timeout high so we don't timeout on the actual
+                # request - instead, we want to timeout getting the results
+                timeout_value = 10
+                req_num = algo_app.start_async_request(
+                    algo_app.connect_to_ib,
+                    ip_addr="127.0.0.1",
+                    port=algo_app.PORT_FOR_LIVE_TRADING,
+                    client_id=1,
+                    timeout=timeout_value,
+                )
+            assert req_num is not None
+
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
             return
 
         cat_app.delay_value = delay_arg
+
+        alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
+        beta_smart_thread = SmartThread(
+            group_name="test1",
+            name="beta",
+            target_rtn=f1,
+            auto_start=False,
+            thread_parm_name="smart_thread",
+            kwargs={"timeout_type_arg": timeout_type_arg},
+        )
 
         algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
         verify_algo_app_initialized(algo_app)
@@ -452,35 +493,6 @@ class TestAlgoAppConnect:
         # then starting a separate thread for the run loop.
         logger.debug("about to connect")
 
-        if timeout_type_arg == TimeoutType.TimeoutNone:
-            req_num = algo_app.start_async_request(
-                algo_app.connect_to_ib,
-                ip_addr="127.0.0.1",
-                port=algo_app.PORT_FOR_LIVE_TRADING,
-                client_id=1,
-            )
-        elif timeout_type_arg == TimeoutType.TimeoutFalse:
-            timeout_value = delay_arg * 2
-            req_num = algo_app.start_async_request(
-                algo_app.connect_to_ib,
-                ip_addr="127.0.0.1",
-                port=algo_app.PORT_FOR_LIVE_TRADING,
-                client_id=1,
-                timeout=timeout_value,
-            )
-        else:
-            # set timeout high so we don't timeout on the actual
-            # request - instead, we want to timeout getting the results
-            timeout_value = 10
-            req_num = algo_app.start_async_request(
-                algo_app.connect_to_ib,
-                ip_addr="127.0.0.1",
-                port=algo_app.PORT_FOR_LIVE_TRADING,
-                client_id=1,
-                timeout=timeout_value,
-            )
-
-        assert req_num is not None
         if timeout_type_arg == TimeoutType.TimeoutNone:
             req_result = None
             while req_result is None:
