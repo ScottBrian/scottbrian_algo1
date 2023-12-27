@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import string
 import threading
 import time
+import traceback
 from typing import Any, Tuple
 
 ########################################################################
@@ -130,10 +131,13 @@ def thread_exc(monkeypatch: Any) -> ExcHook:
     exc_hook = ExcHook()
 
     def mock_threading_excepthook(args):
-        # exc_err_msg = (f'SmartEvent excepthook: {args.exc_type}, '
-        #                f'{args.exc_value}, {args.exc_traceback},'
-        #                f' {args.thread}')
-        exc_err_msg = f"Algo1 excepthook: {args.exc_type}, " f"{args.exc_traceback}"
+        exc_err_msg = (
+            f"Algo1 excepthook: {args.exc_type=}, "
+            f"{args.exc_value=}, {args.exc_traceback=},"
+            f" {args.thread=}"
+        )
+        print("SBT printing tb")
+        traceback.print_tb(args.exc_traceback)
         current_thread = threading.current_thread()
         logging.exception(f"exception caught for {current_thread}")
         logger.debug(f"excepthook current thread is {current_thread}")
@@ -148,10 +152,10 @@ def thread_exc(monkeypatch: Any) -> ExcHook:
     yield exc_hook
 
     # clean the registry in SmartThread class
-    SmartThread._registry = {}
-    SmartThread._pair_array = defaultdict(dict)
+    # SmartThread._registry = {}
+    # SmartThread._pair_array = defaultdict(dict)
     # assert threading.current_thread().name == 'alpha'
-    threading.current_thread().name = "MainThread"  # restore name
+    # threading.current_thread().name = "MainThread"  # restore name
 
     # surface any remote thread uncaught exceptions
     exc_hook.raise_exc_if_one()

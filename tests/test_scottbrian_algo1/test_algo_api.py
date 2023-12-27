@@ -305,6 +305,37 @@ class TestAlgoAppConnect:
             timeout_type_arg: specifies whether timeout should occur
             cat_app: pytest fixture (see conftest.py)
         """
+
+        def f1(f1_smart_thread: SmartThread, f1_timeout_type_arg: int):
+            connect_test(f1_timeout_type_arg)
+            f1_smart_thread.smart_resume(waiters="alpha")
+
+        def connect_test(ct_timeout_type_arg: int):
+            if ct_timeout_type_arg == TimeoutType.TimeoutNone:
+                algo_app.connect_to_ib(
+                    ip_addr="127.0.0.1",
+                    port=algo_app.PORT_FOR_LIVE_TRADING,
+                    client_id=1,
+                )
+            elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
+                timeout_value = delay_arg * 2
+                algo_app.connect_to_ib(
+                    ip_addr="127.0.0.1",
+                    port=algo_app.PORT_FOR_LIVE_TRADING,
+                    client_id=1,
+                    timeout=timeout_value,
+                )
+            else:
+                timeout_value = delay_arg / 2.0
+                cat_app.delay_value = -1
+                with pytest.raises(ConnectTimeout):
+                    algo_app.connect_to_ib(
+                        ip_addr="127.0.0.1",
+                        port=algo_app.PORT_FOR_LIVE_TRADING,
+                        client_id=1,
+                        timeout=timeout_value,
+                    )
+
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
             return
 
@@ -318,28 +349,41 @@ class TestAlgoAppConnect:
         # then starting a separate thread for the run loop.
         logger.debug("about to connect")
 
-        if timeout_type_arg == TimeoutType.TimeoutNone:
-            algo_app.connect_to_ib(
-                ip_addr="127.0.0.1", port=algo_app.PORT_FOR_LIVE_TRADING, client_id=1
-            )
-        elif timeout_type_arg == TimeoutType.TimeoutFalse:
-            timeout_value = delay_arg * 2
-            algo_app.connect_to_ib(
-                ip_addr="127.0.0.1",
-                port=algo_app.PORT_FOR_LIVE_TRADING,
-                client_id=1,
-                timeout=timeout_value,
-            )
-        else:
-            timeout_value = delay_arg / 2.0
-            cat_app.delay_value = -1
-            with pytest.raises(ConnectTimeout):
-                algo_app.connect_to_ib(
-                    ip_addr="127.0.0.1",
-                    port=algo_app.PORT_FOR_LIVE_TRADING,
-                    client_id=1,
-                    timeout=timeout_value,
-                )
+        alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
+        beta_smart_thread = SmartThread(
+            group_name="test1",
+            name="beta",
+            target_rtn=f1,
+            thread_parm_name="f1_smart_thread",
+            kwargs={"f1_timeout_type_arg": timeout_type_arg},
+        )
+
+        alpha_smart_thread.smart_wait(resumers="beta")
+
+        # connect_test(timeout_type_arg)
+
+        # if timeout_type_arg == TimeoutType.TimeoutNone:
+        #     algo_app.connect_to_ib(
+        #         ip_addr="127.0.0.1", port=algo_app.PORT_FOR_LIVE_TRADING, client_id=1
+        #     )
+        # elif timeout_type_arg == TimeoutType.TimeoutFalse:
+        #     timeout_value = delay_arg * 2
+        #     algo_app.connect_to_ib(
+        #         ip_addr="127.0.0.1",
+        #         port=algo_app.PORT_FOR_LIVE_TRADING,
+        #         client_id=1,
+        #         timeout=timeout_value,
+        #     )
+        # else:
+        #     timeout_value = delay_arg / 2.0
+        #     cat_app.delay_value = -1
+        #     with pytest.raises(ConnectTimeout):
+        #         algo_app.connect_to_ib(
+        #             ip_addr="127.0.0.1",
+        #             port=algo_app.PORT_FOR_LIVE_TRADING,
+        #             client_id=1,
+        #             timeout=timeout_value,
+        #         )
 
         logger.debug("back from connect")
 
@@ -353,7 +397,10 @@ class TestAlgoAppConnect:
 
         verify_algo_app_disconnected(algo_app)
 
-        # algo_app.shut_down()
+        alpha_smart_thread.smart_join(targets="beta")
+        alpha_smart_thread.smart_unreg()
+
+        algo_app.shut_down()
 
     ####################################################################
     # test_mock_disconnect_from_ib
