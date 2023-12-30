@@ -8,6 +8,7 @@ import time
 # from pathlib import Path
 # import sys
 from enum import Enum, auto
+import re
 import string
 from sys import _getframe
 import threading
@@ -46,6 +47,7 @@ from scottbrian_algo1.algo_maps import get_contract_details_obj
 from scottbrian_paratools.smart_thread import SmartThread, SmartThreadRequestTimedOut
 
 from scottbrian_utils.diag_msg import get_caller_info
+from scottbrian_utils.log_verifier import LogVer
 from scottbrian_utils.msgs import Msgs
 
 ########################################################################
@@ -296,7 +298,7 @@ class TestAlgoAppConnect:
         delay_arg: int,
         timeout_type_arg: int,
         cat_app: "MockIB",
-        # mock_ib: "MockIB",
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Test connecting to IB.
 
@@ -305,13 +307,36 @@ class TestAlgoAppConnect:
             timeout_type_arg: specifies whether timeout should occur
             cat_app: pytest fixture (see conftest.py)
         """
+        # print(f"{logging.Logger.manager.loggerDict.keys()=}\n")
+
+        for key, item in logging.Logger.manager.loggerDict.items():
+            # print(f"{key=} {type(item)=}\n")
+            if key[0:5] == "ibapi" and not isinstance(item, logging.PlaceHolder):
+                logging.Logger.manager.loggerDict[key].setLevel(logging.CRITICAL)
+            # if isinstance(lock_manager_logger, logging.PlaceHolder):
+            #     raise InvalidConfigurationDetected(
+            #         "test_smart_thread_log_msg detected that the manager "
+            #         "logger for scottbrian_locking is a PlaceHolder"
+            #     )
+
+        # logging.Logger.manager.loggerDict["ibapi"].setLevel(logging.CRITICAL)
 
         def f1(f1_smart_thread: SmartThread, f1_timeout_type_arg: int):
             connect_test(f1_timeout_type_arg)
             f1_smart_thread.smart_resume(waiters="alpha")
 
         def connect_test(ct_timeout_type_arg: int):
+            ip_addr = "127.0.0.1"
+            port = algo_app.PORT_FOR_LIVE_TRADING
+            client_id = 1
+
+            # log_msg = (
+            #     f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, {timeout=} "
+            #     f"{setup_args=}"
+            # )
+
             if ct_timeout_type_arg == TimeoutType.TimeoutNone:
+                timeout = None
                 algo_app.connect_to_ib(
                     ip_addr="127.0.0.1",
                     port=algo_app.PORT_FOR_LIVE_TRADING,
@@ -319,6 +344,8 @@ class TestAlgoAppConnect:
                 )
             elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
                 timeout_value = delay_arg * 2
+                timeout = timeout_value
+
                 algo_app.connect_to_ib(
                     ip_addr="127.0.0.1",
                     port=algo_app.PORT_FOR_LIVE_TRADING,
@@ -327,6 +354,8 @@ class TestAlgoAppConnect:
                 )
             else:
                 timeout_value = delay_arg / 2.0
+                timeout = timeout_value
+
                 cat_app.delay_value = -1
                 with pytest.raises(ConnectTimeout):
                     algo_app.connect_to_ib(
@@ -335,6 +364,16 @@ class TestAlgoAppConnect:
                         client_id=1,
                         timeout=timeout_value,
                     )
+
+            log_msg = (
+                f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, "
+                f"{timeout=} "
+            )
+            cat_app.log_ver.add_msg(
+                log_msg=re.escape(log_msg), log_name="scottbrian_algo1.algo_api"
+            )
+
+        # log_ver = LogVer(log_name=__name__)
 
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
             return
@@ -347,7 +386,8 @@ class TestAlgoAppConnect:
         # we are testing connect_to_ib and the subsequent code that gets
         # control as a result, such as getting the first requestID and
         # then starting a separate thread for the run loop.
-        logger.debug("about to connect")
+        # logger.debug("about to connect")
+        cat_app.log_test_msg("about to connect")
 
         alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
         beta_smart_thread = SmartThread(
@@ -402,6 +442,13 @@ class TestAlgoAppConnect:
 
         algo_app.shut_down()
 
+        ################################################################
+        # check log results
+        ################################################################
+        match_results = cat_app.log_ver.get_match_results(caplog=caplog)
+        cat_app.log_ver.print_match_results(match_results, print_matched=False)
+        cat_app.log_ver.verify_log_results(match_results)
+
     ####################################################################
     # test_mock_disconnect_from_ib
     ####################################################################
@@ -419,6 +466,7 @@ class TestAlgoAppConnect:
         delay_arg: int,
         timeout_type_arg: int,
         cat_app: "MockIB",
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Test disconnecting from IB.
 

@@ -5,6 +5,7 @@
 ########################################################################
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+import re
 import string
 import threading
 import time
@@ -25,8 +26,11 @@ import pandas as pd  # type: ignore
 import socket
 
 from scottbrian_algo1.algo_api import AlgoApp
+
 from scottbrian_paratools.smart_thread import SmartThread
+
 from scottbrian_utils.file_catalog import FileCatalog
+from scottbrian_utils.log_verifier import LogVer
 
 # from scottbrian_utils.diag_msg import diag_msg
 
@@ -48,6 +52,11 @@ import logging
 #                            '%(message)s')
 
 logger = logging.getLogger(__name__)
+
+# logging.Logger.manager.loggerDict["ibapi"].setLevel(logging.CRITICAL)
+logging.Logger.manager.loggerDict["scottbrian_locking"].setLevel(logging.CRITICAL)
+logging.Logger.manager.loggerDict["scottbrian_paratools"].setLevel(logging.CRITICAL)
+
 
 proj_dir = Path.cwd().resolve().parents[1]  # back two directories
 
@@ -206,7 +215,8 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
                error conditions for testing purposes.
 
         """
-        logger.debug(f"entered: {self.port=}, {self.host=}")
+        # logger.debug(f"entered: {self.port=}, {self.host=}")
+        mock_ib.log_test_msg(f"entry: " f"{self.port=}, {self.host=}")
         try:
             self.socket = socket.socket()
         # TO DO list the exceptions you want to catch
@@ -240,6 +250,8 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
             mock_ib.simulate_request_timeout = False
 
         self.socket.settimeout(1)  # non-blocking
+
+        mock_ib.log_test_msg(f"exit: " f"{self.port=}, {self.host=}")
 
     monkeypatch.setattr(Connection, "connect", mock_connection_connect)
 
@@ -418,6 +430,30 @@ class MockIB:
         self.delta_neutral_contract = pd.DataFrame()
 
         self.build_contract_descriptions()
+
+        self.log_ver = LogVer()
+
+    ####################################################################
+    # log_test_msg
+    ####################################################################
+    def log_test_msg(self, log_msg: str) -> None:
+        """Issue log msgs for test rtn.
+
+        Args:
+            log_msg: the message to log
+
+        """
+        # if (
+        #     self.allow_log_test_msg
+        #     or "waiting for monitor" in log_msg
+        #     or "has been stopped by" in log_msg
+        #     or "Monitor Checkpoint" in log_msg
+        #     or "OuterF1ThreadApp.run() exit: " in log_msg
+        #     or "outer_f1 exit: " in log_msg
+        #     or "abort" in log_msg
+        # ):
+        self.log_ver.add_msg(log_msg=re.escape(log_msg))
+        logger.debug(log_msg, stacklevel=2)
 
     ###########################################################################
     # MockIB: send_msg
