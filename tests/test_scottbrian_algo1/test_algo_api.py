@@ -372,6 +372,11 @@ class TestAlgoAppConnect:
             cat_app.log_ver.add_msg(
                 log_msg=re.escape(log_msg), log_name="scottbrian_algo1.algo_api"
             )
+            cat_app.log_ver.add_msg(
+                log_msg="starting AlgoClient thread 1",
+                log_name="scottbrian_algo1.algo_api",
+                log_level=logging.INFO,
+            )
 
         # log_ver = LogVer(log_name=__name__)
 

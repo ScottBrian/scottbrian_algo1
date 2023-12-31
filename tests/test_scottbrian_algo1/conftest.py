@@ -125,18 +125,6 @@ def thread_exc(monkeypatch: Any) -> ExcHook:
         a thread exception handler
 
     """
-
-    # class ExcHook:
-    #     def __init__(self):
-    #         self.exc_err_msg1 = ""
-    #
-    #     def raise_exc_if_one(self):
-    #         if self.exc_err_msg1:
-    #             exc_msg = self.exc_err_msg1
-    #             self.exc_err_msg1 = ""
-    #             raise Exception(f"{exc_msg}")
-
-    # logger.debug(f'hook before: {threading.excepthook}')
     exc_hook = ExcHook()
 
     def mock_threading_excepthook(args):
@@ -215,13 +203,12 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
                error conditions for testing purposes.
 
         """
-        # logger.debug(f"entered: {self.port=}, {self.host=}")
-        mock_ib.log_test_msg(f"entry: " f"{self.port=}, {self.host=}")
+        mock_ib.log_test_msg(f"entry: {self.port=}, {self.host=}")
         try:
             self.socket = socket.socket()
         # TO DO list the exceptions you want to catch
         except socket.error:
-            logger.debug("socket.error exception")
+            mock_ib.log_test_msg("socket.error exception")
             if self.wrapper:
                 self.wrapper.error(
                     NO_VALID_ID, FAIL_CREATE_SOCK.code(), FAIL_CREATE_SOCK.msg()
@@ -251,7 +238,7 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
 
         self.socket.settimeout(1)  # non-blocking
 
-        mock_ib.log_test_msg(f"exit: " f"{self.port=}, {self.host=}")
+        mock_ib.log_test_msg(f"exit: {self.port=}, {self.host=}")
 
     monkeypatch.setattr(Connection, "connect", mock_connection_connect)
 
@@ -286,10 +273,10 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
 
         try:
             if self.socket is not None:
-                logger.debug("disconnecting")
+                mock_ib.log_test_msg("disconnecting")
                 # self.socket.close()
                 self.socket = None
-                logger.debug("disconnected")
+                mock_ib.log_test_msg("disconnected")
                 if self.wrapper:
                     self.wrapper.connectionClosed()
         finally:
@@ -314,26 +301,26 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
               queue.Full: message can not be added because queue is at limit
 
         """
-        logger.debug("entered with msg: %s", msg)
-        logger.debug("acquiring lock")
+        mock_ib.log_test_msg(f"entered with msg: {msg}")
+        mock_ib.log_test_msg("acquiring lock")
         self.lock.acquire()
-        logger.debug("acquired lock")
+        mock_ib.log_test_msg("acquired lock")
         if not self.isConnected():
-            logger.debug("sendMsg attempt while not connected, releasing lock")
+            mock_ib.log_test_msg("sendMsg attempt while not connected, releasing lock")
             self.lock.release()
             return 0
         try:
             nSent = len(msg)
             mock_ib.send_msg(msg)
         except queue.Full:
-            logger.debug("queue full exception on sendMsg attempt")
+            mock_ib.log_test_msg("queue full exception on sendMsg attempt")
             raise
         finally:
-            logger.debug("releasing lock")
+            mock_ib.log_test_msg("releasing lock")
             self.lock.release()
-            logger.debug("released lock")
+            mock_ib.log_test_msg("released lock")
 
-        logger.debug("sendMsg: number bytes sent: %d", nSent)
+        mock_ib.log_test_msg(f"sendMsg: number bytes sent: {nSent}")
         return nSent
 
     monkeypatch.setattr(Connection, "sendMsg", mock_connection_send_msg)
@@ -352,17 +339,17 @@ def cat_app(monkeypatch: Any, tmp_path: Any, mock_ib: "MockIB") -> "FileCatalog"
 
         """
         if not self.isConnected():
-            logger.debug("recvMsg attempted while not connected")
+            mock_ib.log_test_msg("recvMsg attempted while not connected")
             return b""
         try:
             buf = mock_ib.recv_msg()  # <-- mock
             # receiving 0 bytes outside a timeout means the connection is
             # either closed or broken
             if len(buf) == 0:
-                logger.debug("socket either closed or broken, disconnecting")
+                mock_ib.log_test_msg("socket either closed or broken, disconnecting")
                 self.disconnect()
         except queue.Empty:
-            logger.debug("timeout from recvMsg")
+            mock_ib.log_test_msg("timeout from recvMsg")
             buf = b""
         return buf
 
@@ -416,6 +403,7 @@ class MockIB:
         Args:
             test_cat: catalog of data sets used for testing
         """
+        self.log_ver = LogVer(log_name=logger.name)
         self.test_cat = test_cat
         self.app_cat = FileCatalog()
         self.msg_rcv_q = queue.Queue()
@@ -430,8 +418,6 @@ class MockIB:
         self.delta_neutral_contract = pd.DataFrame()
 
         self.build_contract_descriptions()
-
-        self.log_ver = LogVer()
 
     ####################################################################
     # log_test_msg
@@ -465,11 +451,11 @@ class MockIB:
             msg: message to be sent (i.e., interpreted and queued)
 
         """
-        logger.debug("entered with message %s", msg)
+        self.log_test_msg(f"entered with {msg=}")
         (size, msg2, buf) = read_msg(msg)
-        logger.debug("size, msg, buf: %d, %s, %s ", size, msg2, buf)
+        self.log_test_msg(f"{size=}, {msg2=}, {buf=}")
         fields = read_fields(msg2)
-        logger.debug("fields: %s", fields)
+        self.log_test_msg(f"{fields=}")
 
         recv_msg = b""
 
@@ -505,18 +491,18 @@ class MockIB:
         # b'\x00\x00\x00\x0871\x002\x000\x00\x00'
         #######################################################################
         elif int(fields[0]) == OUT.START_API:
-            logger.info(
+            self.log_test_msg(
                 f"startAPI detected: {self.reqId_timeout=}, {self.delay_value=}"
             )
             # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
             # if self.reqId_timeout:  # if test timeout case
             # zero mean infinite
             if self.delay_value == -1:
-                logger.debug(f"preventing connect ack with {self.delay_value=}")
+                self.log_test_msg(f"preventing connect ack with {self.delay_value=}")
                 recv_msg = make_msg("0")  # simulate timeout
             else:  # build the normal next valid id message
                 if self.delay_value > 0:  # non_zero case
-                    logger.debug(f"delaying connect ack with {self.delay_value=}")
+                    self.log_test_msg(f"delaying connect ack with {self.delay_value=}")
                     sleep_time = self.delay_value
                     if self.delay_value > 1000:
                         sleep_time -= 1000
@@ -525,7 +511,7 @@ class MockIB:
                 recv_msg = make_msg(
                     make_field(IN.NEXT_VALID_ID) + make_field("1") + make_field("1")
                 )
-            logger.debug("recv_msg: %s", recv_msg)
+            self.log_test_msg(f"{recv_msg=}")
         #######################################################################
         # Handle special test cases for request disconnect and timeout
         #######################################################################
@@ -538,10 +524,10 @@ class MockIB:
         # reqMatchingSymbols
         #######################################################################
         elif int(fields[0]) == OUT.REQ_MATCHING_SYMBOLS:
-            logger.info("reqMatchingSymbols detected")
+            self.log_test_msg("reqMatchingSymbols detected")
             reqId = int(fields[1])
             pattern = fields[2].decode(errors="backslashreplace")
-            logger.debug("pattern: %s", pattern)
+            self.log_test_msg(f"{pattern=}")
 
             # construct start of receive message for wrapper
             build_msg = make_field(IN.SYMBOL_SAMPLES) + make_field(reqId)
@@ -550,9 +536,9 @@ class MockIB:
             symbol_starts_with_pattern = self.contract_descriptions["symbol"].map(
                 lambda symbol: symbol.startswith(pattern)
             )
-            # logger.debug(f'{symbol_starts_with_pattern=}')
+            # self.log_test_msg(f'{symbol_starts_with_pattern=}')
             match_descs = self.contract_descriptions[symbol_starts_with_pattern]
-            # logger.debug(f'{match_descs=}')
+            # self.log_test_msg(f'{match_descs=}')
 
             # match_descs = self.contract_descriptions.loc[
             #     self.contract_descriptions['symbol'].str.
@@ -591,7 +577,7 @@ class MockIB:
         # reqContractDetails
         #######################################################################
         elif int(fields[0]) == OUT.REQ_CONTRACT_DATA:
-            logger.info("reqContractDetails detected")
+            self.log_test_msg("reqContractDetails detected")
             version = int(fields[1])
             reqId = int(fields[2])
             conId = int(fields[3])
@@ -673,7 +659,7 @@ class MockIB:
         #######################################################################
         # queue the message to be received
         #######################################################################
-        logger.debug(f"queueing onto msg_rcv_q: {recv_msg=}")
+        self.log_test_msg(f"queueing onto msg_rcv_q: {recv_msg=}")
         self.msg_rcv_q.put(recv_msg, timeout=5)
 
     ###########################################################################
@@ -688,9 +674,9 @@ class MockIB:
         """
         # if the queue is empty, the get will wait up to 1 second for an item
         # to be queued - if no item shows up, an Empty exception is raised
-        logger.debug("about to get msg from msg_rcv_q")
+        self.log_test_msg("about to get msg from msg_rcv_q")
         msg = self.msg_rcv_q.get(timeout=1)  # wait for 1 second if empty
-        logger.debug(f"obtained from msg_recv_q {msg=}")
+        self.log_test_msg(f"obtained from msg_recv_q {msg=}")
         return msg
 
     ###########################################################################
@@ -905,7 +891,7 @@ class MockIB:
     def build_contract_descriptions(self):
         """Build the set of contract descriptions to use for testing."""
         contract_descs_path = self.test_cat.get_path("mock_contract_descs")
-        logger.info("mock_contract_descs path: %s", contract_descs_path)
+        logger.debug(f"mock_contract_descs path: {contract_descs_path=}")
 
         self.contract_descriptions = pd.DataFrame()
 
@@ -921,9 +907,8 @@ class MockIB:
         self.delta_neutral_contract.set_index("conId", drop=False, inplace=True)
         self.delta_neutral_contract.sort_index(inplace=True)
 
-        logger.info(
-            "built mock_con_descs DataFrame with %d entries",
-            len(self.contract_descriptions),
+        logger.debug(
+            f"built mock_con_descs DataFrame with {len(self.contract_descriptions)=}"
         )
 
     ###########################################################################
