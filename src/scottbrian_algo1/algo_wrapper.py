@@ -206,7 +206,7 @@ class AlgoWrapper(EWrapper):  # type: ignore
 
         """
         logger.info(
-            f"next valid ID is {request_id}, {threading.current_thread()=}, " f"{self=}"
+            f"next valid ID is {request_id}, {threading.current_thread()=}, {self=}"
         )
 
         self.algo_client.request_id = request_id

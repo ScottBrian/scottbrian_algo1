@@ -1,4 +1,4 @@
-"""test_algo_api.py module."""
+"""test_algo_app.py module."""
 import time
 
 ########################################################################
@@ -7,12 +7,15 @@ import time
 # from datetime import datetime, timedelta
 # from pathlib import Path
 # import sys
+from abc import ABC, abstractmethod
+from collections import deque, defaultdict
+from collections.abc import Iterable
 from enum import Enum, auto
 import re
 import string
 from sys import _getframe
 import threading
-from typing import Any, List, NamedTuple
+from typing import Any, List, NamedTuple, Optional, TypeAlias
 
 # from typing_extensions import Final
 ########################################################################
@@ -29,7 +32,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 import pytest
 
-from scottbrian_algo1.algo_api import (
+from scottbrian_algo1.algo_app import (
     AlgoApp,
     AlreadyConnected,
     ConnectTimeout,
@@ -49,6 +52,13 @@ from scottbrian_paratools.smart_thread import SmartThread, SmartThreadRequestTim
 from scottbrian_utils.diag_msg import get_caller_info
 from scottbrian_utils.log_verifier import LogVer
 from scottbrian_utils.msgs import Msgs
+
+########################################################################
+# TypeAlias
+########################################################################
+IntFloat: TypeAlias = Union[int, float]
+OptIntFloat: TypeAlias = Optional[IntFloat]
+
 
 ########################################################################
 # get logger
@@ -275,6 +285,1019 @@ def lock_verify(exp_positions: list[str]) -> None:
     logger.debug(f"lock_verify exit: {exp_positions=}, {line_num=}")
 
 
+class LogMsgBuilder:
+    """Build log messages that are to be added to LogVer."""
+
+    def __init__(self):
+        self.msg1 = ""
+        self.msg2 = ""
+        self.msg3 = ""
+        self.msg4 = ""
+
+    def build_msg1(
+        self,
+        ip_addr: str,
+        port: int,
+        client_id: int,
+        timeout: OptIntFloat = None,
+    ):
+        self.msg1 = (
+            f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, {timeout=} "
+        )
+        cat_app.log_ver.add_msg(
+            log_msg=re.escape(log_msg), log_name="scottbrian_algo1.algo_app"
+        )
+        cat_app.log_ver.add_msg(
+            log_msg="starting AlgoClient thread 1",
+            log_name="scottbrian_algo1.algo_app",
+            log_level=logging.INFO,
+        )
+
+    connect_log_msgs: list[tuple[int, str]] = [
+        (
+            logging.INFO,
+            "next valid ID is 1, "
+            "threading.current_thread()=AlgoClient(algo_name='algo_app'), "
+            "self=AlgoWrapper(, group_name=algo_app_group, algo_name=algo_app, "
+            "client_name=ibapi_client)",
+        )
+    ]
+
+
+########################################################################
+# ConfigCmd
+########################################################################
+class ConfigCmd(ABC):
+    """Configuration command base class."""
+
+    def __init__(self, cmd_runners: Iterable[str]) -> None:
+        """Initialize the instance.
+
+        Args:
+            cmd_runners: thread names that will execute the command
+
+        """
+        # The serial number, line_num, and config_ver are filled in
+        # by the ConfigVerifier add_cmd method just before queueing
+        # the command.
+        self.serial_num: int = 0
+        self.line_num: int = 0
+        self.alt_line_num: int = 0
+        self.config_ver: "ConfigVerifier"
+
+        # specified_args are set in each subclass
+        self.specified_args: dict[str, Any] = {}
+
+        self.cmd_runners = get_set(cmd_runners)
+
+        self.arg_list: list[str] = ["cmd_runners", "serial_num", "line_num"]
+
+    def __repr__(self) -> str:
+        """Method to provide repr."""
+        if TYPE_CHECKING:
+            __class__: Type[ConfigVerifier]  # noqa: F842
+        classname = self.__class__.__name__
+        parms = f"serial={self.serial_num}, line={self.line_num}"
+        if self.alt_line_num:
+            parms += f"({self.alt_line_num})"
+        comma = ", "
+        for key, item in self.specified_args.items():
+            if item:  # if not None
+                if key in self.arg_list:
+                    if type(item) is str:
+                        parms += comma + f"{key}='{item}'"
+                    else:
+                        parms += comma + f"{key}={item}"
+                    # comma = ', '  # after first item, now need comma
+            if key == "f1_create_items":
+                create_names: list[str] = []
+                for create_item in item:
+                    create_names.append(create_item.name)
+                parms += comma + f"{create_names=}"
+
+        return f"{classname}({parms})"
+
+    @abstractmethod
+    def run_process(self, cmd_runner: str) -> None:
+        """Run the command.
+
+        Args:
+           cmd_runner: name of thread running the command
+        """
+        pass
+
+
+########################################################################
+# ConfirmResponse
+########################################################################
+class ConfirmResponse(ConfigCmd):
+    """Confirm that an earlier command has completed."""
+
+    def __init__(
+        self,
+        cmd_runners: Iterable[str],
+        confirm_cmd: str,
+        confirm_serial_num: int,
+        confirmers: Iterable[str],
+    ) -> None:
+        """Initialize the instance.
+
+        Args:
+            cmd_runners: thread names that will execute the command
+            confirm_cmd: command to be confirmed
+            confirm_serial_num: serial number of command to confirm
+            confirmers: cmd runners of the cmd to be confirmed
+        """
+        super().__init__(cmd_runners=cmd_runners)
+        self.specified_args = locals()  # used for __repr__
+
+        self.confirm_cmd = confirm_cmd
+        self.confirm_serial_num = confirm_serial_num
+
+        self.confirmers = get_set(confirmers)
+
+        self.arg_list += ["confirm_cmd", "confirm_serial_num", "confirmers"]
+
+    def run_process(self, cmd_runner: str) -> None:
+        """Run the command.
+
+        Args:
+           cmd_runner: name of thread running the command
+        """
+        start_time = time.time()
+        work_confirmers = self.confirmers.copy()
+        if not work_confirmers:
+            raise InvalidInputDetected(
+                "ConfirmResponse detected an empty set of confirmers"
+            )
+        while work_confirmers:
+            for name in work_confirmers:
+                # If the serial number is in the completed_cmds for
+                # this name then the command was completed. Remove the
+                # target_rtn name and break to start looking again with
+                # one less target_rtn until no targets remain.
+                if self.confirm_serial_num in self.config_ver.completed_cmds[name]:
+                    work_confirmers.remove(name)
+                    break
+            time.sleep(0.2)
+            timeout_value = 60
+            if time.time() - start_time > timeout_value:
+                raise CmdTimedOut(
+                    "ConfirmResponse serial_num "
+                    f"{self.serial_num} took longer than "
+                    f"{timeout_value} seconds waiting "
+                    f"for {work_confirmers} to complete "
+                    f"cmd {self.confirm_cmd} with "
+                    f"serial_num {self.confirm_serial_num}."
+                )
+
+
+########################################################################
+# ConfirmResponse
+########################################################################
+class ConnectToIb(ConfigCmd):
+    """Confirm that an earlier command has completed."""
+
+    def __init__(
+        self,
+        cmd_runners: Iterable[str],
+        ip_addr: str = "127.0.0.1",
+        port: int = 7496,
+        client_id: int = 1,
+        timeout: OptIntFloat = None,
+    ) -> None:
+        """Initialize the instance.
+
+        Args:
+            cmd_runners: thread names that will execute the command
+            ip_addr: ip address of connection (127.0.0.2)
+            port: port number (e.g., 7496)
+            client_id: specific client number from 1 to x
+        """
+        super().__init__(cmd_runners=cmd_runners)
+        self.specified_args = locals()  # used for __repr__
+
+        self.ip_addr = ip_addr
+        self.port = port
+
+        self.client_id = client_id
+
+        self.arg_list += ["ip_addr", "port", "client_id"]
+
+    def run_process(self, cmd_runner: str) -> None:
+        """Run the command.
+
+        Args:
+           cmd_runner: name of thread running the command
+        """
+        self.config_ver.handle_connect(
+            cmd_runner=cmd_runner,
+            ip_addr=self.ip_addr,
+            port=self.port,
+            client_id=self.client_id,
+            timeout_type=TimeoutType.TimeoutNone,
+            timeout=self.timeout,
+        )
+
+
+class ConfigVerifier:
+    """Class that tracks and verifies the SmartThread configuration."""
+
+    def __init__(
+        self,
+        algo_app: AlgoApp,
+        group_name: str,
+        commander_name: str,
+        log_ver: LogVer,
+        caplog_to_use: pytest.LogCaptureFixture,
+        msgs: Msgs,
+        max_msgs: int = 10,
+        allow_log_test_msg: bool = True,
+    ) -> None:
+        """Initialize the ConfigVerifier.
+
+        Args:
+            algo_app: the AlgoApi
+            group_name: name of group for this ConfigVerifier
+            commander_name: name of the thread running the commands
+            log_ver: the log verifier to track and verify log msgs
+            caplog_to_use: pytest fixture to capture log messages
+            msgs: Msgs class instance used to communicate with threads
+            max_msgs: max message for the SmartThread msg_q
+
+        """
+        self.specified_args = locals()  # used for __repr__, see below
+        self.algo_app = algo_app
+        self.group_name = group_name
+        self.commander_name = commander_name
+        self.commander_thread_config_built = False
+
+        self.monitor_thread = threading.Thread(target=self.monitor)
+        self.monitor_exit = False
+
+        self.main_driver_unreg: threading.Event = threading.Event()
+
+        self.cmd_suite: deque[ConfigCmd] = deque()
+        self.cmd_serial_num: int = 0
+        self.completed_cmds: dict[str, list[int]] = defaultdict(list)
+        self.f1_process_cmds: dict[str, bool] = {}
+        self.thread_names: list[str] = [
+            commander_name,
+            "beta",
+            "charlie",
+            "delta",
+            "echo",
+            "fox",
+            "george",
+            "henry",
+            "ida",
+            "jack",
+            "king",
+            "love",
+            "mary",
+            "nancy",
+            "oscar",
+            "peter",
+            "queen",
+            "roger",
+            "sam",
+            "tom",
+            "uncle",
+            "victor",
+            "wanda",
+            "xander",
+        ]
+        self.unregistered_names: set[str] = set(self.thread_names)
+        self.registered_names: set[str] = set()
+        self.active_names: set[str] = set()
+        self.thread_target_names: set[str] = set()
+        self.stopped_remotes: set[str] = set()
+        self.expected_registered: dict[str, ThreadTracker] = {}
+        # self.expected_pairs: dict[tuple[str, str],
+        #                           dict[str, ThreadPairStatus]] = {}
+        self.expected_pairs: dict[st.PairKey, dict[str, ThreadPairStatus]] = {}
+        self.log_ver = log_ver
+        self.allow_log_test_msg = allow_log_test_msg
+        self.caplog_to_use = caplog_to_use
+        self.msgs = msgs
+        self.ops_lock = threading.RLock()
+
+        self.all_threads: dict[str, st.SmartThread] = {}
+
+        self.max_msgs = max_msgs
+
+        self.expected_num_recv_timeouts: int = 0
+
+        self.test_case_aborted = False
+
+        self.stopped_event_items: dict[str, MonitorEventItem] = {}
+        self.cmd_waiting_event_items: dict[str, threading.Event] = {}
+
+        self.stopping_names: list[str] = []
+
+        self.recently_stopped: dict[str, int] = defaultdict(int)
+
+        self.log_start_idx: int = 0
+        self.log_search_items: tuple[LogSearchItems, ...] = (
+            RequestEntryExitLogSearchItem(config_ver=self),
+            SetupCompleteLogSearchItem(config_ver=self),
+            SubProcessEntryExitLogSearchItem(config_ver=self),
+            RegistryStatusLogSearchItem(config_ver=self),
+            AddPairArrayEntryLogSearchItem(config_ver=self),
+            AddStatusBlockEntryLogSearchItem(config_ver=self),
+            DidCleanPairArrayUtcLogSearchItem(config_ver=self),
+            UpdatePairArrayUtcLogSearchItem(config_ver=self),
+            AddRegEntryLogSearchItem(config_ver=self),
+            RemRegEntryLogSearchItem(config_ver=self),
+            RemPairArrayEntryLogSearchItem(config_ver=self),
+            DidCleanRegLogSearchItem(config_ver=self),
+            SetStateLogSearchItem(config_ver=self),
+            InitCompleteLogSearchItem(config_ver=self),
+            F1AppExitLogSearchItem(config_ver=self),
+            AlreadyUnregLogSearchItem(config_ver=self),
+            RequestAckLogSearchItem(config_ver=self),
+            DetectedStoppedRemoteLogSearchItem(config_ver=self),
+            RequestRefreshLogSearchItem(config_ver=self),
+            UnregJoinSuccessLogSearchItem(config_ver=self),
+            JoinWaitingLogSearchItem(config_ver=self),
+            StoppedLogSearchItem(config_ver=self),
+            CmdWaitingLogSearchItem(config_ver=self),
+            DebugLogSearchItem(config_ver=self),
+            RemStatusBlockEntryLogSearchItem(config_ver=self),
+            RemStatusBlockEntryDefLogSearchItem(config_ver=self),
+            CRunnerRaisesLogSearchItem(config_ver=self),
+            MonitorCheckpointLogSearchItem(config_ver=self),
+        )
+
+        self.log_found_items: deque[LogSearchItem] = deque()
+
+        self.pending_events: dict[str, PendEvents] = {}
+        self.auto_calling_refresh_msg = True
+        self.auto_sync_ach_or_back_msg = True
+        self.potential_def_del_pairs: dict[PotentialDefDelKey, int] = defaultdict(int)
+        self.setup_pending_events()
+
+        self.snap_shot_data: dict[int, SnapShotDataItem] = {}
+
+        self.last_clean_reg_msg_idx: int = 0
+        self.last_thread_stop_msg_idx: dict[str, int] = defaultdict(int)
+
+        self.monitor_event: threading.Event = threading.Event()
+        self.monitor_condition: threading.Condition = threading.Condition()
+        self.monitor_pause: int = 0
+        self.check_pending_events_complete_event: threading.Event = threading.Event()
+        self.verify_config_complete_event: threading.Event = threading.Event()
+        self.monitor_thread.start()
+
+    ####################################################################
+    # __repr__
+    ####################################################################
+    def __repr__(self) -> str:
+        """Return a representation of the class.
+
+        Returns:
+            The representation as how the class is instantiated
+
+        """
+        if TYPE_CHECKING:
+            __class__: Type[ConfigVerifier]  # noqa: F842
+        classname = self.__class__.__name__
+        parms = ""
+        comma = ""
+
+        for key, item in self.specified_args.items():
+            if item:  # if not None
+                if key in ("log_ver",):
+                    if type(item) is str:
+                        parms += comma + f"{key}='{item}'"
+                    else:
+                        parms += comma + f"{key}={item}"
+                    comma = ", "  # after first item, now need comma
+
+        return f"{classname}({parms})"
+
+    ####################################################################
+    # setup_pending_events
+    ####################################################################
+    def abort_test_case(self) -> None:
+        """Abort the test case."""
+        self.log_test_msg(f"aborting test case {get_formatted_call_sequence()}")
+        self.test_case_aborted = True
+        self.abort_all_f1_threads()
+
+    ####################################################################
+    # add_cmd
+    ####################################################################
+    def add_cmd(self, cmd: ConfigCmd, alt_frame_num: Optional[int] = None) -> int:
+        """Add a command to the deque.
+
+        Args:
+            cmd: command to add
+            alt_frame_num: non-zero indicates to add the line number for
+                the specified frame to the cmd object so that it will be
+                included with in the log just after the line_num in
+                parentheses
+
+        Returns:
+            the serial number for the command
+
+        """
+        if alt_frame_num is not None:
+            alt_frame_num += 2
+        serial_num = self.add_cmd_info(
+            cmd=cmd, frame_num=2, alt_frame_num=alt_frame_num
+        )
+        self.cmd_suite.append(cmd)
+        return serial_num
+
+    ####################################################################
+    # add_cmd_info
+    ####################################################################
+    def add_cmd_info(
+        self,
+        cmd: ConfigCmd,
+        frame_num: int = 1,
+        alt_frame_num: Optional[int] = None,
+    ) -> int:
+        """Add a command to the deque.
+
+        Args:
+            cmd: command to add
+            frame_num: how many frames back to go for line number
+            alt_frame_num: non-zero indicates to add the line number for
+                the specified frame to the cmd object so that it will be
+                included with in the log just after the line_num in
+                parentheses
+
+        Returns:
+            the serial number for the command
+        """
+        self.cmd_serial_num += 1
+        cmd.serial_num = self.cmd_serial_num
+
+        frame = _getframe(frame_num)
+        caller_info = get_caller_info(frame)
+        cmd.line_num = caller_info.line_num
+        del frame
+        if alt_frame_num is not None and alt_frame_num > 0:
+            frame = _getframe(alt_frame_num)
+            caller_info = get_caller_info(frame)
+            cmd.alt_line_num = caller_info.line_num
+            del frame
+
+        cmd.config_ver = self
+
+        return self.cmd_serial_num
+
+    ####################################################################
+    # add_log_msg
+    ####################################################################
+    def add_log_msg(
+        self,
+        new_log_msg: str,
+        log_level: int = logging.DEBUG,
+        fullmatch: bool = True,
+        log_name: Optional[str] = None,
+    ) -> None:
+        """Add log message to log_ver for SmartThread logger.
+
+        Args:
+            new_log_msg: msg to add to log_ver
+            log_level: the logging severity level to use
+            fullmatch: specify whether fullmatch should be done instead
+                of match
+            log_name: name of log to use for add_msg
+        """
+        if log_name is None:
+            log_name = "scottbrian_paratools.smart_thread"
+        self.log_ver.add_msg(
+            log_name=log_name,
+            log_level=log_level,
+            log_msg=new_log_msg,
+            fullmatch=fullmatch,
+        )
+
+    ####################################################################
+    # handle_join
+    ####################################################################
+    def handle_connect(
+        self,
+        cmd_runner: str,
+        ip_addr: str,
+        port: int,
+        client_id: int,
+        timeout_type: TimeoutType = TimeoutType.TimeoutNone,
+        timeout: OptIntFloat = None,
+    ) -> None:
+        """Handle the connect execution and log msgs.
+
+        Args:
+            cmd_runner: name of thread doing the cmd
+            ip_addr: ip address of connection (127.0.0.2)
+            port: port number (e.g., 7496)
+            client_id: specific client number from 1 to x
+            timeout_type: None, False, or True
+            timeout: value for timeout on connect request
+
+        """
+        self.log_test_msg(
+            f"connect entry: {cmd_runner=}, {client_id=}, {timeout_type=}, {timeout=}"
+        )
+        self.log_ver.add_call_seq(
+            name="connect_ib", seq="test_algo_app.py::ConfigVerifier.handle_connect"
+        )
+
+        start_time = time.time()
+
+        # pe = self.pending_events[cmd_runner]
+        #
+        # pe[PE.start_request].append(
+        #     StartRequest(
+        #         req_type=st.ReqType.Smart_join,
+        #         timeout_type=timeout_type,
+        #         targets=join_names.copy(),
+        #         unreg_remotes=unreg_names.copy(),
+        #         not_registered_remotes=set(),
+        #         timeout_remotes=timeout_remotes,
+        #         stopped_remotes=set(),
+        #         deadlock_remotes=set(),
+        #         eligible_targets=set(),
+        #         completed_targets=set(),
+        #         first_round_completed=set(),
+        #         stopped_target_threads=set(),
+        #         exp_senders=set(),
+        #         exp_resumers=set(),
+        #     )
+        # )
+
+        # req_key_entry: RequestKey = ("smart_join", "entry")
+        #
+        # pe[PE.request_msg][req_key_entry] += 1
+        #
+        # req_key_exit: RequestKey = ("smart_join", "exit")
+
+        # enter_exit = ('entry', 'exit')
+        if timeout_type == TimeoutType.TimeoutNone:
+            # pe[PE.request_msg][req_key_exit] += 1
+            # self.all_threads[cmd_runner].smart_join(
+            #     targets=join_names, log_msg=log_msg)
+            self.algo_app.connect_to_ib(
+                ip_addr=ip_addr,
+                port=port,
+                client_id=client_id,
+            )
+
+        elif timeout_type == TimeoutType.TimeoutFalse:
+            # pe[PE.request_msg][req_key_exit] += 1
+            # self.all_threads[cmd_runner].smart_join(
+            #     targets=join_names, timeout=timeout, log_msg=log_msg
+            # )
+            self.algo_app.connect_to_ib(
+                ip_addr=ip_addr,
+                port=port,
+                client_id=client_id,
+                timeout=timeout,
+            )
+
+        elif timeout_type == TimeoutType.TimeoutTrue:
+            # enter_exit = ('entry', )
+            error_msg = self.get_error_msg(
+                cmd_runner=cmd_runner,
+                smart_request="smart_join",
+                targets=join_names,
+                error_str="SmartThreadRequestTimedOut",
+            )
+            with pytest.raises(st.SmartThreadRequestTimedOut) as exc:
+                self.algo_app.connect_to_ib(
+                    ip_addr=ip_addr,
+                    port=port,
+                    client_id=client_id,
+                    timeout=timeout,
+                )
+
+            err_str = str(exc.value)
+            assert re.fullmatch(error_msg, err_str)
+
+            self.add_log_msg(error_msg, log_level=logging.ERROR)
+
+        # self.wait_for_monitor(cmd_runner=cmd_runner, rtn_name="handle_connect")
+
+        self.log_test_msg(
+            f"connect exit: {cmd_runner=}, {client_id=}, {timeout_type=}, {timeout=}"
+        )
+
+
+def scenario_driver(
+    caplog_to_use: pytest.LogCaptureFixture,
+    scenario_driver_parms: list[ScenarioDriverParms],
+) -> None:
+    """Build and run a scenario.
+
+    Args:
+        caplog_to_use: the capsys to capture log messages
+        scenario_driver_parms: args for scenario_driver_part_1
+
+
+    """
+    log_ver = LogVer(log_name=__name__)
+
+    config_vers: list[ConfigVerifier] = []
+    for sdparm in scenario_driver_parms:
+        msgs = Msgs()
+        config_ver = ConfigVerifier(
+            group_name=sdparm.group_name,
+            commander_name=sdparm.commander_name,
+            log_ver=log_ver,
+            caplog_to_use=caplog_to_use,
+            msgs=msgs,
+            max_msgs=10,
+            allow_log_test_msg=sdparm.allow_log_test_msg,
+        )
+        config_vers.append(config_ver)
+
+        scenario_driver_part1(
+            config_ver=config_ver,
+            scenario_builder=sdparm.scenario_builder,
+            scenario_builder_args=sdparm.scenario_builder_args,
+            log_ver=log_ver,
+            cmder_config=sdparm.commander_config,
+            commander_name=sdparm.commander_name,
+            group_name=sdparm.group_name,
+        )
+
+    for idx, config_ver in enumerate(config_vers):
+        if scenario_driver_parms[idx].commander_config in [
+            AppConfig.F1Rtn,
+            AppConfig.RemoteThreadApp,
+            AppConfig.RemoteSmartThreadApp,
+            AppConfig.RemoteSmartThreadApp2,
+        ]:
+            config_ver.all_threads[config_ver.commander_name].thread.join()
+
+    ################################################################
+    # check log results
+    ################################################################
+    match_results = log_ver.get_match_results(caplog=caplog_to_use)
+    log_ver.print_match_results(match_results, print_matched=False)
+    log_ver.verify_log_results(match_results)
+
+
+########################################################################
+# scenario_driver
+########################################################################
+def scenario_driver_part1(
+    config_ver: ConfigVerifier,
+    scenario_builder: Callable[..., None],
+    scenario_builder_args: dict[str, Any],
+    log_ver: LogVer,
+    cmder_config: AppConfig,
+    commander_name: str,
+    group_name: str,
+) -> None:
+    """Build and run a scenario.
+
+    Args:
+        config_ver: the ConfigVerifier
+        scenario_builder: the ConfigVerifier builder method to call
+        scenario_builder_args: the args to pass to the builder
+        log_ver: log verification object
+        cmder_config: specifies how the commander will run
+        commander_name: name of commander thread
+        group_name: group_name to use
+
+    """
+
+    ################################################################
+    # f1
+    ################################################################
+    def f1(f1_smart_thread: st.SmartThread, f1_config_ver: ConfigVerifier) -> None:
+        f1_config_ver.log_test_msg(f"f1 entry: {f1_smart_thread.name=}")
+
+        f1_config_ver.main_driver()
+
+        ############################################################
+        # exit
+        ############################################################
+        f1_config_ver.log_test_msg(f"f1 exit: {f1_smart_thread.name=}")
+
+    ################################################################
+    # Set up log verification and start tests
+    ################################################################
+    # log_ver = LogVer(log_name=__name__)
+    log_ver.add_call_seq(name=commander_name, seq=get_formatted_call_sequence())
+
+    random.seed(42)
+
+    config_ver.log_test_msg(
+        f"scenario_driver_part1 entry: {commander_name=} "
+        f"{group_name=} {scenario_builder=} "
+        f"{scenario_builder_args=} {cmder_config=}"
+    )
+
+    config_ver.unregistered_names -= {commander_name}
+    config_ver.active_names |= {commander_name}
+
+    scenario_builder(config_ver, **scenario_builder_args)
+
+    config_ver.add_cmd(
+        VerifyConfig(
+            cmd_runners=commander_name, verify_type=VerifyType.VerifyStructures
+        )
+    )
+
+    names = list(config_ver.active_names - {commander_name})
+    config_ver.build_exit_suite(cmd_runner=commander_name, names=names)
+
+    config_ver.build_join_suite(
+        cmd_runners=[config_ver.commander_name], join_target_names=names
+    )
+
+    def initialize_config_ver(
+        cmd_thread: st.SmartThread,
+        auto_start: bool,
+        auto_start_decision: AutoStartDecision,
+        exp_alive: bool,
+        thread_create: st.ThreadCreate,
+        exp_state: st.ThreadState,
+    ) -> None:
+        """Set up the mock registry for the commander.
+
+        Args:
+            cmd_thread: the commander thread
+            auto_start: specifies whether auto_start was specified
+                on the init
+            auto_start_decision: specifies whether an auto start is
+                not needed, yes, or no
+            exp_alive: specifies whether the thread is expected to
+                be alive at the end of smart_init
+            thread_create: specifies which create style is done
+            exp_state: the expected state after smart_init
+
+        """
+        config_ver.all_threads[commander_name] = cmd_thread
+
+        config_ver.expected_registered[commander_name] = ThreadTracker(
+            thread=cmd_thread,
+            is_alive=False,
+            exiting=False,
+            is_auto_started=auto_start,
+            is_TargetThread=False,
+            exp_init_is_alive=exp_alive,
+            exp_init_thread_state=exp_state,
+            thread_create=thread_create,
+            auto_start_decision=auto_start_decision,
+            # st_state=st.ThreadState.Unregistered,
+            st_state=st.ThreadState.Initialized,
+            found_del_pairs=defaultdict(int),
+        )
+
+        pe = config_ver.pending_events[commander_name]
+        pe[PE.start_request].append(
+            StartRequest(
+                req_type=st.ReqType.Smart_init,
+                targets={commander_name},
+                unreg_remotes=set(),
+                not_registered_remotes=set(),
+                timeout_remotes=set(),
+                stopped_remotes=set(),
+                deadlock_remotes=set(),
+                eligible_targets=set(),
+                completed_targets=set(),
+                first_round_completed=set(),
+                stopped_target_threads=set(),
+                exp_senders=set(),
+                exp_resumers=set(),
+            )
+        )
+
+        req_key_entry: RequestKey = ("smart_init", "entry")
+        pe[PE.request_msg][req_key_entry] += 1
+
+        req_key_exit: RequestKey = ("smart_init", "exit")
+        pe[PE.request_msg][req_key_exit] += 1
+
+        config_ver.commander_thread_config_built = True
+
+    ################################################################
+    # start commander
+    ################################################################
+    config_ver.monitor_pause = True
+    outer_thread_app: Union[OuterThreadApp, OuterSmartThreadApp, OuterSmartThreadApp2]
+    if cmder_config == AppConfig.ScriptStyle:
+        commander_thread = st.SmartThread(group_name=group_name, name=commander_name)
+
+        initialize_config_ver(
+            cmd_thread=commander_thread,
+            auto_start=True,
+            auto_start_decision=AutoStartDecision.auto_start_obviated,
+            exp_alive=True,
+            exp_state=st.ThreadState.Alive,
+            thread_create=st.ThreadCreate.Current,
+        )
+        config_ver.monitor_pause = False
+        config_ver.main_driver()
+    elif cmder_config == AppConfig.F1Rtn:
+        f1_thread = st.SmartThread(
+            group_name=group_name,
+            name=commander_name,
+            target_rtn=f1,
+            auto_start=False,
+            kwargs={"f1_config_ver": config_ver},
+            thread_parm_name="f1_smart_thread",
+        )
+
+        initialize_config_ver(
+            cmd_thread=f1_thread,
+            auto_start=False,
+            auto_start_decision=AutoStartDecision.auto_start_no,
+            exp_alive=False,
+            exp_state=st.ThreadState.Registered,
+            thread_create=st.ThreadCreate.Target,
+        )
+        config_ver.monitor_pause = False
+
+        pe = config_ver.pending_events[commander_name]
+        pe[PE.start_request].append(
+            StartRequest(
+                req_type=st.ReqType.Smart_start,
+                targets={commander_name},
+                unreg_remotes=set(),
+                not_registered_remotes=set(),
+                timeout_remotes=set(),
+                stopped_remotes=set(),
+                deadlock_remotes=set(),
+                eligible_targets=set(),
+                completed_targets=set(),
+                first_round_completed=set(),
+                stopped_target_threads=set(),
+                exp_senders=set(),
+                exp_resumers=set(),
+            )
+        )
+
+        req_key_entry: RequestKey = ("smart_start", "entry")
+
+        pe[PE.request_msg][req_key_entry] += 1
+
+        req_key_exit: RequestKey = ("smart_start", "exit")
+        pe[PE.request_msg][req_key_exit] += 1
+
+        f1_thread.smart_start()
+        # if not skip_join:
+        #     outer_thread_app.join()
+    elif cmder_config == AppConfig.CurrentThreadApp:
+        cmd_current_app = CommanderCurrentApp(
+            config_ver=config_ver, name=commander_name, max_msgs=10
+        )
+
+        initialize_config_ver(
+            cmd_thread=cmd_current_app.smart_thread,
+            auto_start=False,
+            auto_start_decision=AutoStartDecision.auto_start_no,
+            exp_alive=True,
+            exp_state=st.ThreadState.Alive,
+            thread_create=st.ThreadCreate.Current,
+        )
+        config_ver.monitor_pause = False
+        cmd_current_app.run()
+    elif cmder_config == AppConfig.RemoteThreadApp:
+        outer_thread_app = OuterThreadApp(
+            config_ver=config_ver, name=commander_name, max_msgs=10
+        )
+
+        initialize_config_ver(
+            cmd_thread=outer_thread_app.smart_thread,
+            auto_start=False,
+            auto_start_decision=AutoStartDecision.auto_start_no,
+            exp_alive=False,
+            exp_state=st.ThreadState.Registered,
+            thread_create=st.ThreadCreate.Thread,
+        )
+        config_ver.monitor_pause = False
+
+        pe = config_ver.pending_events[commander_name]
+        pe[PE.start_request].append(
+            StartRequest(
+                req_type=st.ReqType.Smart_start,
+                targets={commander_name},
+                unreg_remotes=set(),
+                not_registered_remotes=set(),
+                timeout_remotes=set(),
+                stopped_remotes=set(),
+                deadlock_remotes=set(),
+                eligible_targets=set(),
+                completed_targets=set(),
+                first_round_completed=set(),
+                stopped_target_threads=set(),
+                exp_senders=set(),
+                exp_resumers=set(),
+            )
+        )
+
+        req_key_entry = ("smart_start", "entry")
+
+        pe[PE.request_msg][req_key_entry] += 1
+
+        req_key_exit = ("smart_start", "exit")
+        pe[PE.request_msg][req_key_exit] += 1
+
+        outer_thread_app.smart_thread.smart_start()
+        # if not skip_join:
+        #     outer_thread_app.join()
+    elif cmder_config == AppConfig.RemoteSmartThreadApp:
+        outer_thread_app = OuterSmartThreadApp(
+            config_ver=config_ver, name=commander_name, max_msgs=10
+        )
+
+        initialize_config_ver(
+            cmd_thread=outer_thread_app,
+            auto_start=False,
+            auto_start_decision=AutoStartDecision.auto_start_no,
+            exp_alive=False,
+            exp_state=st.ThreadState.Registered,
+            thread_create=st.ThreadCreate.Thread,
+        )
+        config_ver.monitor_pause = False
+
+        pe = config_ver.pending_events[commander_name]
+        pe[PE.start_request].append(
+            StartRequest(
+                req_type=st.ReqType.Smart_start,
+                targets={commander_name},
+                unreg_remotes=set(),
+                not_registered_remotes=set(),
+                timeout_remotes=set(),
+                stopped_remotes=set(),
+                deadlock_remotes=set(),
+                eligible_targets=set(),
+                completed_targets=set(),
+                first_round_completed=set(),
+                stopped_target_threads=set(),
+                exp_senders=set(),
+                exp_resumers=set(),
+            )
+        )
+
+        req_key_entry = ("smart_start", "entry")
+        pe[PE.request_msg][req_key_entry] += 1
+
+        req_key_exit = ("smart_start", "exit")
+        pe[PE.request_msg][req_key_exit] += 1
+
+        outer_thread_app.smart_start(commander_name)
+        # threading.Thread.join(outer_thread_app)
+    elif cmder_config == AppConfig.RemoteSmartThreadApp2:
+        outer_thread_app = OuterSmartThreadApp2(
+            config_ver=config_ver, name=commander_name, max_msgs=10
+        )
+
+        initialize_config_ver(
+            cmd_thread=outer_thread_app,
+            auto_start=False,
+            auto_start_decision=AutoStartDecision.auto_start_no,
+            exp_alive=False,
+            exp_state=st.ThreadState.Registered,
+            thread_create=st.ThreadCreate.Thread,
+        )
+        config_ver.monitor_pause = False
+
+        pe = config_ver.pending_events[commander_name]
+        pe[PE.start_request].append(
+            StartRequest(
+                req_type=st.ReqType.Smart_start,
+                targets={commander_name},
+                unreg_remotes=set(),
+                not_registered_remotes=set(),
+                timeout_remotes=set(),
+                stopped_remotes=set(),
+                deadlock_remotes=set(),
+                eligible_targets=set(),
+                completed_targets=set(),
+                first_round_completed=set(),
+                stopped_target_threads=set(),
+                exp_senders=set(),
+                exp_resumers=set(),
+            )
+        )
+
+        req_key_entry = ("smart_start", "entry")
+        pe[PE.request_msg][req_key_entry] += 1
+
+        req_key_exit = ("smart_start", "exit")
+        pe[PE.request_msg][req_key_exit] += 1
+
+        outer_thread_app.smart_start(commander_name)
+        # threading.Thread.join(outer_thread_app)
+    else:
+        raise UnrecognizedCmd(f"scenario_driver does not recognize {cmder_config=}")
+
+    config_ver.log_test_msg(
+        f"scenario_driver_part1 exit: {commander_name=} "
+        f"{group_name=} {scenario_builder=} "
+        f"{scenario_builder_args=} {cmder_config=}"
+    )
+
+
 ########################################################################
 # TestAlgoAppConnect class
 ########################################################################
@@ -365,18 +1388,18 @@ class TestAlgoAppConnect:
                         timeout=timeout_value,
                     )
 
-            log_msg = (
-                f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, "
-                f"{timeout=} "
-            )
-            cat_app.log_ver.add_msg(
-                log_msg=re.escape(log_msg), log_name="scottbrian_algo1.algo_api"
-            )
-            cat_app.log_ver.add_msg(
-                log_msg="starting AlgoClient thread 1",
-                log_name="scottbrian_algo1.algo_api",
-                log_level=logging.INFO,
-            )
+            # log_msg = (
+            #     f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, "
+            #     f"{timeout=} "
+            # )
+            # cat_app.log_ver.add_msg(
+            #     log_msg=re.escape(log_msg), log_name="scottbrian_algo1.algo_app"
+            # )
+            # cat_app.log_ver.add_msg(
+            #     log_msg="starting AlgoClient thread 1",
+            #     log_name="scottbrian_algo1.algo_app",
+            #     log_level=logging.INFO,
+            # )
 
         # log_ver = LogVer(log_name=__name__)
 

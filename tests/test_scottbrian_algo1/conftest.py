@@ -25,7 +25,7 @@ import pytest
 import pandas as pd  # type: ignore
 import socket
 
-from scottbrian_algo1.algo_api import AlgoApp
+from scottbrian_algo1.algo_app import AlgoApp
 
 from scottbrian_paratools.smart_thread import SmartThread
 
