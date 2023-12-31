@@ -549,7 +549,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         error_msg = ""
         with sel.SELockExcl(AlgoApp._config_lock):
             if self.algo_client.isConnected():
-                error_msg = "connect_to_ib already connected"
+                error_msg = (
+                    f"AlgoApp connect_to_ib raising AlreadyConnected. "
+                    f"{setup_args.smart_thread.name=}, {ip_addr=}, {port=}, "
+                    f"{client_id=}"
+                )
                 logger.debug(error_msg)
                 raise AlreadyConnected(error_msg)
 

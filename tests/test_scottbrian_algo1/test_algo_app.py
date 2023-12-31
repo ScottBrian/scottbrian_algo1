@@ -778,6 +778,34 @@ class ConfigVerifier:
         )
 
     ####################################################################
+    # get_error_msg
+    ####################################################################
+    def get_error_msg(
+        self,
+        algo_request: str,
+        exception_str: str,
+    ) -> str:
+        """Build the timeout message.
+
+        Args:
+            algo_request: name of request to algo_app
+            algo_request: name of function called
+            exception_str: name of exception
+
+        Returns:
+            error msg string for log and raise
+
+        """
+        ret_msg = (
+            f"AlgoApp {algo_request} raising {exception_str}. "
+            "setup_args.smart_thread.name=[a-z]+_[0-9]+.[0-9]+, "
+            "ip_addr=[0-9]{1, 3}.[0-9]{1, 3}.[0-9]{1, 3}.[0-9]{1, 3}, "
+            "port=[0-9]{1, 4}, client_id=[1-9]{1, 2}"
+        )
+
+        return ret_msg
+
+    ####################################################################
     # handle_join
     ####################################################################
     def handle_connect(
@@ -862,21 +890,16 @@ class ConfigVerifier:
         elif timeout_type == TimeoutType.TimeoutTrue:
             # enter_exit = ('entry', )
             error_msg = self.get_error_msg(
-                cmd_runner=cmd_runner,
-                smart_request="smart_join",
-                targets=join_names,
-                error_str="SmartThreadRequestTimedOut",
+                algo_request="connect_to_ib", exception_str="ConnectTimeout"
             )
-            with pytest.raises(st.SmartThreadRequestTimedOut) as exc:
+
+            with pytest.raises(ConnectTimeout, match=error_msg):
                 self.algo_app.connect_to_ib(
                     ip_addr=ip_addr,
                     port=port,
                     client_id=client_id,
                     timeout=timeout,
                 )
-
-            err_str = str(exc.value)
-            assert re.fullmatch(error_msg, err_str)
 
             self.add_log_msg(error_msg, log_level=logging.ERROR)
 
@@ -885,6 +908,28 @@ class ConfigVerifier:
         self.log_test_msg(
             f"connect exit: {cmd_runner=}, {client_id=}, {timeout_type=}, {timeout=}"
         )
+
+    ####################################################################
+    # log_test_msg
+    ####################################################################
+    def log_test_msg(self, log_msg: str) -> None:
+        """Issue log msgs for test rtn.
+
+        Args:
+            log_msg: the message to log
+
+        """
+        if (
+            self.allow_log_test_msg
+            # or "waiting for monitor" in log_msg
+            # or "has been stopped by" in log_msg
+            # or "Monitor Checkpoint" in log_msg
+            # or "OuterF1ThreadApp.run() exit: " in log_msg
+            # or "outer_f1 exit: " in log_msg
+            # or "abort" in log_msg
+        ):
+            self.log_ver.add_msg(log_msg=re.escape(log_msg))
+            logger.debug(log_msg, stacklevel=2)
 
 
 def scenario_driver(
