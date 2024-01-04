@@ -1031,9 +1031,62 @@ class ConfigCmd(ABC):
         """
         pass
 
+########################################################################
+# CreateAlgoApp
+########################################################################
+class CreateAlgoApp(ConfigCmd):
+    """Confirm that an earlier command has completed."""
+
+    def __init__(
+        self,
+        cmd_runners: Iterable[str],
+        ds_catalog: FileCatalog,
+        group_name: str = "algo_app_group",
+        algo_name: str = "algo_app",
+        default_timeout: OptIntFloat = None,
+    ) -> None:
+        """Initialize the instance.
+
+        Args:
+            cmd_runners: thread names that will execute the command
+            ds_catalog: contain the paths for data sets
+            group_name: name of SmartThread group
+            algo_name: name of SmartThread instance for AlgoApp
+            default_timeout: number of seconds to use as a timeout
+                value if timeout is not specifies on a method that
+                provides a timeout parameter. If this default_timeout is
+                not specifies, the default_timeout is set to 30 seconds.
+
+        """
+        super().__init__(cmd_runners=cmd_runners)
+        self.specified_args = locals()  # used for __repr__
+
+        self.ds_catalog = ds_catalog
+        self.group_name = group_name
+
+        self.algo_name = algo_name
+
+        self.default_timeout = default_timeout
+
+        self.arg_list += ["group_name", "algo_name", "default_timeout"]
+
+    def run_process(self, cmd_runner: str) -> None:
+        """Run the command.
+
+        Args:
+           cmd_runner: name of thread running the command
+        """
+        self.config_ver.handle_create_algo_app(
+            cmd_runner=cmd_runner,
+            ds_catalog=self.ds_catalog,
+            group_name=self.group_name,
+            algo_name=self.algo_name,
+            default_timeout=self.default_timeout,
+        )
+
 
 ########################################################################
-# ConfirmResponse
+# ConnectToIb
 ########################################################################
 class ConnectToIb(ConfigCmd):
     """Confirm that an earlier command has completed."""
@@ -1044,6 +1097,8 @@ class ConnectToIb(ConfigCmd):
         ip_addr: str = "127.0.0.1",
         port: int = 7496,
         client_id: int = 1,
+        delay_time: IntFloat = 0,
+        timeout_type: TimeoutType,
         timeout: OptIntFloat = None,
     ) -> None:
         """Initialize the instance.
@@ -1053,6 +1108,10 @@ class ConnectToIb(ConfigCmd):
             ip_addr: ip address of connection (127.0.0.2)
             port: port number (e.g., 7496)
             client_id: specific client number from 1 to x
+            delay_time: number of seconds to delay the connect
+            timeout_type: TimeoutType
+            timeout: number of seconds for timeout arg of connect
+
         """
         super().__init__(cmd_runners=cmd_runners)
         self.specified_args = locals()  # used for __repr__
@@ -1061,6 +1120,12 @@ class ConnectToIb(ConfigCmd):
         self.port = port
 
         self.client_id = client_id
+
+        self.delay_time = delay_time
+
+        self.timeout_type = timeout_type
+
+        self.timeout = timeout
 
         self.arg_list += ["ip_addr", "port", "client_id"]
 
@@ -1075,7 +1140,8 @@ class ConnectToIb(ConfigCmd):
             ip_addr=self.ip_addr,
             port=self.port,
             client_id=self.client_id,
-            timeout_type=TimeoutType.TimeoutNone,
+            delay_time=self.delay_time,
+            timeout_type=self.timeout_type,
             timeout=self.timeout,
         )
 
@@ -5771,6 +5837,11 @@ class ConfigVerifier:
         self.monitor_pause: int = 0
         self.check_pending_events_complete_event: threading.Event = threading.Event()
         self.verify_config_complete_event: threading.Event = threading.Event()
+
+        ################################################################
+        # AlgoApp section
+        ################################################################
+        self.algo_app_array: dict[tuple[str, str, int], AlgoApp] = {}
         self.monitor_thread.start()
 
     ####################################################################
@@ -6232,6 +6303,114 @@ class ConfigVerifier:
             fullmatch=fullmatch,
         )
 
+    ####################################################################
+    # build_connect_scenario
+    ####################################################################
+    def build_connect_scenario(
+        self,
+        async: bool,
+        delay: int,
+        timeout_type: TimeoutType,
+    ) -> None:
+        """Test get_smart_thread_names scenarios.
+
+        Args:
+            async: if True, connect from a remote thread
+            delay: cause as delay if connect processing
+            timeout_type: determines whether the delay should have an
+                effect
+        """
+        remote_name = "remote_1"
+        self.create_config(
+            active_names=remote_name,
+        )
+
+        if async:
+            cmd_runner = remote_name
+        else:
+            cmd_runner = self.commander_name
+
+        if timeout_type == TimeoutType.TimeoutNone:
+            self.add_cmd(ConnectToIb(cmd_runners=cmd_runner, delay_time=delay,))
+        elif timeout_type == TimeoutType.TimeoutFalse:
+            self.add_cmd(ConnectToIb(cmd_runners=cmd_runner,delay_time=delay,timeout_type=timeout_type,
+            timeout=delay_arg *
+            2,))
+        else:
+            self.add_cmd(ConnectToIb(cmd_runners=cmd_runner,
+                                     timeout_type=timeout_type,timeout=delay_arg / 2.0,))
+
+        def f1(f1_smart_thread: SmartThread, f1_timeout_type_arg: int):
+            connect_test(f1_timeout_type_arg)
+            f1_smart_thread.smart_resume(waiters="alpha")
+
+        def connect_test(ct_timeout_type_arg: int):
+            if ct_timeout_type_arg == TimeoutType.TimeoutNone:
+                algo_app.connect_to_ib(
+                    ip_addr="127.0.0.1",
+                    port=algo_app.PORT_FOR_LIVE_TRADING,
+                    client_id=1,
+                )
+            elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
+                algo_app.connect_to_ib(
+                    ip_addr="127.0.0.1",
+                    port=algo_app.PORT_FOR_LIVE_TRADING,
+                    client_id=1,
+                    timeout=delay_arg * 2,
+                )
+            else:
+                cat_app.delay_value = -1
+                with pytest.raises(ConnectTimeout):
+                    algo_app.connect_to_ib(
+                        ip_addr="127.0.0.1",
+                        port=algo_app.PORT_FOR_LIVE_TRADING,
+                        client_id=1,
+                        timeout=delay_arg / 2.0,
+                    )
+
+        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
+            return
+
+        cat_app.delay_value = delay_arg
+
+        algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
+        verify_algo_app_initialized(algo_app)
+
+        # we are testing connect_to_ib and the subsequent code that gets
+        # control as a result, such as getting the first requestID and
+        # then starting a separate thread for the run loop.
+        cat_app.log_test_msg("about to connect")
+
+        if async_arg:
+            alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
+            SmartThread(
+                group_name="test1",
+                name="beta",
+                target_rtn=f1,
+                thread_parm_name="f1_smart_thread",
+                kwargs={"f1_timeout_type_arg": timeout_type_arg},
+            )
+
+            alpha_smart_thread.smart_wait(resumers="beta")
+            alpha_smart_thread.smart_join(targets="beta")
+            alpha_smart_thread.smart_unreg()
+
+        else:
+            connect_test(timeout_type_arg)
+
+        logger.debug("back from connect")
+
+        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
+            time.sleep(delay_arg + 1)
+
+        if cat_app.delay_value != -1:
+            verify_algo_app_connected(algo_app)
+
+            algo_app.disconnect_from_ib()
+
+        verify_algo_app_disconnected(algo_app)
+
+        algo_app.shut_down()
     ####################################################################
     # build_get_names_scenario
     ####################################################################
@@ -18577,6 +18756,216 @@ class ConfigVerifier:
         self.log_test_msg(
             f"handle_join exiting with {elapsed_time=}, "
             f"{len(join_names)=}, {time_per_target=}"
+        )
+
+    ####################################################################
+    # AlgoApp section
+    ####################################################################
+    ####################################################################
+    # handle_create_algo_app
+    ####################################################################
+    def handle_create_algo_app(
+        self,
+        cmd_runner: str,
+        ds_catalog: FileCatalog,
+        group_name: str,
+        algo_name: str,
+        default_timeout: OptIntFloat = None,
+    ) -> None:
+        """Handle the join execution and log msgs.
+
+        Args:
+            cmd_runner: name of thread doing the cmd
+            ds_catalog: contain the paths for data sets
+            group_name: name of SmartThread group
+            algo_name: name of SmartThread instance for AlgoApp
+            default_timeout: number of seconds to use as a timeout
+                value if timeout is not specifies on a method that
+                provides a timeout parameter. If this default_timeout is
+                not specifies, the default_timeout is set to 30 seconds.
+
+        """
+        self.log_test_msg(
+            f"handle_create_algo_app entry: {cmd_runner=}, {group_name=}, "
+            f"{algo_name=}, {default_timeout=}"
+        )
+        self.log_ver.add_call_seq(
+            name="handle_create_algo_app",
+            seq="test_algo_app.py::ConfigVerifier.handle_create_algo_app"
+        )
+
+        start_time = time.time()
+
+        # pe = self.pending_events[cmd_runner]
+        #
+        # pe[PE.start_request].append(
+        #     StartRequest(
+        #         req_type=st.ReqType.Smart_join,
+        #         timeout_type=timeout_type,
+        #         targets=join_names.copy(),
+        #         unreg_remotes=unreg_names.copy(),
+        #         not_registered_remotes=set(),
+        #         timeout_remotes=timeout_remotes,
+        #         stopped_remotes=set(),
+        #         deadlock_remotes=set(),
+        #         eligible_targets=set(),
+        #         completed_targets=set(),
+        #         first_round_completed=set(),
+        #         stopped_target_threads=set(),
+        #         exp_senders=set(),
+        #         exp_resumers=set(),
+        #     )
+        # )
+        #
+        # req_key_entry: RequestKey = ("smart_join", "entry")
+        #
+        # pe[PE.request_msg][req_key_entry] += 1
+        #
+        # req_key_exit: RequestKey = ("smart_join", "exit")
+
+        # enter_exit = ('entry', 'exit')
+
+        self.algo_app_array[(group_name, algo_name)] = AlgoApp(
+            ds_catalog=ds_catalog,
+            group_name=group_name,
+            algo_name=algo_name,)
+
+
+        elapsed_time: float = time.time() - start_time
+
+        # self.wait_for_monitor(cmd_runner=cmd_runner,
+        # rtn_name="handle_create_algo_app")
+
+        self.log_test_msg(
+            f"handle_create_algo_app exit: {cmd_runner=}, {group_name=}, {algo_name=}, "
+            f"{default_timeout=}, {elapsed_time=}"
+        )
+
+    ####################################################################
+    # handle_connect
+    ####################################################################
+    def handle_connect(
+        self,
+        cmd_runner: str,
+        ip_addr: str,
+        port: int,
+        client_id: int,
+        delay_time: IntFloat,
+        timeout_type: TimeoutType,
+        timeout: IntFloat,
+    ) -> None:
+        """Handle the join execution and log msgs.
+
+        Args:
+            cmd_runner: name of thread doing the cmd
+            ip_addr: addr for connect
+            port: port for connect
+            client_id: client number
+            delay_time: number seconds to delay connect processing to
+                simulate timeout delay
+            timeout_type: None, False, or True
+            timeout: value for timeout on connect request
+
+        """
+        self.log_test_msg(
+            f"handle_connect entry: {cmd_runner=}, {ip_addr=}, {port=}, {client_id=}, "
+            f"{delay_time=}, {timeout_type=}, {timeout=}"
+        )
+        self.log_ver.add_call_seq(
+            name="connect", seq="test_algo_app.py::ConfigVerifier.handle_connect"
+        )
+
+        start_time = time.time()
+
+        # pe = self.pending_events[cmd_runner]
+        #
+        # pe[PE.start_request].append(
+        #     StartRequest(
+        #         req_type=st.ReqType.Smart_join,
+        #         timeout_type=timeout_type,
+        #         targets=join_names.copy(),
+        #         unreg_remotes=unreg_names.copy(),
+        #         not_registered_remotes=set(),
+        #         timeout_remotes=timeout_remotes,
+        #         stopped_remotes=set(),
+        #         deadlock_remotes=set(),
+        #         eligible_targets=set(),
+        #         completed_targets=set(),
+        #         first_round_completed=set(),
+        #         stopped_target_threads=set(),
+        #         exp_senders=set(),
+        #         exp_resumers=set(),
+        #     )
+        # )
+        #
+        # req_key_entry: RequestKey = ("smart_join", "entry")
+        #
+        # pe[PE.request_msg][req_key_entry] += 1
+        #
+        # req_key_exit: RequestKey = ("smart_join", "exit")
+
+        # enter_exit = ('entry', 'exit')
+        cat_app.delay_value = delay_arg
+
+        algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
+
+        if timeout_type == TimeoutType.TimeoutNone:
+            algo_app.connect_to_ib(
+                ip_addr="127.0.0.1",
+                port=algo_app.PORT_FOR_LIVE_TRADING,
+                client_id=1,
+            )
+        elif timeout_type == TimeoutType.TimeoutFalse:
+            algo_app.connect_to_ib(
+                ip_addr="127.0.0.1",
+                port=algo_app.PORT_FOR_LIVE_TRADING,
+                client_id=1,
+                timeout=delay_arg * 2,
+            )
+        else:
+            cat_app.delay_value = -1
+            with pytest.raises(ConnectTimeout):
+                algo_app.connect_to_ib(
+                    ip_addr="127.0.0.1",
+                    port=algo_app.PORT_FOR_LIVE_TRADING,
+                    client_id=1,
+                    timeout=delay_arg / 2.0,
+                )
+        if timeout_type == TimeoutType.TimeoutNone:
+            pe[PE.request_msg][req_key_exit] += 1
+            self.all_threads[cmd_runner].smart_join(targets=join_names, log_msg=log_msg)
+
+        elif timeout_type == TimeoutType.TimeoutFalse:
+            pe[PE.request_msg][req_key_exit] += 1
+            self.all_threads[cmd_runner].smart_join(
+                targets=join_names, timeout=timeout, log_msg=log_msg
+            )
+
+        elif timeout_type == TimeoutType.TimeoutTrue:
+            # enter_exit = ('entry', )
+            error_msg = self.get_error_msg(
+                cmd_runner=cmd_runner,
+                smart_request="smart_join",
+                targets=join_names,
+                error_str="SmartThreadRequestTimedOut",
+            )
+            with pytest.raises(st.SmartThreadRequestTimedOut) as exc:
+                self.all_threads[cmd_runner].smart_join(
+                    targets=join_names, timeout=timeout, log_msg=log_msg
+                )
+
+            err_str = str(exc.value)
+            assert re.fullmatch(error_msg, err_str)
+
+            self.add_log_msg(error_msg, log_level=logging.ERROR)
+
+        elapsed_time: float = time.time() - start_time
+
+        self.wait_for_monitor(cmd_runner=cmd_runner, rtn_name="handle_connect")
+
+        self.log_test_msg(
+            f"handle_connect exit: {cmd_runner=}, {ip_addr=}, {port=}, {client_id=}, "
+            f"{delay_time=}, {timeout_type=}, {timeout=}, {elapsed_time=}"
         )
 
     ####################################################################
@@ -36866,6 +37255,8 @@ class TestAlgoAppInterface:
         assert algo_app.algo_name == exp_algo_name
         assert algo_app.default_timeout == exp_default_timeout
 
+        algo_app.shut_down()
+
         logger.debug("mainline exiting")
 
 
@@ -36923,59 +37314,28 @@ class TestAlgoAppConnect:
             f1_smart_thread.smart_resume(waiters="alpha")
 
         def connect_test(ct_timeout_type_arg: int):
-            ip_addr = "127.0.0.1"
-            port = algo_app.PORT_FOR_LIVE_TRADING
-            client_id = 1
-
-            # log_msg = (
-            #     f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, {timeout=} "
-            #     f"{setup_args=}"
-            # )
-
             if ct_timeout_type_arg == TimeoutType.TimeoutNone:
-                timeout = None
                 algo_app.connect_to_ib(
                     ip_addr="127.0.0.1",
                     port=algo_app.PORT_FOR_LIVE_TRADING,
                     client_id=1,
                 )
             elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
-                timeout_value = delay_arg * 2
-                timeout = timeout_value
-
                 algo_app.connect_to_ib(
                     ip_addr="127.0.0.1",
                     port=algo_app.PORT_FOR_LIVE_TRADING,
                     client_id=1,
-                    timeout=timeout_value,
+                    timeout=delay_arg * 2,
                 )
             else:
-                timeout_value = delay_arg / 2.0
-                timeout = timeout_value
-
                 cat_app.delay_value = -1
                 with pytest.raises(ConnectTimeout):
                     algo_app.connect_to_ib(
                         ip_addr="127.0.0.1",
                         port=algo_app.PORT_FOR_LIVE_TRADING,
                         client_id=1,
-                        timeout=timeout_value,
+                        timeout=delay_arg / 2.0,
                     )
-
-            # log_msg = (
-            #     f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, "
-            #     f"{timeout=} "
-            # )
-            # cat_app.log_ver.add_msg(
-            #     log_msg=re.escape(log_msg), log_name="scottbrian_algo1.algo_app"
-            # )
-            # cat_app.log_ver.add_msg(
-            #     log_msg="starting AlgoClient thread 1",
-            #     log_name="scottbrian_algo1.algo_app",
-            #     log_level=logging.INFO,
-            # )
-
-        # log_ver = LogVer(log_name=__name__)
 
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
             return
@@ -36988,12 +37348,11 @@ class TestAlgoAppConnect:
         # we are testing connect_to_ib and the subsequent code that gets
         # control as a result, such as getting the first requestID and
         # then starting a separate thread for the run loop.
-        # logger.debug("about to connect")
         cat_app.log_test_msg("about to connect")
 
         if async_arg:
             alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
-            beta_smart_thread = SmartThread(
+            SmartThread(
                 group_name="test1",
                 name="beta",
                 target_rtn=f1,
@@ -37007,29 +37366,6 @@ class TestAlgoAppConnect:
 
         else:
             connect_test(timeout_type_arg)
-
-        # if timeout_type_arg == TimeoutType.TimeoutNone:
-        #     algo_app.connect_to_ib(
-        #         ip_addr="127.0.0.1", port=algo_app.PORT_FOR_LIVE_TRADING, client_id=1
-        #     )
-        # elif timeout_type_arg == TimeoutType.TimeoutFalse:
-        #     timeout_value = delay_arg * 2
-        #     algo_app.connect_to_ib(
-        #         ip_addr="127.0.0.1",
-        #         port=algo_app.PORT_FOR_LIVE_TRADING,
-        #         client_id=1,
-        #         timeout=timeout_value,
-        #     )
-        # else:
-        #     timeout_value = delay_arg / 2.0
-        #     cat_app.delay_value = -1
-        #     with pytest.raises(ConnectTimeout):
-        #         algo_app.connect_to_ib(
-        #             ip_addr="127.0.0.1",
-        #             port=algo_app.PORT_FOR_LIVE_TRADING,
-        #             client_id=1,
-        #             timeout=timeout_value,
-        #         )
 
         logger.debug("back from connect")
 
@@ -37045,12 +37381,64 @@ class TestAlgoAppConnect:
 
         algo_app.shut_down()
 
-        ################################################################
-        # check log results
-        ################################################################
-        # match_results = cat_app.log_ver.get_match_results(caplog=caplog)
-        # cat_app.log_ver.print_match_results(match_results, print_matched=False)
-        # cat_app.log_ver.verify_log_results(match_results)
+    ####################################################################
+    # test_connect_scenario
+    ####################################################################
+    @pytest.mark.parametrize(
+        "timeout_type_arg",
+        [
+            TimeoutType.TimeoutNone,
+            TimeoutType.TimeoutFalse,
+            TimeoutType.TimeoutTrue,
+        ],
+    )
+    def test_connect_scenario(
+        self,
+        timeout_type_arg: int,
+        cat_app: "MockIB",
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test meta configuration scenarios.
+
+        Args:
+            timeout_type_arg: specifies whether timeout should occur
+            cat_app: pytest fixture (see conftest.py)
+            caplog: pytest fixture to capture log output
+
+        Notes:
+            1) Sync will do various combinations of targets such that
+               a partial or full sync of all targets is done
+
+        """
+        # async_arg: if True, do async connect
+        # delay_arg: number of seconds to delay
+        sdparms: list[ScenarioDriverParms] = []
+        config_idx = -1
+        for async_arg in [False]: # (True, False):
+            for delay_arg in [0]:  #(0, 2, 4):
+                if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
+                    continue
+                config_idx += 1
+                args_for_scenario_builder: dict[str, Any] = {
+                    "async": async_arg,
+                    "delay": delay_arg,
+                    "timeout_type": timeout_type_arg,
+                }
+
+                sdparms.append(
+                    ScenarioDriverParms(
+                        scenario_builder=ConfigVerifier.build_connect_scenario,
+                        scenario_builder_args=args_for_scenario_builder,
+                        commander_config=AppConfig(config_idx % len(AppConfig) + 1),
+                        commander_name=f"alpha{config_idx}",
+                        group_name=f"test{config_idx}",
+                    )
+                )
+
+        scenario_driver(
+            caplog_to_use=caplog,
+            scenario_driver_parms=sdparms,
+        )
 
     ####################################################################
     # test_mock_disconnect_from_ib

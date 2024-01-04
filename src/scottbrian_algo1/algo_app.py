@@ -383,7 +383,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         ds_catalog: FileCatalog,
         group_name: str = "algo_app_group",
         algo_name: str = "algo_app",
-        default_timeout: OptIntFloat = K_DEFAULT_TIMEOUT,
+        default_timeout: IntFloat = K_DEFAULT_TIMEOUT,
     ) -> None:
         """Instantiate the AlgoApp.
 
@@ -495,6 +495,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     def shut_down(self) -> None:
         """Shut down the AlgoApp."""
         # self.stop_monitor = True
+        self.disconnect_from_ib()
         self.smart_unreg()
 
     ####################################################################
@@ -678,17 +679,19 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             # call our disconnect (overrides EClient)
             self.algo_client.disconnect()
 
-            logger.info("join algo_client to wait for it to come home")
-
-            try:
-                setup_args.smart_thread.smart_join(
-                    targets=self.client_name,
-                    timeout=timer.remaining_time(),
-                )
-            except SmartThreadRequestTimedOut:
-                error_msg = "disconnect_from_ib timed out waiting for smart_join"
-                logger.debug(error_msg)
-                raise DisconnectTimeout(error_msg)
+            if self.algo_client.st_state == ThreadState.Registered:
+                self.algo_client.smart_unreg()
+            else:
+                logger.info("join algo_client to wait for it to come home")
+                try:
+                    setup_args.smart_thread.smart_join(
+                        targets=self.client_name,
+                        timeout=timer.remaining_time(),
+                    )
+                except SmartThreadRequestTimedOut:
+                    error_msg = "disconnect_from_ib timed out waiting for smart_join"
+                    logger.debug(error_msg)
+                    raise DisconnectTimeout(error_msg)
 
         logger.info("disconnect complete")
         logger.debug(f"disconnect_from_ib exit: {timeout=}")

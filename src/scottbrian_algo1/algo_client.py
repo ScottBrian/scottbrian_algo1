@@ -137,6 +137,7 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         Thread.__init__(self)
         # threading.current_thread().name = algo_name
         self.client_name = client_name
+        self.algo_name = algo_name
         SmartThread.__init__(
             self,
             group_name=group_name,
@@ -144,7 +145,6 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
             thread=self,
             auto_start=False,
         )
-        self.algo_name = algo_name
 
         self.disconnect_lock = Lock()
 
