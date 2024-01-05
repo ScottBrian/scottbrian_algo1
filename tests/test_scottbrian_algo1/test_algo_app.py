@@ -144,6 +144,11 @@ CheckZeroCtArg: TypeAlias = tuple[str, str]
 PotentialDefDelKey: TypeAlias = tuple[st.PairKey, str]
 
 ########################################################################
+# AlgoApp TypeAlias
+########################################################################
+AlgoAppArrayKey: TypeAlias = tuple[str, str]  # group_name, algo_name
+
+########################################################################
 # TypeAlias
 ########################################################################
 IntFloat: TypeAlias = Union[int, float]
@@ -1031,6 +1036,7 @@ class ConfigCmd(ABC):
         """
         pass
 
+
 ########################################################################
 # CreateAlgoApp
 ########################################################################
@@ -1098,7 +1104,7 @@ class ConnectToIb(ConfigCmd):
         port: int = 7496,
         client_id: int = 1,
         delay_time: IntFloat = 0,
-        timeout_type: TimeoutType,
+        timeout_type: TimeoutType = TimeoutType.TimeoutNone,
         timeout: OptIntFloat = None,
     ) -> None:
         """Initialize the instance.
@@ -5841,7 +5847,7 @@ class ConfigVerifier:
         ################################################################
         # AlgoApp section
         ################################################################
-        self.algo_app_array: dict[tuple[str, str, int], AlgoApp] = {}
+        self.algo_app_array: dict[AlgoAppArrayKey, AlgoApp] = {}
         self.monitor_thread.start()
 
     ####################################################################
@@ -6308,15 +6314,23 @@ class ConfigVerifier:
     ####################################################################
     def build_connect_scenario(
         self,
-        async: bool,
+        cat_app_to_use: "MockIB",
+        group_name: str,
+        algo_name: str,
+        client_id: int,
+        async_tf: bool,
         delay: int,
         timeout_type: TimeoutType,
     ) -> None:
         """Test get_smart_thread_names scenarios.
 
         Args:
-            async: if True, connect from a remote thread
-            delay: cause as delay if connect processing
+            cat_app_to_use: object of MockIb
+            group_name: group name of algo_app
+            algo_name: algo name for algo app
+            client_id: client ID for connect
+            async_tf: if True, connect from a remote thread
+            delay: cause as delay in connect processing
             timeout_type: determines whether the delay should have an
                 effect
         """
@@ -6325,20 +6339,47 @@ class ConfigVerifier:
             active_names=remote_name,
         )
 
-        if async:
+        self.add_cmd(
+            CreateAlgoApp(
+                cmd_runners=self.commander_name,
+                ds_catalog=cat_app_to_use.app_cat,
+                group_name=group_name,
+                algo_name=algo_name,
+            )
+        )
+
+        if async_tf:
             cmd_runner = remote_name
         else:
             cmd_runner = self.commander_name
 
         if timeout_type == TimeoutType.TimeoutNone:
-            self.add_cmd(ConnectToIb(cmd_runners=cmd_runner, delay_time=delay,))
+            self.add_cmd(
+                ConnectToIb(
+                    cmd_runners=cmd_runner,
+                    client_id=client_id,
+                    delay_time=delay,
+                )
+            )
         elif timeout_type == TimeoutType.TimeoutFalse:
-            self.add_cmd(ConnectToIb(cmd_runners=cmd_runner,delay_time=delay,timeout_type=timeout_type,
-            timeout=delay_arg *
-            2,))
+            self.add_cmd(
+                ConnectToIb(
+                    cmd_runners=cmd_runner,
+                    client_id=client_id,
+                    delay_time=delay,
+                    timeout_type=timeout_type,
+                    timeout=delay * 2,
+                )
+            )
         else:
-            self.add_cmd(ConnectToIb(cmd_runners=cmd_runner,
-                                     timeout_type=timeout_type,timeout=delay_arg / 2.0,))
+            self.add_cmd(
+                ConnectToIb(
+                    cmd_runners=cmd_runner,
+                    client_id=client_id,
+                    timeout_type=timeout_type,
+                    timeout=delay / 2.0,
+                )
+            )
 
         def f1(f1_smart_thread: SmartThread, f1_timeout_type_arg: int):
             connect_test(f1_timeout_type_arg)
@@ -6411,6 +6452,7 @@ class ConfigVerifier:
         verify_algo_app_disconnected(algo_app)
 
         algo_app.shut_down()
+
     ####################################################################
     # build_get_names_scenario
     ####################################################################
@@ -18791,7 +18833,7 @@ class ConfigVerifier:
         )
         self.log_ver.add_call_seq(
             name="handle_create_algo_app",
-            seq="test_algo_app.py::ConfigVerifier.handle_create_algo_app"
+            seq="test_algo_app.py::ConfigVerifier.handle_create_algo_app",
         )
 
         start_time = time.time()
@@ -18825,11 +18867,22 @@ class ConfigVerifier:
 
         # enter_exit = ('entry', 'exit')
 
-        self.algo_app_array[(group_name, algo_name)] = AlgoApp(
+        algo_app = AlgoApp(
             ds_catalog=ds_catalog,
             group_name=group_name,
-            algo_name=algo_name,)
+            algo_name=algo_name,
+        )
 
+        algo_app_array_key: AlgoAppArrayKey = (group_name, algo_name)
+
+        self.algo_app_array[algo_app_array_key] = algo_app
+
+        assert len(algo_app.ds_catalog) > 0
+        assert algo_app.algo_client.algo_wrapper.request_id == 0
+        assert algo_app.market_data.symbols.empty
+        assert algo_app.market_data.stock_symbols.empty
+        assert algo_app.response_complete_event.is_set() is False
+        assert algo_app.__repr__() == "AlgoApp(ds_catalog)"
 
         elapsed_time: float = time.time() - start_time
 
@@ -18905,7 +18958,7 @@ class ConfigVerifier:
         # req_key_exit: RequestKey = ("smart_join", "exit")
 
         # enter_exit = ('entry', 'exit')
-        cat_app.delay_value = delay_arg
+        cat_app_to_use.delay_value = delay_arg
 
         algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
 
@@ -30749,12 +30802,14 @@ class ScenarioDriverParms:
 
 
 def scenario_driver(
+    cat_app_to_use: "MockIB",
     caplog_to_use: pytest.LogCaptureFixture,
     scenario_driver_parms: list[ScenarioDriverParms],
 ) -> None:
     """Build and run a scenario.
 
     Args:
+        cat_app_to_use: cat app to use
         caplog_to_use: the capsys to capture log messages
         scenario_driver_parms: args for scenario_driver_part_1
 
@@ -37269,7 +37324,7 @@ class TestAlgoAppConnect:
     ####################################################################
     # test_mock_connect_to_ib
     ####################################################################
-    @pytest.mark.parametrize("async_arg", [True, False])
+    @pytest.mark.parametrize("async_tf_arg", [True, False])
     @pytest.mark.parametrize("delay_arg", [0, 2, 4])
     @pytest.mark.parametrize(
         "timeout_type_arg",
@@ -37281,7 +37336,7 @@ class TestAlgoAppConnect:
     )
     def test_mock_connect_to_ib(
         self,
-        async_arg: bool,
+        async_tf_arg: bool,
         delay_arg: int,
         timeout_type_arg: int,
         cat_app: "MockIB",
@@ -37290,7 +37345,7 @@ class TestAlgoAppConnect:
         """Test connecting to IB.
 
         Args:
-            async_arg: if True, do async connect
+            async_tf_arg: if True, do async connect
             delay_arg: number of seconds to delay
             timeout_type_arg: specifies whether timeout should occur
             cat_app: pytest fixture (see conftest.py)
@@ -37350,7 +37405,7 @@ class TestAlgoAppConnect:
         # then starting a separate thread for the run loop.
         cat_app.log_test_msg("about to connect")
 
-        if async_arg:
+        if async_tf_arg:
             alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
             SmartThread(
                 group_name="test1",
@@ -37410,17 +37465,21 @@ class TestAlgoAppConnect:
                a partial or full sync of all targets is done
 
         """
-        # async_arg: if True, do async connect
+        # async_tf_arg: if True, do async connect
         # delay_arg: number of seconds to delay
         sdparms: list[ScenarioDriverParms] = []
         config_idx = -1
-        for async_arg in [False]: # (True, False):
-            for delay_arg in [0]:  #(0, 2, 4):
+        for async_tf_arg in [False]:  # (True, False):
+            for delay_arg in [0]:  # (0, 2, 4):
                 if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
                     continue
                 config_idx += 1
                 args_for_scenario_builder: dict[str, Any] = {
-                    "async": async_arg,
+                    "cat_app_to_use": cat_app,
+                    "group_name": "algo_group_1",
+                    "algo_name": "algo_name_1",
+                    "client_id": 1,
+                    "async_tf": async_tf_arg,
                     "delay": delay_arg,
                     "timeout_type": timeout_type_arg,
                 }
@@ -37436,6 +37495,7 @@ class TestAlgoAppConnect:
                 )
 
         scenario_driver(
+            cat_app_to_use=cat_app,
             caplog_to_use=caplog,
             scenario_driver_parms=sdparms,
         )
