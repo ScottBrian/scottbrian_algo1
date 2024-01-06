@@ -492,10 +492,20 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # shut_down
     ####################################################################
-    def shut_down(self) -> None:
-        """Shut down the AlgoApp."""
+    def shut_down(
+        self,
+        timeout: Optional[IntFloat] = None,
+    ) -> None:
+        """Shut down the AlgoApp.
+
+        Args:
+            timeout: specifies the amount of time allowed for the
+                request. If exceeded, a DisconnectTimeout error will be
+                raised.
+
+        """
         # self.stop_monitor = True
-        self.disconnect_from_ib()
+        self.disconnect_from_ib(timeout=timeout)
         self.smart_unreg()
 
     ####################################################################
@@ -646,13 +656,13 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         while True:
             names_to_remove: set[str] = set()
-            pending_threads: int = 0
+            pending_names: list[str] = []
             with self.request_threads_lock:
                 # the algo_api smartThread is not in self.request_threads
                 for key, item in self.request_threads.items():
                     if item.smart_thread is not setup_args.smart_thread:
                         if item.in_use_count > 0:
-                            pending_threads += 1
+                            pending_names.append(key)
                         else:
                             names_to_remove |= {item.smart_thread.name}
                 for name in names_to_remove:
@@ -661,13 +671,14 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             if names_to_remove:
                 setup_args.smart_thread.smart_unreg(targets=names_to_remove)
 
-            if pending_threads == 0:
+            if not pending_names:
                 break
 
             if timer.is_expired():
                 error_msg = (
-                    f"disconnect_from_ib raising DisconnectTimeout waiting for"
-                    f"pending requests to complete"
+                    f"AlgoApp disconnect_from_ib raising DisconnectTimeout waiting for"
+                    f"pending requests to complete. group_name={self.group_name}, "
+                    f"algo_name={algo_name}, {pending_names=}."
                 )
                 logging.error(error_msg)
                 raise DisconnectTimeout(error_msg)
@@ -689,8 +700,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                         timeout=timer.remaining_time(),
                     )
                 except SmartThreadRequestTimedOut:
-                    error_msg = "disconnect_from_ib timed out waiting for smart_join"
-                    logger.debug(error_msg)
+                    error_msg = (
+                        "AlgoApp disconnect_from_ib raising DisconnectTimeout waiting "
+                        f"for smart_join of client_name={self.client_name}."
+                    )
+                    logger.error(error_msg)
                     raise DisconnectTimeout(error_msg)
 
         logger.info("disconnect complete")

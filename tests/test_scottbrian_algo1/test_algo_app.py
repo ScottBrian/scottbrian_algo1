@@ -85,7 +85,7 @@ from ibapi.contract import Contract, ContractDetails
 from scottbrian_algo1.algo_app import (
     AlgoApp,
     AlreadyConnected,
-    ConnectTimeout,
+    ConnectTimeout,DisconnectTimeout,
     RequestTimeout,
     DisconnectDuringRequest,
 )
@@ -1995,6 +1995,77 @@ class ConnectToIb(ConfigCmd):
             delay_time=self.delay_time,
             timeout_type=self.timeout_type,
             timeout=self.timeout,
+        )
+
+
+########################################################################
+# CreateAlgoApp
+########################################################################
+class ShutDown(ConfigCmd):
+    """Confirm that an earlier command has completed."""
+
+    def __init__(
+        self,
+        cmd_runners: Iterable[str],
+        group_name: str = "algo_app_group",
+        algo_name: str = "algo_app",
+        delay_time: IntFloat = 0,
+        timeout_type: TimeoutType = TimeoutType.TimeoutNone,
+        timeout: OptIntFloat = None,
+        pending_names: Iterable[str] = None,
+    ) -> None:
+        """Shut down the AlgoApp.
+
+        Args:
+            cmd_runners: thread names that will execute the command
+            group_name: name of SmartThread group
+            algo_name: name of SmartThread instance for AlgoApp
+            delay_time: seconds to delay shutdown to drive timeout
+                scenarios
+            timeout_type: specifies whether to expect the shutdown to
+                timeout
+            timeout: number of seconds to use as a timeout value
+            pending_names names of threads that cause a timeout during
+                shutdown
+
+        """
+        super().__init__(cmd_runners=cmd_runners)
+        self.specified_args = locals()  # used for __repr__
+
+        self.group_name = group_name
+
+        self.algo_name = algo_name
+
+        self.delay_time = delay_time
+
+        self.timeout_type = timeout_type
+
+        self.timeout = timeout
+
+        self.pending_names = get_set(pending_names)
+
+        self.arg_list += [
+            "group_name",
+            "algo_name",
+            "delay_time",
+            "timeout_type",
+            "timeout","pending_names",
+        ]
+
+    def run_process(self, cmd_runner: str) -> None:
+        """Run the command.
+
+        Args:
+           cmd_runner: name of thread running the command
+        """
+        self.config_ver.handle_shutdown(
+            cmd_runner=cmd_runner,
+            group_name=self.group_name,
+            algo_name=self.algo_name,
+            delay_time=self.delay_time,
+            timeout_type=self.timeout_type,
+            timeout=self.timeout,
+            pending_names=self.pending_names,
         )
 
 
@@ -19615,7 +19686,7 @@ class ConfigVerifier:
         algo_name: str,
         default_timeout: OptIntFloat = None,
     ) -> None:
-        """Handle the join execution and log msgs.
+        """Handle the jcreate algo app execution and log msgs.
 
         Args:
             cmd_runner: name of thread doing the cmd
@@ -19701,6 +19772,8 @@ class ConfigVerifier:
     def handle_connect(
         self,
         cmd_runner: str,
+        group_name: str,
+        algo_name: str,
         ip_addr: str,
         port: int,
         client_id: int,
@@ -19708,10 +19781,12 @@ class ConfigVerifier:
         timeout_type: TimeoutType,
         timeout: IntFloat,
     ) -> None:
-        """Handle the join execution and log msgs.
+        """Handle the algo app connect execution and log msgs.
 
         Args:
             cmd_runner: name of thread doing the cmd
+            group_name: name of SmartThread group
+            algo_name: name of SmartThread instance for AlgoApp
             ip_addr: addr for connect
             port: port for connect
             client_id: client number
@@ -19759,9 +19834,9 @@ class ConfigVerifier:
         # req_key_exit: RequestKey = ("smart_join", "exit")
 
         # enter_exit = ('entry', 'exit')
-        cat_app_to_use.delay_value = delay_arg
+        algo_app_array_key: AlgoAppArrayKey = (group_name, algo_name)
 
-        algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
+        algo_app = self.algo_app_array[algo_app_array_key]
 
         if timeout_type == TimeoutType.TimeoutNone:
             algo_app.connect_to_ib(
@@ -19820,6 +19895,104 @@ class ConfigVerifier:
         self.log_test_msg(
             f"handle_connect exit: {cmd_runner=}, {ip_addr=}, {port=}, {client_id=}, "
             f"{delay_time=}, {timeout_type=}, {timeout=}, {elapsed_time=}"
+        )
+
+    ####################################################################
+    # handle_shutdown
+    ####################################################################
+    def handle_shutdown(
+        self,
+        cmd_runner: str,
+        group_name: str,
+        algo_name: str,
+        delay_time: IntFloat,
+        timeout_type: TimeoutType,
+        timeout: IntFloat,
+        pending_names: set[str],
+    ) -> None:
+        """Handle the algo app shutdown execution and log msgs.
+
+        Args:
+            cmd_runner: name of thread doing the cmd
+            group_name: name of SmartThread group
+            algo_name: name of SmartThread instance for AlgoApp
+            delay_time: number seconds to delay connect processing to
+                simulate timeout delay
+            timeout_type: None, False, or True
+            timeout: value for timeout on connect request
+            pending_names: expected pending names if shutdown times out
+
+        """
+        self.log_test_msg(
+            f"handle_shutdown entry: {cmd_runner=}, {group_name=}, {algo_name=}, "
+            f"{delay_time=}, {timeout_type=}, {timeout=}, {pending_names=}"
+        )
+        self.log_ver.add_call_seq(
+            name="shutdown", seq="test_algo_app.py::ConfigVerifier.handle_shutdown"
+        )
+
+        start_time = time.time()
+
+        # pe = self.pending_events[cmd_runner]
+        #
+        # pe[PE.start_request].append(
+        #     StartRequest(
+        #         req_type=st.ReqType.Smart_join,
+        #         timeout_type=timeout_type,
+        #         targets=join_names.copy(),
+        #         unreg_remotes=unreg_names.copy(),
+        #         not_registered_remotes=set(),
+        #         timeout_remotes=timeout_remotes,
+        #         stopped_remotes=set(),
+        #         deadlock_remotes=set(),
+        #         eligible_targets=set(),
+        #         completed_targets=set(),
+        #         first_round_completed=set(),
+        #         stopped_target_threads=set(),
+        #         exp_senders=set(),
+        #         exp_resumers=set(),
+        #     )
+        # )
+        #
+        # req_key_entry: RequestKey = ("smart_join", "entry")
+        #
+        # pe[PE.request_msg][req_key_entry] += 1
+        #
+        # req_key_exit: RequestKey = ("smart_join", "exit")
+
+        # enter_exit = ('entry', 'exit')
+        algo_app_array_key: AlgoAppArrayKey = (group_name, algo_name)
+
+        algo_app = self.algo_app_array[algo_app_array_key]
+
+        if timeout_type == TimeoutType.TimeoutNone:
+            algo_app.shut_down()
+        elif timeout_type == TimeoutType.TimeoutFalse:
+            algo_app.shut_down(timeout=timeout)
+        else:
+            if pending_names:
+                error_msg = (
+                    f"AlgoApp disconnect_from_ib raising DisconnectTimeout waiting for"
+                    f"pending requests to complete. {group_name=}, "
+                    f"{algo_name=}, {pending_names=}."
+                )
+            else:
+                error_msg = (
+                    "AlgoApp disconnect_from_ib raising DisconnectTimeout waiting for "
+                    f"smart_join of client_name={algo_app.client_name}."
+                )
+            with pytest.raises(DisconnectTimeout, match=error_msg):
+                algo_app.shut_down(timeout=timeout)
+
+            self.add_log_msg(error_msg, log_level=logging.ERROR)
+
+        elapsed_time: float = time.time() - start_time
+
+        self.wait_for_monitor(cmd_runner=cmd_runner, rtn_name="handle_connect")
+
+        self.log_test_msg(
+            f"handle_shutdown exit: {cmd_runner=}, {group_name=}, {algo_name=}, "
+            f"{delay_time=}, {timeout_type=}, {timeout=}, {pending_names=}"
         )
 
     ####################################################################
