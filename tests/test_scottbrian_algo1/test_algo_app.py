@@ -85,7 +85,8 @@ from ibapi.contract import Contract, ContractDetails
 from scottbrian_algo1.algo_app import (
     AlgoApp,
     AlreadyConnected,
-    ConnectTimeout,DisconnectTimeout,
+    ConnectTimeout,
+    DisconnectTimeout,
     RequestTimeout,
     DisconnectDuringRequest,
 )
@@ -2049,7 +2050,8 @@ class ShutDown(ConfigCmd):
             "algo_name",
             "delay_time",
             "timeout_type",
-            "timeout","pending_names",
+            "timeout",
+            "pending_names",
         ]
 
     def run_process(self, cmd_runner: str) -> None:

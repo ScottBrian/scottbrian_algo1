@@ -522,6 +522,28 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         return req_id
 
+    ####################################################################
+    # setup_client_request
+    ####################################################################
+    def get_error_msg(self, error: AlgoExceptions, extra: str = "") -> str:
+        """Return a formatted error message.
+
+        Args:
+            error: the error that is being raised
+            extra: additional text to append to the error message
+
+        Returns:
+            The error formatted error message
+        """
+
+        if extra:
+            # add space (we want period after error when extra is null)
+            extra = f" {extra}"
+        return (
+            f"AlgoApp group_name={self.group_name}, algo_name={self.algo_name} raising "
+            f"{error}{extra}."
+        )
+
     ###########################################################################
     # connect_to_ib
     ###########################################################################
@@ -555,16 +577,13 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             f"{setup_args=}"
         )
 
-        # setup_args = self.get_setup_args()
-
-        error_msg = ""
         with sel.SELockExcl(AlgoApp._config_lock):
             if self.algo_client.isConnected():
-                error_msg = (
-                    f"AlgoApp connect_to_ib raising AlreadyConnected. "
-                    f"{setup_args.smart_thread.name=}, {ip_addr=}, {port=}, "
-                    f"{client_id=}"
+                extra = (
+                    f"SmartThread name={setup_args.smart_thread.name}, "
+                    f"{ip_addr=}, {port=}, {client_id=}"
                 )
+                error_msg = self.get_error_msg(error=AlreadyConnected, extra=extra)
                 logger.debug(error_msg)
                 raise AlreadyConnected(error_msg)
 
@@ -596,32 +615,19 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 self.ready_for_work = True
                 # self.shut_down_in_progress = False
             except SmartThreadRequestTimedOut:
-                error_msg = "connect_to_ib timed out waiting to receive nextValid_ID"
                 self.disconnect_from_ib()
-                # call our disconnect (overrides EClient)
-                # self.algo_client.disconnect()
-                #
-                # logger.info("join algo_client to wait for it to come home")
-                #
-                # try:
-                #     setup_args.smart_thread.smart_join(
-                #         targets=self.client_name,
-                #         timeout=timeout,
-                #     )
-                # except SmartThreadRequestTimedOut:
-                #     error_msg = "disconnect_from_ib timed out waiting for smart_join"
-                #     logger.debug(error_msg)
-                #     raise DisconnectTimeout(error_msg)
+                extra = (
+                    "waiting to receive nextValid_ID. "
+                    f"SmartThread name={setup_args.smart_thread.name}, "
+                    f"{ip_addr=}, {port=}, {client_id=}"
+                )
+                error_msg = self.get_error_msg(error=ConnectTimeout, extra=extra)
+                raise ConnectTimeout(error_msg)
 
-        if error_msg:
-            logger.debug(error_msg)
-            # we need to have dropped the lock since disconnect_from_ib
-            # will need to acquire it
-            # self.disconnect_from_ib()
-
-            raise ConnectTimeout(error_msg)
-
-        logger.info("connect success")
+        logger.info(
+            f"AlgoApp group_name={self.group_name}, algo_name={self.algo_name} "
+            f"connect success"
+        )
 
         logger.debug(
             f"connect_to_ib exit: {ip_addr=}, {port=}, {client_id=}, {timeout=}"
