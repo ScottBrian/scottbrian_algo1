@@ -1332,7 +1332,7 @@ class MockIB:
     # MockIB: get_combos
     ###########################################################################
     @staticmethod
-    def get_combos(symbol: str) -> Tuple[Tuple[str, str, str, Tuple[str, ...]]]:
+    def get_combos(symbol: str) -> tuple[tuple[str, str, str, tuple[str, ...]]]:
         """Get combos.
 
         Args:
