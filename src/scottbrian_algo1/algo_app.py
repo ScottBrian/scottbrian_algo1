@@ -359,6 +359,139 @@ def setup_teardown(func: Callable[..., Any]) -> Callable[..., Any]:
     return decorator_setup_teardown
 
 
+####################################################################
+# algo_setup decorator
+####################################################################
+def algo_setup(
+    func=None,
+    *,
+    omit_args: Optional[Iterable[str]] = None,
+    extra_args: Optional[Iterable[str]] = None,
+):
+    """Decorator to setup thread and produce entry/exit log.
+
+    Args:
+        func: function to be decorated
+
+    Returns:
+        decorated function
+
+    Notes:
+        1) this decorator adds the args to the kwargs for the function
+           being decorated
+
+    """
+    if func is None:
+        return functools.partial(algo_setup, omit_args=omit_args, extra_args=extra_args)
+
+    omit_args = set({omit_args} if isinstance(omit_args, str) else omit_args or "")
+    extra_args = set({extra_args} if isinstance(extra_args, str) else extra_args or "")
+
+    @functools.wraps(func)
+    def _algo_setup(self, *args, **kwargs) -> Any:
+        # get unique timestamp to use for part of the smart thread name
+        req_num = UniqueTS.get_unique_ts()
+
+        with self.request_threads_lock:
+            if (
+                not self.ready_for_work
+                and func.__name__ != "connect_to_ib"
+                and func.__name__ != "disconnect_from_ib"
+            ):
+                error_msg = f"setup_teardown raising AlgoApiNotReady"
+                logging.error(error_msg)
+                raise AlgoApiNotReady(error_msg)
+            # if self.shut_down_in_progress:
+            #     error_msg = f"setup_teardown raising RequestAfterShutdown"
+            #     logging.error(error_msg)
+            #     raise RequestAfterShutdown(error_msg)
+            try:
+                # case 0: we are running under the thread that
+                #         instantiated the AlgoApi and should certainly
+                #         get back the already existing SmartThread
+                #         (which is self)
+                # case 1: we are running under a different thread than
+                #         the one that instantiated the AlgoApi and this
+                #         is the first time we have made a request on
+                #         this thread which means we do not yet have a
+                #         SmartThread. So we will get the
+                #         SmartThreadNotFound exception and create a new
+                #         SmartThread and place it in the
+                #         request_threads array.
+                # case 2: we are running under a different thread than
+                #         the one that instantiated the AlgoApi and this
+                #         is *not* the first time we have made a request
+                #         on this thread which means we already have a
+                #         a SmartThread and should get it returned on
+                #         this call. We will mark it in use and set the
+                #         start_time using the req_num time stamp.
+                req_smart_thread = SmartThread.get_current_smart_thread(
+                    group_name=self.group_name
+                )
+                if req_smart_thread is not self:
+                    self.request_threads[req_smart_thread.name].in_use_count += 1
+                    self.request_threads[req_smart_thread.name].start_time = req_num
+
+            except SmartThreadNotFound:
+                req_smart_thread_name = f"algo_requestor_{req_num}"
+                req_smart_thread = SmartThread(
+                    group_name=self.group_name, name=req_smart_thread_name
+                )
+                self.request_threads[req_smart_thread_name] = ThreadBlock(
+                    smart_thread=req_smart_thread,
+                    in_use_count=1,
+                    create_time=req_num,
+                    start_time=req_num,
+                )
+
+        kwargs["setup_args"] = SetupArgs(smart_thread=req_smart_thread, req_num=req_num)
+
+        try:
+            exit_log_msg = ""
+            if logger.isEnabledFor(logging.DEBUG):
+                log_args: str = ""
+                comma: str = ""
+                for key, item in kwargs.items():
+                    if key not in omit_args and item is not None and item is not self:
+                        log_args = f"{log_args}{comma} {key}={item}"
+                        comma = ","
+
+                for extra_arg in extra_args:
+                    log_args = f"{log_args}{comma} {extra_arg}={eval(extra_arg)}"
+                    comma = ","
+
+                log_msg_prefix = (
+                    f"{self.msg_prefix} "
+                    f"{get_formatted_call_sequence(latest=1, depth=1)}->"
+                    f"{func.__name__}"
+                )
+                entry_log_msg = f"{log_msg_prefix} entry:{log_args}"
+                exit_log_msg = f"{log_msg_prefix} exit:{log_args}"
+
+                logger.debug(entry_log_msg)
+
+            ret_value = func(self, *args, **kwargs)
+            if exit_log_msg:
+                logger.debug(exit_log_msg)
+        finally:
+            if req_smart_thread is not self:
+                with self.request_threads_lock:
+                    # if we just did a disconnect
+                    self.request_threads[req_smart_thread.name].in_use_count -= 1
+                    self.request_threads[req_smart_thread.name].time_freed = time.time()
+                    if (
+                        not self.ready_for_work
+                        and self.request_threads[req_smart_thread.name].in_use_count
+                        == 0
+                    ):
+                        del self.request_threads[req_smart_thread.name]
+                        req_smart_thread.smart_unreg()
+
+        return ret_value
+
+    return _algo_setup
+
+
 ########################################################################
 # AlgoApp
 ########################################################################
@@ -600,7 +733,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # connect_to_ib
     ###########################################################################
-    @setup_teardown
+    @algo_setup(omit_args="setup_args", extra_args="self.algo_client.st_state")
     def connect_to_ib(
         self,
         *,
