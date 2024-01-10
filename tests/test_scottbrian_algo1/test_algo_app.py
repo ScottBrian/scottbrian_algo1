@@ -14,7 +14,7 @@ from collections import deque, defaultdict
 from collections.abc import Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum, auto
 from itertools import combinations, chain
 from pathlib import Path
@@ -73,7 +73,7 @@ from ibapi.message import IN, OUT
 from ibapi.comm import make_field, make_msg, read_msg, read_fields
 from ibapi.common import NO_VALID_ID
 from ibapi.errors import FAIL_CREATE_SOCK
-
+import socket
 from ibapi.tag_value import TagValue  # type: ignore
 from ibapi.contract import ComboLeg  # type: ignore
 from ibapi.contract import DeltaNeutralContract
@@ -868,13 +868,19 @@ class MockIB:
         # MockIB.delay_array[(ip_addr, port)] = delay_time
         MockIB.mock_obj_array[(ip_addr, port)] = self
 
-        monkeypatch_to_use.setattr(Connection, "connect", self.mock_connection_connect)
+        monkeypatch_to_use.setattr(
+            Connection, "connect", MockIB.mock_connection_connect
+        )
 
         monkeypatch_to_use.setattr(
-            Connection, "disconnect", self.mock_connection_disconnect
+            Connection, "disconnect", MockIB.mock_connection_disconnect
         )
-        monkeypatch_to_use.setattr(Connection, "sendMsg", self.mock_connection_send_msg)
-        monkeypatch_to_use.setattr(Connection, "recvMsg", self.mock_connection_recv_msg)
+        monkeypatch_to_use.setattr(
+            Connection, "sendMsg", MockIB.mock_connection_send_msg
+        )
+        monkeypatch_to_use.setattr(
+            Connection, "recvMsg", MockIB.mock_connection_recv_msg
+        )
 
     ####################################################################
     # log_test_msg
@@ -1572,7 +1578,7 @@ class MockIB:
             return 0
         try:
             nSent = len(msg)
-            mock_ib.send_msg(msg, host=self.host, port=self.port)
+            mock_ib.send_msg(msg)
         except queue.Full:
             mock_ib.log_test_msg("queue full exception on sendMsg attempt")
             raise
@@ -6191,6 +6197,7 @@ class CmdWaitingLogSearchItem(LogSearchItem):
         list_of_waiting_methods = (
             "(create_commander_thread"
             "|create_f1_thread"
+            "|handle_connect"
             "|handle_join"
             "|handle_recv"
             "|handle_recv_tof"
@@ -7332,7 +7339,22 @@ class ConfigVerifier:
         remote_name = "remote_1"
         self.create_config(
             active_names={remote_name},
+            validate_config=False,
         )
+
+        # self.add_cmd(
+        #     CreateF1AutoStart(
+        #         cmd_runners=self.commander_name,
+        #         f1_create_items=[
+        #             F1CreateItem(
+        #                 name=remote_name,
+        #                 auto_start=True,
+        #                 target_rtn=outer_f1,
+        #                 app_config=AppConfig.RemoteThreadApp,
+        #             )
+        #         ],
+        #     )
+        # )
 
         self.add_cmd(
             CreateAlgoApp(
@@ -8082,6 +8104,7 @@ class ConfigVerifier:
         reg_names: Optional[Iterable[str]] = None,
         active_names: Optional[Iterable[str]] = None,
         stopped_names: Optional[Iterable[str]] = None,
+        validate_config: bool = True,
     ) -> None:
         """Add ConfigCmd items to the queue to create a config.
 
@@ -8090,6 +8113,7 @@ class ConfigVerifier:
             reg_names: thread names to be in the registered pool
             active_names: thread names to be in the active pool
             stopped_names: thread names to be in the stopped pool
+            validate_config: do validation if True
 
         """
         self.thread_names = [self.commander_name]
@@ -8126,7 +8150,7 @@ class ConfigVerifier:
                 )
 
             self.build_create_suite(
-                f1_create_items=f1_create_items, validate_config=True
+                f1_create_items=f1_create_items, validate_config=validate_config
             )
 
         if active_names:
@@ -8148,7 +8172,7 @@ class ConfigVerifier:
                 )
 
             self.build_create_suite(
-                f1_create_items=f1_create_items, validate_config=True
+                f1_create_items=f1_create_items, validate_config=validate_config
             )
 
         if stopped_names:
@@ -8170,7 +8194,7 @@ class ConfigVerifier:
                 )
 
             self.build_create_suite(
-                f1_create_items=f1_create_items, validate_config=True
+                f1_create_items=f1_create_items, validate_config=validate_config
             )
 
             self.build_exit_suite(cmd_runner=self.commander_name, names=names)
@@ -8278,7 +8302,7 @@ class ConfigVerifier:
                 )
                 self.registered_names |= set(f1_no_start_names)
 
-        if self.registered_names:
+        if self.registered_names and validate_config:
             self.add_cmd(
                 VerifyConfig(
                     cmd_runners=cmd_runner_to_use,
@@ -8287,7 +8311,7 @@ class ConfigVerifier:
                 )
             )
 
-        if self.active_names:
+        if self.active_names and validate_config:
             # self.add_cmd(VerifyActive(
             #     cmd_runners=cmd_runner_to_use,
             #     exp_active_names=list(self.active_names)))
@@ -8299,7 +8323,7 @@ class ConfigVerifier:
                 )
             )
 
-        if validate_config:
+        if validate_config and validate_config:
             self.add_cmd(
                 VerifyConfig(
                     cmd_runners=cmd_runner_to_use,
@@ -22782,25 +22806,27 @@ class ConfigVerifier:
     ####################################################################
     def main_driver(self) -> None:
         """Drive the config commands for the test scenario."""
-        self.log_ver.add_call_seq(
-            name="main_driver", seq="test_smart_thread.py::ConfigVerifier.main_driver"
-        )
-        self.log_test_msg(f"main_driver entry: {self.group_name=}")
-        while self.cmd_suite and not self.test_case_aborted:
-            cmd: ConfigCmd = self.cmd_suite.popleft()
-            self.log_test_msg(f"config_cmd: {self.group_name} {cmd}")
+        try:
+            self.log_ver.add_call_seq(
+                name="main_driver",
+                seq="test_smart_thread.py::ConfigVerifier.main_driver",
+            )
+            self.log_test_msg(f"main_driver entry: {self.group_name=}")
 
-            if not cmd.cmd_runners:
-                raise InvalidInputDetected(
-                    "main_driver detected an empty set of cmd_runners"
-                )
-            for name in cmd.cmd_runners:
-                if name == self.commander_name:
-                    continue
-                self.msgs.queue_msg(target=name, msg=cmd)
+            while self.cmd_suite and not self.test_case_aborted:
+                cmd: ConfigCmd = self.cmd_suite.popleft()
+                self.log_test_msg(f"config_cmd: {self.group_name} {cmd}")
 
-            if self.commander_name in cmd.cmd_runners:
-                try:
+                if not cmd.cmd_runners:
+                    raise InvalidInputDetected(
+                        "main_driver detected an empty set of cmd_runners"
+                    )
+                for name in cmd.cmd_runners:
+                    if name == self.commander_name:
+                        continue
+                    self.msgs.queue_msg(target=name, msg=cmd)
+
+                if self.commander_name in cmd.cmd_runners:
                     # logger.debug(
                     #     f"TestDebug {self.commander_name} ({self.group_name}) "
                     #     f"testcase main driver calling run_process {cmd.run_process}"
@@ -22811,68 +22837,74 @@ class ConfigVerifier:
                     #     f"testcase main driver back from run_process "
                     #     f"{cmd.run_process}"
                     # )
-                except Exception as exc:
-                    self.log_test_msg(f"main_driver detected exception {exc}")
-                    self.abort_test_case()
+                    self.completed_cmds[self.commander_name].append(cmd.serial_num)
 
-                self.completed_cmds[self.commander_name].append(cmd.serial_num)
-
-        logger.debug(
-            f"TestDebug {self.commander_name} ({self.group_name}) testcase "
-            "preparing to exit main_driver"
-        )
-        if not self.test_case_aborted:
-            ############################################################
-            # check that pending events are complete
-            ############################################################
-            self.log_test_msg(
-                f"Monitor Checkpoint: check_pending_events {self.group_name} 42"
+            logger.debug(
+                f"TestDebug {self.commander_name} ({self.group_name}) testcase "
+                f"preparing to exit main_driver. {self.test_case_aborted=}"
             )
+        except Exception as exc:
+            self.log_test_msg(f"main_driver detected exception {exc}")
+            self.abort_test_case()
+            raise
+
+        finally:
+            if not self.test_case_aborted:
+                ############################################################
+                # check that pending events are complete
+                ############################################################
+                self.log_test_msg(
+                    f"Monitor Checkpoint: check_pending_events {self.group_name} 42"
+                )
+                self.monitor_event.set()
+                self.check_pending_events_complete_event.wait(timeout=30)
+
+            names_to_join = st.SmartThread.get_smart_thread_names(
+                group_name=self.group_name,
+                states=(st.ThreadState.Alive, st.ThreadState.Stopped),
+            )
+
+            names_to_join -= {self.commander_name}
+            if names_to_join:
+                join_cmd = JoinTimeoutFalse(
+                    cmd_runners=self.commander_name,
+                    join_names=names_to_join,
+                    timeout=120,
+                )
+                self.add_cmd_info(join_cmd)
+                join_cmd.run_process(cmd_runner=self.commander_name)
+
+            names_to_unreg = st.SmartThread.get_smart_thread_names(
+                group_name=self.group_name
+            )
+
             self.monitor_event.set()
-            self.check_pending_events_complete_event.wait(timeout=30)
 
-        names_to_join = st.SmartThread.get_smart_thread_names(
-            group_name=self.group_name,
-            states=(st.ThreadState.Alive, st.ThreadState.Stopped),
-        )
+            if names_to_unreg:
+                unreg_cmd = Unregister(
+                    cmd_runners=self.commander_name,
+                    unregister_targets=names_to_unreg,
+                    post_main_driver=True,
+                )
+                self.add_cmd_info(unreg_cmd)
+                unreg_cmd.run_process(cmd_runner=self.commander_name)
 
-        names_to_join -= {self.commander_name}
-        if names_to_join:
-            join_cmd = JoinTimeoutFalse(
-                cmd_runners=self.commander_name, join_names=names_to_join, timeout=120
+            self.monitor_event.set()
+
+            self.main_driver_unreg.wait()
+
+            self.monitor_exit = True
+            self.monitor_event.set()
+            self.monitor_thread.join()
+
+            # if self.test_case_aborted:
+            #     with open(path_to_file, 'w') as file:
+
+            # assert not self.test_case_aborted
+
+            self.log_test_msg(
+                f"main_driver exit: {self.group_name=}, " f"{self.test_case_aborted=}"
             )
-            self.add_cmd_info(join_cmd)
-            join_cmd.run_process(cmd_runner=self.commander_name)
-
-        names_to_unreg = st.SmartThread.get_smart_thread_names(
-            group_name=self.group_name
-        )
-
-        self.monitor_event.set()
-
-        if names_to_unreg:
-            unreg_cmd = Unregister(
-                cmd_runners=self.commander_name,
-                unregister_targets=names_to_unreg,
-                post_main_driver=True,
-            )
-            self.add_cmd_info(unreg_cmd)
-            unreg_cmd.run_process(cmd_runner=self.commander_name)
-
-        self.monitor_event.set()
-
-        self.main_driver_unreg.wait()
-
-        self.monitor_exit = True
-        self.monitor_event.set()
-        self.monitor_thread.join()
-
-        # if self.test_case_aborted:
-        #     with open(path_to_file, 'w') as file:
-
-        assert not self.test_case_aborted
-
-        self.log_test_msg(f"main_driver exit: {self.group_name=}")
 
     ####################################################################
     # set_recv_timeout
