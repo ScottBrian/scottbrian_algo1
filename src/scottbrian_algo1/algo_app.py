@@ -758,7 +758,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
+        # exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
 
         with sel.SELockExcl(AlgoApp._config_lock):
             if self.algo_client.isConnected():
@@ -809,8 +809,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         logger.info(f"{self.msg_prefix} connect success")
 
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
+        # if exit_log_msg:
+        #     logger.debug(exit_log_msg)
 
     ####################################################################
     # disconnect_from_ib

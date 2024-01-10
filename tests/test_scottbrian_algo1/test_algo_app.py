@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from itertools import combinations, chain
+from pathlib import Path
 import queue
 
 import logging
@@ -175,6 +176,15 @@ class FailedLockVerify(ErrorTstAlgoApp):
     """An expected lock position was not found."""
 
     pass
+
+
+proj_dir = Path.cwd().resolve().parents[1]  # back two directories
+test_cat = FileCatalog(
+    {
+        "symbols": Path(proj_dir / "t_datasets/symbols.csv"),
+        "mock_contract_descs": Path(proj_dir / "t_datasets/mock_contract_descs.csv"),
+    }
+)
 
 
 ########################################################################
@@ -740,16 +750,16 @@ class LockMgr:
 
 
 ########################################################################
-# get_test_catalog
+# get_app_catalog
 ########################################################################
-def get_test_catalog() -> "FileCatalog":
+def get_app_catalog(tmp_path_to_use: Any) -> "FileCatalog":
     """Instantiate and return the test catalog.
 
     Returns:
         An instance of FileCatalog
     """
 
-    d = tmp_path / "t_files"
+    d = tmp_path_to_use / "t_files"
     d.mkdir()
     symbols_path = d / "symbols.csv"
     stock_symbols_path = d / "stock_symbols.csv"
@@ -774,6 +784,28 @@ def get_test_catalog() -> "FileCatalog":
     return catalog
 
 
+########################################################################
+# get_test_catalog
+########################################################################
+def get_test_catalog() -> "FileCatalog":
+    """Instantiate and return the test catalog.
+
+    Returns:
+        An instance of FileCatalog
+    """
+    proj_dir = Path.cwd().resolve().parents[1]  # back two directories
+    test_cat = FileCatalog(
+        {
+            "symbols": Path(proj_dir / "t_datasets/symbols.csv"),
+            "mock_contract_descs": Path(
+                proj_dir / "t_datasets/mock_contract_descs.csv"
+            ),
+        }
+    )
+
+    return catalog
+
+
 ###############################################################################
 # MockIB class
 ###############################################################################
@@ -785,7 +817,7 @@ class MockIB:
     PORT_FOR_SIMULATE_REQUEST_TIMEOUT = 9003
     PORT_FOR_MOCK_TRADING = 1000
 
-    delay_array: dict[tuple[str, int], IntFloat] = {}
+    # delay_array: dict[tuple[str, int], IntFloat] = {}
     mock_obj_array: dict[tuple[str, int], "MockIB"] = {}
 
     ###########################################################################
@@ -794,27 +826,30 @@ class MockIB:
     def __init__(
         self,
         test_cat: FileCatalog,
+        log_ver: LogVer,
         monkeypatch_to_use: pytest.MonkeyPatch,
+        group_name: str,
+        algo_name: str,
         ip_addr: str,
         port: int,
-        delay_value: IntFloat,
     ):
         """Initialize the MockIB instance.
 
         Args:
             test_cat: catalog of data sets used for testing
+            log_ver: LogVer to use
             monkeypatch_to_use: pytest monkeypatch object
+            group_name: name of algo group
+            algo_name: algo name
             ip_addr: ip_addr for connect
             port: port for connection
-            delay_value: value to use to cause connection delay to drive
-                timeout scenario testing
         """
-        self.log_ver = LogVer(log_name=logger.name)
+        self.log_ver = log_ver
         self.test_cat = test_cat
         self.app_cat = FileCatalog()
         self.msg_rcv_q = queue.Queue()
         self.reqId_timeout = False
-        self.delay_value = 0
+        self.delay_time = 0
         self.simulate_request_disconnect = False
         self.simulate_request_timeout = False
         self.next_conId: int = 7000
@@ -823,9 +858,14 @@ class MockIB:
         self.combo_legs = pd.DataFrame()
         self.delta_neutral_contract = pd.DataFrame()
 
+        self.group_name = group_name
+        self.algo_name = algo_name
+        self.ip_addr = ip_addr
+        self.port = port
+
         self.build_contract_descriptions()
 
-        MockIB.delay_array[(ip_addr, port)] = delay_value
+        # MockIB.delay_array[(ip_addr, port)] = delay_time
         MockIB.mock_obj_array[(ip_addr, port)] = self
 
         monkeypatch_to_use.setattr(Connection, "connect", self.mock_connection_connect)
@@ -909,21 +949,21 @@ class MockIB:
         #######################################################################
         elif int(fields[0]) == OUT.START_API:
             self.log_test_msg(
-                f"startAPI detected: {self.reqId_timeout=}, {self.delay_value=}"
+                f"startAPI detected: {self.reqId_timeout=}, {self.delay_time=}"
             )
             # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
             # if self.reqId_timeout:  # if test timeout case
             # zero mean infinite
-            if self.delay_value == -1:
-                self.log_test_msg(f"preventing connect ack with {self.delay_value=}")
+            if self.delay_time == -1:
+                self.log_test_msg(f"preventing connect ack with {self.delay_time=}")
                 recv_msg = make_msg("0")  # simulate timeout
             else:  # build the normal next valid id message
-                if self.delay_value > 0:  # non_zero case
-                    self.log_test_msg(f"delaying connect ack with {self.delay_value=}")
-                    sleep_time = self.delay_value
-                    if self.delay_value > 1000:
+                if self.delay_time > 0:  # non_zero case
+                    self.log_test_msg(f"delaying connect ack with {self.delay_time=}")
+                    sleep_time = self.delay_time
+                    if self.delay_time > 1000:
                         sleep_time -= 1000
-                        self.delay_value = 0
+                        self.delay_time = 0
                     time.sleep(sleep_time)
                 recv_msg = make_msg(
                     make_field(IN.NEXT_VALID_ID) + make_field("1") + make_field("1")
@@ -1478,17 +1518,17 @@ class MockIB:
 
         """
         mock_ib: MockIB = MockIB.mock_obj_array[(self.host, self.port)]
-        if mock_ib.delay_value == -2:  # if simulate failure
+        if mock_ib.delay_time == -2:  # if simulate failure
             return
 
         self.lock.acquire()
 
         # check for delay for testing a timeout case
-        if mock_ib.delay_value > 0:
-            sleep_time = mock_ib.delay_value
-            if mock_ib.delay_value > 1000:
+        if mock_ib.delay_time > 0:
+            sleep_time = mock_ib.delay_time
+            if mock_ib.delay_time > 1000:
                 sleep_time -= 1000
-                mock_ib.delay_value = 0
+                mock_ib.delay_time = 0
             time.sleep(sleep_time)
 
         try:
@@ -1522,7 +1562,6 @@ class MockIB:
 
         """
         mock_ib: MockIB = MockIB.mock_obj_array[(self.host, self.port)]
-        mock_ib.delay_value = MockIB.delay_array[(self.host, self.port)]
         mock_ib.log_test_msg(f"entered with msg: {msg}")
         mock_ib.log_test_msg("acquiring lock")
         self.lock.acquire()
@@ -1947,6 +1986,9 @@ class ConnectToIb(ConfigCmd):
     def __init__(
         self,
         cmd_runners: Iterable[str],
+        mock_ib: MockIB,
+        group_name: str,
+        algo_name: str,
         ip_addr: str = "127.0.0.1",
         port: int = 7496,
         client_id: int = 1,
@@ -1958,6 +2000,9 @@ class ConnectToIb(ConfigCmd):
 
         Args:
             cmd_runners: thread names that will execute the command
+            mock_ib: contains monkey patched IB rtns
+            group_name: name of SmartThread group
+            algo_name: name of SmartThread instance for AlgoApp
             ip_addr: ip address of connection (127.0.0.2)
             port: port number (e.g., 7496)
             client_id: specific client number from 1 to x
@@ -1968,6 +2013,12 @@ class ConnectToIb(ConfigCmd):
         """
         super().__init__(cmd_runners=cmd_runners)
         self.specified_args = locals()  # used for __repr__
+
+        self.mock_ib = mock_ib
+
+        self.group_name = group_name
+
+        self.algo_name = algo_name
 
         self.ip_addr = ip_addr
         self.port = port
@@ -1990,6 +2041,9 @@ class ConnectToIb(ConfigCmd):
         """
         self.config_ver.handle_connect(
             cmd_runner=cmd_runner,
+            mock_ib=self.mock_ib,
+            group_name=self.group_name,
+            algo_name=self.algo_name,
             ip_addr=self.ip_addr,
             port=self.port,
             client_id=self.client_id,
@@ -2000,7 +2054,7 @@ class ConnectToIb(ConfigCmd):
 
 
 ########################################################################
-# CreateAlgoApp
+# ShutDown
 ########################################################################
 class ShutDown(ConfigCmd):
     """Confirm that an earlier command has completed."""
@@ -2008,6 +2062,7 @@ class ShutDown(ConfigCmd):
     def __init__(
         self,
         cmd_runners: Iterable[str],
+        mock_ib: MockIB,
         group_name: str = "algo_app_group",
         algo_name: str = "algo_app",
         delay_time: IntFloat = 0,
@@ -2019,19 +2074,22 @@ class ShutDown(ConfigCmd):
 
         Args:
             cmd_runners: thread names that will execute the command
+            mock_ib: contains monkey patched IB rtns
             group_name: name of SmartThread group
             algo_name: name of SmartThread instance for AlgoApp
             delay_time: seconds to delay shutdown to drive timeout
                 scenarios
             timeout_type: specifies whether to expect the shutdown to
-                timeout
+                result in a timeout error
             timeout: number of seconds to use as a timeout value
-            pending_names names of threads that cause a timeout during
+            pending_names: names of threads that cause a timeout during
                 shutdown
 
         """
         super().__init__(cmd_runners=cmd_runners)
         self.specified_args = locals()  # used for __repr__
+
+        self.mock_ib = mock_ib
 
         self.group_name = group_name
 
@@ -2062,6 +2120,7 @@ class ShutDown(ConfigCmd):
         """
         self.config_ver.handle_shutdown(
             cmd_runner=cmd_runner,
+            mock_ib=self.mock_ib,
             group_name=self.group_name,
             algo_name=self.algo_name,
             delay_time=self.delay_time,
@@ -7242,6 +7301,7 @@ class ConfigVerifier:
         delay: int,
         timeout_type: TimeoutType,
         monkeypatch_to_use: pytest.MonkeyPatch,
+        tmp_path_to_use: Any,  # pathlib.Path,
     ) -> None:
         """Test get_smart_thread_names scenarios.
 
@@ -7256,21 +7316,22 @@ class ConfigVerifier:
             timeout_type: determines whether the delay should have an
                 effect
             monkeypatch_to_use: pytest monkeypatch
+            tmp_path_to_use: pytest tmp_path fixture
         """
-        test_cat = get_test_catalog()
-        MockIB(
+        # test_cat = get_test_catalog(tmp_path_to_use=tmp_path_to_use)
+        mock_ib = MockIB(
             test_cat=test_cat,
+            log_ver=self.log_ver,
             monkeypatch_to_use=monkeypatch_to_use,
+            group_name=group_name,
+            algo_name=algo_name,
             ip_addr=ip_addr,
             port=port,
-            delay_value=delay,
         )
-
-        # delay_value=delay)
 
         remote_name = "remote_1"
         self.create_config(
-            active_names=remote_name,
+            active_names={remote_name},
         )
 
         self.add_cmd(
@@ -7288,42 +7349,33 @@ class ConfigVerifier:
             cmd_runner = self.commander_name
 
         if timeout_type == TimeoutType.TimeoutNone:
-            self.add_cmd(
-                ConnectToIb(
-                    cmd_runners=cmd_runner,
-                    ip_addr=ip_addr,
-                    port=port,
-                    client_id=client_id,
-                    delay_time=delay,
-                )
-            )
+            timeout = 0
         elif timeout_type == TimeoutType.TimeoutFalse:
-            self.add_cmd(
-                ConnectToIb(
-                    cmd_runners=cmd_runner,
-                    ip_addr=ip_addr,
-                    port=port,
-                    client_id=client_id,
-                    delay_time=delay,
-                    timeout_type=timeout_type,
-                    timeout=delay * 2,
-                )
-            )
+            timeout = delay * 2
         else:
-            self.add_cmd(
-                ConnectToIb(
-                    cmd_runners=cmd_runner,
-                    ip_addr=ip_addr,
-                    port=port,
-                    client_id=client_id,
-                    timeout_type=timeout_type,
-                    timeout=delay / 2.0,
-                )
-            )
+            timeout = delay / 2.0
 
         self.add_cmd(
-            AlgoShutDown(
+            ConnectToIb(
                 cmd_runners=cmd_runner,
+                mock_ib=mock_ib,
+                group_name=group_name,
+                algo_name=algo_name,
+                ip_addr=ip_addr,
+                port=port,
+                client_id=client_id,
+                delay_time=delay,
+                timeout_type=timeout_type,
+                timeout=timeout,
+            )
+        )
+
+        self.add_cmd(
+            ShutDown(
+                cmd_runners=cmd_runner,
+                mock_ib=mock_ib,
+                group_name=group_name,
+                algo_name=algo_name,
             )
         )
 
@@ -19678,6 +19730,50 @@ class ConfigVerifier:
     # AlgoApp section
     ####################################################################
     ####################################################################
+    # issue_entry_log_msg
+    ####################################################################
+    def issue_entry_log_msg(
+        self,
+        omit_args: Optional[tuple[str]] = None,
+        frame_num: int = 1,
+    ) -> str:
+        """Issue an entry log message.
+
+        Args:
+            omit_args: arguments that should not be traced
+            frame_num: which frame to use for func_name
+
+        Returns:
+            the log message to use for the exit call or empty string if
+            logging is not enabled for debug
+
+        """
+        if not logger.isEnabledFor(logging.DEBUG):
+            return ""
+
+        if omit_args is None:
+            omit_args = tuple()
+
+        # caller = get_formatted_call_sequence(latest=3, depth=1)
+        frame = _getframe(frame_num)
+        func_name = frame.f_code.co_name
+        request_args = frame.f_locals
+        del frame
+
+        args: str = ""
+        comma: str = ""
+        for key, item in request_args.items():
+            if key not in omit_args and item is not None and item is not self:
+                args = f"{args}{comma} {key}={item}"
+                comma = ","
+
+        entry_log_msg = f"{func_name} entry:{args}"
+        exit_log_msg = f"{func_name} exit:{args}"
+
+        logger.debug(entry_log_msg, stacklevel=frame_num + 1)
+        return exit_log_msg
+
+    ####################################################################
     # handle_create_algo_app
     ####################################################################
     def handle_create_algo_app(
@@ -19688,7 +19784,7 @@ class ConfigVerifier:
         algo_name: str,
         default_timeout: OptIntFloat = None,
     ) -> None:
-        """Handle the jcreate algo app execution and log msgs.
+        """Handle algo app instantiation and log msgs.
 
         Args:
             cmd_runner: name of thread doing the cmd
@@ -19774,6 +19870,7 @@ class ConfigVerifier:
     def handle_connect(
         self,
         cmd_runner: str,
+        mock_ib: MockIB,
         group_name: str,
         algo_name: str,
         ip_addr: str,
@@ -19787,6 +19884,7 @@ class ConfigVerifier:
 
         Args:
             cmd_runner: name of thread doing the cmd
+            mock_ib: MockIB to use
             group_name: name of SmartThread group
             algo_name: name of SmartThread instance for AlgoApp
             ip_addr: addr for connect
@@ -19840,55 +19938,31 @@ class ConfigVerifier:
 
         algo_app = self.algo_app_array[algo_app_array_key]
 
+        mock_ib.delay_time = delay_time
+
         if timeout_type == TimeoutType.TimeoutNone:
             algo_app.connect_to_ib(
-                ip_addr="127.0.0.1",
-                port=algo_app.PORT_FOR_LIVE_TRADING,
-                client_id=1,
+                ip_addr=ip_addr,
+                port=port,
+                client_id=client_id,
             )
         elif timeout_type == TimeoutType.TimeoutFalse:
             algo_app.connect_to_ib(
-                ip_addr="127.0.0.1",
-                port=algo_app.PORT_FOR_LIVE_TRADING,
-                client_id=1,
-                timeout=delay_arg * 2,
+                ip_addr=ip_addr,
+                port=port,
+                client_id=client_id,
+                timeout=delay_time * 2,
             )
         else:
-            cat_app.delay_value = -1
             with pytest.raises(ConnectTimeout):
                 algo_app.connect_to_ib(
-                    ip_addr="127.0.0.1",
-                    port=algo_app.PORT_FOR_LIVE_TRADING,
-                    client_id=1,
-                    timeout=delay_arg / 2.0,
-                )
-        if timeout_type == TimeoutType.TimeoutNone:
-            pe[PE.request_msg][req_key_exit] += 1
-            self.all_threads[cmd_runner].smart_join(targets=join_names, log_msg=log_msg)
-
-        elif timeout_type == TimeoutType.TimeoutFalse:
-            pe[PE.request_msg][req_key_exit] += 1
-            self.all_threads[cmd_runner].smart_join(
-                targets=join_names, timeout=timeout, log_msg=log_msg
-            )
-
-        elif timeout_type == TimeoutType.TimeoutTrue:
-            # enter_exit = ('entry', )
-            error_msg = self.get_error_msg(
-                cmd_runner=cmd_runner,
-                smart_request="smart_join",
-                targets=join_names,
-                error_str="SmartThreadRequestTimedOut",
-            )
-            with pytest.raises(st.SmartThreadRequestTimedOut) as exc:
-                self.all_threads[cmd_runner].smart_join(
-                    targets=join_names, timeout=timeout, log_msg=log_msg
+                    ip_addr=ip_addr,
+                    port=port,
+                    client_id=client_id,
+                    timeout=delay_time / 2.0,
                 )
 
-            err_str = str(exc.value)
-            assert re.fullmatch(error_msg, err_str)
-
-            self.add_log_msg(error_msg, log_level=logging.ERROR)
+        mock_ib.delay_time = 0
 
         elapsed_time: float = time.time() - start_time
 
@@ -19905,6 +19979,7 @@ class ConfigVerifier:
     def handle_shutdown(
         self,
         cmd_runner: str,
+        mock_ib: MockIB,
         group_name: str,
         algo_name: str,
         delay_time: IntFloat,
@@ -19916,6 +19991,7 @@ class ConfigVerifier:
 
         Args:
             cmd_runner: name of thread doing the cmd
+            mock_ib: MockIB to use
             group_name: name of SmartThread group
             algo_name: name of SmartThread instance for AlgoApp
             delay_time: number seconds to delay connect processing to
@@ -19967,6 +20043,8 @@ class ConfigVerifier:
 
         algo_app = self.algo_app_array[algo_app_array_key]
 
+        mock_ib.delay_time = delay_time
+
         if timeout_type == TimeoutType.TimeoutNone:
             algo_app.shut_down()
         elif timeout_type == TimeoutType.TimeoutFalse:
@@ -19974,13 +20052,13 @@ class ConfigVerifier:
         else:
             if pending_names:
                 error_msg = (
-                    f"AlgoApp disconnect_from_ib raising DisconnectTimeout waiting for"
-                    f"pending requests to complete. {group_name=}, "
-                    f"{algo_name=}, {pending_names=}."
+                    f"AlgoApp {algo_name} ({group_name}) disconnect_from_ib raising "
+                    f"DisconnectTimeout waiting for {pending_names=}."
                 )
             else:
                 error_msg = (
-                    "AlgoApp disconnect_from_ib raising DisconnectTimeout waiting for "
+                    "AlgoApp {algo_name} ({group_name}) disconnect_from_ib raising "
+                    "DisconnectTimeout waiting for "
                     f"smart_join of client_name={algo_app.client_name}."
                 )
             with pytest.raises(DisconnectTimeout, match=error_msg):
@@ -19988,9 +20066,11 @@ class ConfigVerifier:
 
             self.add_log_msg(error_msg, log_level=logging.ERROR)
 
+        mock_ib.delay_time = 0
+
         elapsed_time: float = time.time() - start_time
 
-        self.wait_for_monitor(cmd_runner=cmd_runner, rtn_name="handle_connect")
+        # self.wait_for_monitor(cmd_runner=cmd_runner, rtn_name="handle_connect")
 
         self.log_test_msg(
             f"handle_shutdown exit: {cmd_runner=}, {group_name=}, {algo_name=}, "
@@ -31774,18 +31854,16 @@ class ScenarioDriverParms:
     commander_config: AppConfig = AppConfig.ScriptStyle
     commander_name: str = "alpha"
     group_name: str = "test1"
-    allow_log_test_msg: bool = False
+    allow_log_test_msg: bool = True
 
 
 def scenario_driver(
-    cat_app_to_use: "MockIB",
     caplog_to_use: pytest.LogCaptureFixture,
     scenario_driver_parms: list[ScenarioDriverParms],
 ) -> None:
     """Build and run a scenario.
 
     Args:
-        cat_app_to_use: cat app to use
         caplog_to_use: the capsys to capture log messages
         scenario_driver_parms: args for scenario_driver_part_1
 
@@ -38426,15 +38504,14 @@ class TestAlgoAppConnect:
     def test_connect_scenario(
         self,
         timeout_type_arg: int,
-        cat_app: "MockIB",
         caplog: pytest.LogCaptureFixture,
         monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Any,
     ) -> None:
         """Test meta configuration scenarios.
 
         Args:
             timeout_type_arg: specifies whether timeout should occur
-            cat_app: pytest fixture (see conftest.py)
             caplog: pytest fixture to capture log output
             monkeypatch: pytest monkeypatch
 
@@ -38462,6 +38539,7 @@ class TestAlgoAppConnect:
                     "delay": delay_arg,
                     "timeout_type": timeout_type_arg,
                     "monkeypatch_to_use": monkeypatch,
+                    "tmp_path_to_use": tmp_path,
                 }
 
                 sdparms.append(
@@ -38475,7 +38553,6 @@ class TestAlgoAppConnect:
                 )
 
         scenario_driver(
-            cat_app_to_use=cat_app,
             caplog_to_use=caplog,
             scenario_driver_parms=sdparms,
         )

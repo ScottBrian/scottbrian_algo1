@@ -55,7 +55,8 @@ logger = logging.getLogger(__name__)
 
 # logging.Logger.manager.loggerDict["ibapi"].setLevel(logging.CRITICAL)
 logging.Logger.manager.loggerDict["scottbrian_locking"].setLevel(logging.CRITICAL)
-logging.Logger.manager.loggerDict["scottbrian_paratools"].setLevel(logging.CRITICAL)
+# logging.Logger.manager.loggerDict["scottbrian_paratools"].setLevel(logging.CRITICAL)
+logging.Logger.manager.loggerDict["scottbrian_paratools"].setLevel(logging.DEBUG)
 
 
 proj_dir = Path.cwd().resolve().parents[1]  # back two directories
