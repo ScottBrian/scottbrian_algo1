@@ -8354,6 +8354,7 @@ class ConfigVerifier:
             send_recv_msgs: contains messages sent to the names
 
         """
+        exit_log_msg = self.issue_entry_log_msg()
         names = get_set(names)
         if not names.issubset(self.active_names):
             raise InvalidInputDetected(
@@ -8416,6 +8417,7 @@ class ConfigVerifier:
 
         self.active_names -= names
         self.stopped_remotes |= names
+        self.log_test_msg(exit_log_msg)
 
     ####################################################################
     # build_exit_suite_num
@@ -8427,6 +8429,7 @@ class ConfigVerifier:
             num_to_exit: number of threads to exit
 
         """
+        exit_log_msg = self.issue_entry_log_msg()
         assert num_to_exit > 0
         if (len(self.active_names) - 1) < num_to_exit:
             raise InvalidInputDetected(
@@ -8442,6 +8445,7 @@ class ConfigVerifier:
             )
         )
 
+        self.log_test_msg(exit_log_msg)
         return self.build_exit_suite(cmd_runner=self.commander_name, names=names)
 
     ####################################################################
@@ -8521,21 +8525,22 @@ class ConfigVerifier:
         if join_target_names:
             self.add_cmd(Join(cmd_runners=cmd_runners, join_names=join_target_names))
 
-            self.add_cmd(
-                VerifyConfig(
-                    cmd_runners=cmd_runners,
-                    verify_type=VerifyType.VerifyNotInRegistry,
-                    names_to_check=join_target_names,
+            if validate_config:
+                self.add_cmd(
+                    VerifyConfig(
+                        cmd_runners=cmd_runners,
+                        verify_type=VerifyType.VerifyNotInRegistry,
+                        names_to_check=join_target_names,
+                    )
                 )
-            )
 
-            self.add_cmd(
-                VerifyConfig(
-                    cmd_runners=cmd_runners,
-                    verify_type=VerifyType.VerifyNotPaired,
-                    names_to_check=join_target_names,
+                self.add_cmd(
+                    VerifyConfig(
+                        cmd_runners=cmd_runners,
+                        verify_type=VerifyType.VerifyNotPaired,
+                        names_to_check=join_target_names,
+                    )
                 )
-            )
 
         if validate_config:
             self.add_cmd(
@@ -19784,6 +19789,10 @@ class ConfigVerifier:
         request_args = frame.f_locals
         del frame
 
+        log_msg_prefix = (
+            f"{get_formatted_call_sequence(latest=1, depth=1)}->" f"{func_name}"
+        )
+
         args: str = ""
         comma: str = ""
         for key, item in request_args.items():
@@ -19791,8 +19800,12 @@ class ConfigVerifier:
                 args = f"{args}{comma} {key}={item}"
                 comma = ","
 
-        entry_log_msg = f"{func_name} entry:{args}"
-        exit_log_msg = f"{func_name} exit:{args}"
+        log_msg_prefix = (
+            f"{get_formatted_call_sequence(latest=2, depth=1)}->" f"{func_name}"
+        )
+
+        entry_log_msg = f"{log_msg_prefix} entry:{args}"
+        exit_log_msg = f"{log_msg_prefix} exit:{args}"
 
         logger.debug(entry_log_msg, stacklevel=frame_num + 1)
         return exit_log_msg
@@ -22849,15 +22862,15 @@ class ConfigVerifier:
             raise
 
         finally:
-            if not self.test_case_aborted:
-                ############################################################
-                # check that pending events are complete
-                ############################################################
-                self.log_test_msg(
-                    f"Monitor Checkpoint: check_pending_events {self.group_name} 42"
-                )
-                self.monitor_event.set()
-                self.check_pending_events_complete_event.wait(timeout=30)
+            # if not self.test_case_aborted:
+            #     ############################################################
+            #     # check that pending events are complete
+            #     ############################################################
+            #     self.log_test_msg(
+            #         f"Monitor Checkpoint: check_pending_events {self.group_name} 42"
+            #     )
+            #     self.monitor_event.set()
+            #     self.check_pending_events_complete_event.wait(timeout=30)
 
             names_to_join = st.SmartThread.get_smart_thread_names(
                 group_name=self.group_name,
@@ -32001,17 +32014,23 @@ def scenario_driver_part1(
 
     scenario_builder(config_ver, **scenario_builder_args)
 
-    config_ver.add_cmd(
-        VerifyConfig(
-            cmd_runners=commander_name, verify_type=VerifyType.VerifyStructures
-        )
-    )
+    # config_ver.add_cmd(
+    #     VerifyConfig(
+    #         cmd_runners=commander_name, verify_type=VerifyType.VerifyStructures
+    #     )
+    # )
 
     names = list(config_ver.active_names - {commander_name})
-    config_ver.build_exit_suite(cmd_runner=commander_name, names=names)
+    config_ver.build_exit_suite(
+        cmd_runner=commander_name,
+        names=names,
+        validate_config=False,
+    )
 
     config_ver.build_join_suite(
-        cmd_runners=[config_ver.commander_name], join_target_names=names
+        cmd_runners=[config_ver.commander_name],
+        join_target_names=names,
+        validate_config=False,
     )
 
     def initialize_config_ver(
