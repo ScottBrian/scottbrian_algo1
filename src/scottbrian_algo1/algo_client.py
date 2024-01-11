@@ -10,7 +10,9 @@ class.
 ########################################################################
 # Standard Library
 ########################################################################
+from collections.abc import Iterable
 from dataclasses import dataclass
+import functools
 import logging
 import threading
 from threading import Event, get_ident, get_native_id, Lock, Thread
@@ -85,6 +87,65 @@ class ClientRequestBlock:
     request_resumed: bool = False
 
 
+####################################################################
+# algo_trace decorator
+####################################################################
+def algo_trace(
+    func=None,
+    *,
+    omit_args: Optional[Iterable[str]] = None,
+    extra_args: Optional[Iterable[str]] = None,
+):
+    """Decorator to produce entry/exit log.
+
+    Args:
+        func: function to be decorated
+
+    Returns:
+        decorated function
+
+    """
+    if func is None:
+        return functools.partial(algo_setup, omit_args=omit_args, extra_args=extra_args)
+
+    omit_args = set({omit_args} if isinstance(omit_args, str) else omit_args or "")
+    extra_args = set({extra_args} if isinstance(extra_args, str) else extra_args or "")
+
+    @functools.wraps(func)
+    def _algo_trace(self, *args, **kwargs) -> Any:
+        """Setup the trace."""
+        exit_log_msg = ""
+        if logger.isEnabledFor(logging.DEBUG):
+            log_args: str = ""
+            comma: str = ""
+            for key, item in kwargs.items():
+                if key not in omit_args and item is not None and item is not self:
+                    log_args = f"{log_args}{comma} {key}={item}"
+                    comma = ","
+
+            for extra_arg in extra_args:
+                log_args = f"{log_args}{comma} {extra_arg}={eval(extra_arg)}"
+                comma = ","
+
+            log_msg_prefix = (
+                f"{self.msg_prefix} "
+                f"{get_formatted_call_sequence(latest=1, depth=1)}->"
+                f"{func.__name__}"
+            )
+            entry_log_msg = f"{log_msg_prefix} entry:{log_args}"
+            exit_log_msg = f"{log_msg_prefix} exit:{log_args}"
+
+            logger.debug(entry_log_msg)
+
+        ret_value = func(self, *args, **kwargs)
+        if exit_log_msg:
+            logger.debug(exit_log_msg)
+
+        return ret_value
+
+    return _algo_trace
+
+
 ########################################################################
 # AlgoApp
 ########################################################################
@@ -136,8 +197,12 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         EClient.__init__(self, wrapper=self.algo_wrapper)
         Thread.__init__(self)
         # threading.current_thread().name = algo_name
-        self.client_name = client_name
+        self.group_name = group_name
         self.algo_name = algo_name
+        self.client_name = client_name
+
+        self.msg_prefix = f"AlgoClient {algo_name} ({group_name})"
+
         SmartThread.__init__(
             self,
             group_name=group_name,
@@ -306,47 +371,37 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
     ###########################################################################
     # disconnect
     ###########################################################################
+    @algo_trace
     def disconnect(self) -> None:
         """Call this function to terminate the connections with TWS."""
-        # We would like to call EClient.disconnect, but it does not wait for
-        # the reader thread to come home which leads to problems if a connect
-        # is done immediately after the disconnect. The still running reader
-        # thread snatches the early handshaking messages and leaves the
-        # connect hanging. The following code is from client.py and is
-        # modified here to add the thread join to ensure the reader comes
-        # home before the disconnect returns.
-        # Note also the use of the disconnect lock to serialize the two known
-        # cases of disconnect being called from different threads (one from
-        # mainline through disconnect_from_ib in AlgoApp, and one from the
-        # EClient run method in the run thread.
+        # We would like to call EClient.disconnect, but it does not wait
+        # for the reader thread to end leads to problems if a connect is
+        # done immediately after the disconnect. The still running
+        # reader thread snatches the early handshaking messages and
+        # leaves the connect hanging. The following code is from
+        # client.py and is modified here to add the thread join to
+        # ensure the reader ends before the disconnect returns. Note
+        # also the use of the disconnect lock to serialize the two known
+        # cases of disconnect being called from different threads:
+        # 1) from mainline through disconnect_from_ib in AlgoApp
+        # 2) from the EClient run method in the run thread.
         with self.disconnect_lock:
-            call_seq = get_formatted_call_sequence()
-            logger.debug("%s entered disconnect", call_seq)
-
-            logger.debug("%s setting conn state", call_seq)
+            logger.debug(
+                f"{self.msg_prefix} setting conn state to EClient.DISCONNECTED"
+            )
             self.setConnState(EClient.DISCONNECTED)
             if self.conn is not None:
-                logger.info("%s disconnecting", call_seq)
+                logger.debug(f"{self.msg_prefix} disconnecting")
                 self.conn.disconnect()
                 self.wrapper.connectionClosed()
                 reader_id = id(self.reader)
                 my_id = get_ident()
-                my_native_id = get_native_id()
                 logger.debug(
-                    "about to join reader id %d for self id %d to"
-                    " wait for it to come home on thread %d %d",
-                    reader_id,
-                    id(self),
-                    my_id,
-                    my_native_id,
+                    f"{self.msg_prefix} about to join reader {reader_id=} for {my_id=}"
                 )
                 self.reader.join()
                 logger.debug(
-                    "reader id %d came home for id(self) %d " "thread id %d %d",
-                    reader_id,
-                    id(self),
-                    my_id,
-                    my_native_id,
+                    f"{self.msg_prefix} back from join {reader_id=} for {my_id=}"
                 )
                 self.reset()
 

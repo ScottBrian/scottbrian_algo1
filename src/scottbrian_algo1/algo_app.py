@@ -398,13 +398,11 @@ def algo_setup(
                 and func.__name__ != "connect_to_ib"
                 and func.__name__ != "disconnect_from_ib"
             ):
-                error_msg = f"setup_teardown raising AlgoApiNotReady"
+                error_msg = self._get_error_msg(
+                    error=AlgoApiNotReady,
+                )
                 logging.error(error_msg)
                 raise AlgoApiNotReady(error_msg)
-            # if self.shut_down_in_progress:
-            #     error_msg = f"setup_teardown raising RequestAfterShutdown"
-            #     logging.error(error_msg)
-            #     raise RequestAfterShutdown(error_msg)
             try:
                 # case 0: we are running under the thread that
                 #         instantiated the AlgoApi and should certainly

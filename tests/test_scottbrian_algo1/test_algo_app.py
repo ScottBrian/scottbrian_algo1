@@ -20120,42 +20120,13 @@ class ConfigVerifier:
 
         mock_ib.delay_time = delay_time
 
-        entry_log_msg = (
-            rf"AlgoApp {algo_name} \({group_name}\) "
-            "test_algo_app.py::ConfigVerifier.handle_shutdown:[0-9]+->shut_down entry:"
-        )
-        exit_log_msg = (
-            rf"AlgoApp {algo_name} \({group_name}\) "
-            "test_algo_app.py::ConfigVerifier.handle_shutdown:[0-9]+->shut_down exit:"
-        )
-
-        disconnect_entry_log_msg = (
-            rf"AlgoApp {algo_name} \({group_name}\) "
-            f"algo_app.py::shut_down:[0-9]+->disconnect_from_ib entry:"
-        )
-        disconnect_exit_log_msg = (
-            rf"AlgoApp {algo_name} \({group_name}\) "
-            f"algo_app.py::shut_down:[0-9]+->disconnect_from_ib exit:"
-        )
-
-        client_disconnect_log_msg = (
-            f"AlgoApp {algo_name} \({group_name}\) calling EClient disconnect"
-        )
-
-        self.add_log_msg(entry_log_msg)
-        self.add_log_msg(disconnect_entry_log_msg)
-
+        entry_exit = ("entry", "exit")
         if timeout_type == TimeoutType.TimeoutNone:
             algo_app.shut_down()
-            self.add_log_msg(exit_log_msg)
-            self.add_log_msg(disconnect_exit_log_msg)
-            self.add_log_msg(client_disconnect_log_msg)
         elif timeout_type == TimeoutType.TimeoutFalse:
             algo_app.shut_down(timeout=timeout)
-            self.add_log_msg(f"{exit_log_msg} timeout={timeout}")
-            self.add_log_msg(f"{disconnect_exit_log_msg} timeout={timeout}")
-            self.add_log_msg(client_disconnect_log_msg)
         else:
+            entry_exit = ("entry",)
             if pending_names:
                 error_msg = (
                     f"AlgoApp {algo_name} ({group_name}) disconnect_from_ib raising "
@@ -20167,13 +20138,76 @@ class ConfigVerifier:
                     "DisconnectTimeout waiting for "
                     f"smart_join of client_name={algo_app.client_name}."
                 )
-                self.add_log_msg(client_disconnect_log_msg)
             with pytest.raises(DisconnectTimeout, match=error_msg):
                 algo_app.shut_down(timeout=timeout)
 
             self.add_log_msg(error_msg, log_level=logging.ERROR)
 
         mock_ib.delay_time = 0
+
+        for e_or_x in entry_exit:
+            self.add_log_msg(
+                rf"AlgoApp {algo_name} \({group_name}\) "
+                "test_algo_app.py::ConfigVerifier.handle_shutdown:[0-9]+->shut_down "
+                f"{e_or_x}:"
+            )
+            self.add_log_msg(
+                rf"AlgoApp {algo_name} \({group_name}\) "
+                f"algo_app.py::shut_down:[0-9]+->disconnect_from_ib {e_or_x}:"
+            )
+            self.add_log_msg(
+                new_log_msg=(
+                    rf"AlgoClient {algo_name} \({group_name}\) "
+                    f"algo_app.py::disconnect_from_ib:[0-9]+->disconnect {e_or_x}:"
+                ),
+                log_name="scottbrian_algo1.algo_client",
+            )
+            self.add_log_msg(
+                new_log_msg=(
+                    rf"AlgoClient {algo_name} \({group_name}\) "
+                    f"client.py::EClient.run:[0-9]+->disconnect {e_or_x}:"
+                ),
+                log_name="scottbrian_algo1.algo_client",
+            )
+
+        if not (timeout_type == TimeoutType.TimeoutTrue and pending_names):
+            self.add_log_msg(
+                new_log_msg=(
+                    rf"AlgoApp {algo_name} \({group_name}\) calling "
+                    "EClient disconnect"
+                )
+            )
+            for _ in range(2):
+                self.add_log_msg(
+                    new_log_msg=(
+                        rf"AlgoClient {algo_name} \({group_name}\) setting conn "
+                        "state to EClient.DISCONNECTED"
+                    ),
+                    log_name="scottbrian_algo1.algo_client",
+                )
+            self.add_log_msg(
+                new_log_msg=rf"AlgoClient {algo_name} \({group_name}\) disconnecting",
+                log_name="scottbrian_algo1.algo_client",
+            )
+            self.add_log_msg(
+                new_log_msg=(
+                    rf"AlgoClient {algo_name} \({group_name}\) about to join reader "
+                    r"reader_id=[0-9a-f]+ for my_id=[0-9a-f]+"
+                ),
+                log_name="scottbrian_algo1.algo_client",
+            )
+            self.add_log_msg(
+                new_log_msg=(
+                    rf"AlgoClient {algo_name} \({group_name}\) back from join "
+                    r"reader_id=[0-9a-f]+ for my_id=[0-9a-f]+"
+                ),
+                log_name="scottbrian_algo1.algo_client",
+            )
+            self.add_log_msg(
+                new_log_msg=(
+                    rf"AlgoClient {algo_name} \({group_name}\)joining algo_client"
+                ),
+            )
 
         elapsed_time: float = time.time() - start_time
 
