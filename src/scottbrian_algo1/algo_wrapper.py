@@ -89,6 +89,8 @@ class AlgoWrapper(EWrapper):  # type: ignore
         self.client_name = client_name
         self.algo_client = algo_client
 
+        self.msg_prefix = f"AlgoWrapper {self.algo_name} ({self.group_name})"
+
         # self.ds_catalog = ds_catalog
         self.request_id: int = 0
         self.error_reqId: int = 0
@@ -205,9 +207,7 @@ class AlgoWrapper(EWrapper):  # type: ignore
             request_id: next id to use for a request to IB
 
         """
-        logger.info(
-            f"next valid ID is {request_id}, {threading.current_thread()=}, {self=}"
-        )
+        logger.info(f"{self.msg_prefix} next valid ID is {request_id}")
 
         self.algo_client.request_id = request_id
         self.algo_client.update_active_request(req_id=request_id)

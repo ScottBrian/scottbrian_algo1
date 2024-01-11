@@ -629,9 +629,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # shut_down
     ####################################################################
+    @algo_setup(omit_args="setup_args")
     def shut_down(
         self,
         timeout: Optional[IntFloat] = None,
+        setup_args: SetupArgs = dummy_setup_args,
     ) -> None:
         """Shut down the AlgoApp.
 
@@ -733,7 +735,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # connect_to_ib
     ###########################################################################
-    @algo_setup(omit_args="setup_args", extra_args="self.algo_client.st_state")
+    @algo_setup(omit_args="setup_args")
     def connect_to_ib(
         self,
         *,
@@ -784,7 +786,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 req_num=setup_args.req_num,
             )
             self.algo_client.connect(ip_addr, port, client_id)
-            logger.info(f"{self.msg_prefix} starting AlgoClient thread 1")
+            logger.debug(f"{self.msg_prefix} starting AlgoClient thread")
             self.algo_client.smart_start()
 
             # we will wait on the first requestID here
@@ -815,7 +817,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # disconnect_from_ib
     ####################################################################
-    @setup_teardown
+    @algo_setup(omit_args="setup_args")
     def disconnect_from_ib(
         self,
         timeout: Optional[IntFloat] = None,
@@ -831,7 +833,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         Raises:
             DisconnectTimeout: timed out waiting for join
         """
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         timer = Timer(timeout=timeout, default_timeout=self.default_timeout)
 
         # setup_args = self.get_setup_args()
@@ -868,7 +869,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             time.sleep(0.2)
 
         with sel.SELockExcl(AlgoApp._config_lock, allow_recursive_obtain=True):
-            logger.info(f"{self.msg_prefix} calling EClient disconnect")
+            logger.debug(f"{self.msg_prefix} calling EClient disconnect")
 
             # call our disconnect (overrides EClient)
             self.algo_client.disconnect()
@@ -876,10 +877,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             if self.algo_client.st_state == ThreadState.Registered:
                 self.algo_client.smart_unreg()
             else:
-                logger.info(
-                    f"{self.msg_prefix} joining algo_client to wait for it to "
-                    f"complete"
-                )
+                logger.debug(f"{self.msg_prefix} joining algo_client")
                 try:
                     setup_args.smart_thread.smart_join(
                         targets=self.client_name,
@@ -895,8 +893,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                     raise DisconnectTimeout(error_msg)
 
         logger.info(f"{self.msg_prefix} disconnect complete")
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
 
     ###########################################################################
     # wait_for_request_completion

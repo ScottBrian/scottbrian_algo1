@@ -58,6 +58,11 @@ logging.Logger.manager.loggerDict["scottbrian_locking"].setLevel(logging.CRITICA
 logging.Logger.manager.loggerDict["scottbrian_paratools"].setLevel(logging.CRITICAL)
 # logging.Logger.manager.loggerDict["scottbrian_paratools"].setLevel(logging.DEBUG)
 
+for key, item in logging.Logger.manager.loggerDict.items():
+    # print(f"{key=} {type(item)=}\n")
+    if key[0:5] == "ibapi" and not isinstance(item, logging.PlaceHolder):
+        logging.Logger.manager.loggerDict[key].setLevel(logging.CRITICAL)
+
 
 proj_dir = Path.cwd().resolve().parents[1]  # back two directories
 

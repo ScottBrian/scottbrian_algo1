@@ -1354,7 +1354,7 @@ class MockIB:
     def build_contract_descriptions(self):
         """Build the set of contract descriptions to use for testing."""
         contract_descs_path = self.test_cat.get_path("mock_contract_descs")
-        logger.debug(f"mock_contract_descs path: {contract_descs_path=}")
+        self.log_test_msg(f"mock_contract_descs path: {contract_descs_path=}")
 
         self.contract_descriptions = pd.DataFrame()
 
@@ -1370,7 +1370,7 @@ class MockIB:
         self.delta_neutral_contract.set_index("conId", drop=False, inplace=True)
         self.delta_neutral_contract.sort_index(inplace=True)
 
-        logger.debug(
+        self.log_test_msg(
             f"built mock_con_descs DataFrame with {len(self.contract_descriptions)=}"
         )
 
@@ -7274,7 +7274,7 @@ class ConfigVerifier:
         new_log_msg: str,
         log_level: int = logging.DEBUG,
         fullmatch: bool = True,
-        log_name: Optional[str] = None,
+        log_name: str = "scottbrian_algo1.algo_app",
     ) -> None:
         """Add log message to log_ver for SmartThread logger.
 
@@ -7285,8 +7285,6 @@ class ConfigVerifier:
                 of match
             log_name: name of log to use for add_msg
         """
-        if log_name is None:
-            log_name = "scottbrian_paratools.smart_thread"
         self.log_ver.add_msg(
             log_name=log_name,
             log_level=log_level,
@@ -19807,7 +19805,7 @@ class ConfigVerifier:
         entry_log_msg = f"{log_msg_prefix} entry:{args}"
         exit_log_msg = f"{log_msg_prefix} exit:{args}"
 
-        logger.debug(entry_log_msg, stacklevel=frame_num + 1)
+        self.log_test_msg(entry_log_msg)
         return exit_log_msg
 
     ####################################################################
@@ -19977,12 +19975,45 @@ class ConfigVerifier:
 
         mock_ib.delay_time = delay_time
 
+        entry_log_msg = (
+            rf"AlgoApp {algo_name} \({group_name}\) "
+            "test_algo_app.py::ConfigVerifier.handle_connect:[0-9]+->"
+            f"connect_to_ib entry: ip_addr={ip_addr}, port={port}, "
+            f"client_id={client_id}"
+        )
+        exit_log_msg = (
+            rf"AlgoApp {algo_name} \({group_name}\) "
+            "test_algo_app.py::ConfigVerifier.handle_connect:[0-9]+->"
+            f"connect_to_ib exit: ip_addr={ip_addr}, port={port}, "
+            f"client_id={client_id}"
+        )
+
+        start_client_log_msg = (
+            rf"AlgoApp {algo_name} \({group_name}\) starting AlgoClient thread"
+        )
+
+        valid_id_log_msg = (
+            f"AlgoWrapper {algo_name} \({group_name}\) next valid ID is 1"
+        )
+
+        success_log_msg = rf"AlgoApp {algo_name} \({group_name}\) connect success"
+
+        self.add_log_msg(entry_log_msg)
+        self.add_log_msg(start_client_log_msg)
+
         if timeout_type == TimeoutType.TimeoutNone:
             algo_app.connect_to_ib(
                 ip_addr=ip_addr,
                 port=port,
                 client_id=client_id,
             )
+            self.add_log_msg(exit_log_msg)
+            self.add_log_msg(
+                valid_id_log_msg,
+                log_level=logging.INFO,
+                log_name="scottbrian_algo1.algo_wrapper",
+            )
+            self.add_log_msg(success_log_msg, log_level=logging.INFO)
         elif timeout_type == TimeoutType.TimeoutFalse:
             algo_app.connect_to_ib(
                 ip_addr=ip_addr,
@@ -19990,6 +20021,13 @@ class ConfigVerifier:
                 client_id=client_id,
                 timeout=delay_time * 2,
             )
+            self.add_log_msg(exit_log_msg)
+            self.add_log_msg(
+                valid_id_log_msg,
+                log_level=logging.INFO,
+                log_name="scottbrian_algo1.algo_wrapper",
+            )
+            self.add_log_msg(success_log_msg, log_level=logging.INFO)
         else:
             with pytest.raises(ConnectTimeout):
                 algo_app.connect_to_ib(
@@ -20082,10 +20120,41 @@ class ConfigVerifier:
 
         mock_ib.delay_time = delay_time
 
+        entry_log_msg = (
+            rf"AlgoApp {algo_name} \({group_name}\) "
+            "test_algo_app.py::ConfigVerifier.handle_shutdown:[0-9]+->shut_down entry:"
+        )
+        exit_log_msg = (
+            rf"AlgoApp {algo_name} \({group_name}\) "
+            "test_algo_app.py::ConfigVerifier.handle_shutdown:[0-9]+->shut_down exit:"
+        )
+
+        disconnect_entry_log_msg = (
+            rf"AlgoApp {algo_name} \({group_name}\) "
+            f"algo_app.py::shut_down:[0-9]+->disconnect_from_ib entry:"
+        )
+        disconnect_exit_log_msg = (
+            rf"AlgoApp {algo_name} \({group_name}\) "
+            f"algo_app.py::shut_down:[0-9]+->disconnect_from_ib exit:"
+        )
+
+        client_disconnect_log_msg = (
+            f"AlgoApp {algo_name} \({group_name}\) calling EClient disconnect"
+        )
+
+        self.add_log_msg(entry_log_msg)
+        self.add_log_msg(disconnect_entry_log_msg)
+
         if timeout_type == TimeoutType.TimeoutNone:
             algo_app.shut_down()
+            self.add_log_msg(exit_log_msg)
+            self.add_log_msg(disconnect_exit_log_msg)
+            self.add_log_msg(client_disconnect_log_msg)
         elif timeout_type == TimeoutType.TimeoutFalse:
             algo_app.shut_down(timeout=timeout)
+            self.add_log_msg(f"{exit_log_msg} timeout={timeout}")
+            self.add_log_msg(f"{disconnect_exit_log_msg} timeout={timeout}")
+            self.add_log_msg(client_disconnect_log_msg)
         else:
             if pending_names:
                 error_msg = (
@@ -20098,6 +20167,7 @@ class ConfigVerifier:
                     "DisconnectTimeout waiting for "
                     f"smart_join of client_name={algo_app.client_name}."
                 )
+                self.add_log_msg(client_disconnect_log_msg)
             with pytest.raises(DisconnectTimeout, match=error_msg):
                 algo_app.shut_down(timeout=timeout)
 
