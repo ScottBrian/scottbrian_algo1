@@ -20142,6 +20142,12 @@ class ConfigVerifier:
 
         mock_ib.delay_time = 0
 
+        smart_thread_names = SmartThread.get_smart_thread_names(group_name=group_name)
+        if timeout_type != TimeoutType.TimeoutTrue:
+            assert not smart_thread_names
+        else:
+            assert algo_name in smart_thread_names
+
         for e_or_x in entry_exit:
             self.add_log_msg(
                 rf"AlgoApp {algo_name} \({group_name}\) "
@@ -38684,16 +38690,16 @@ class TestAlgoAppConnect:
         sdparms: list[ScenarioDriverParms] = []
         config_idx = -1
         for async_tf_arg in (True, False):
-            for delay_arg in [0]:  # (0, 2, 4):
+            for delay_arg in (0, 2, 4):
                 if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
                     continue
                 config_idx += 1
                 args_for_scenario_builder: dict[str, Any] = {
-                    "group_name": "algo_group_1",
-                    "algo_name": "algo_name_1",
+                    "group_name": f"algo_group_{config_idx}",
+                    "algo_name": f"algo_name_{config_idx}",
                     "ip_addr": "127.0.0.1",
                     "port": MockIB.PORT_FOR_MOCK_TRADING + config_idx,
-                    "client_id": 1,
+                    "client_id": config_idx,
                     "async_tf": async_tf_arg,
                     "delay": delay_arg,
                     "timeout_type": timeout_type_arg,
