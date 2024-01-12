@@ -7369,7 +7369,7 @@ class ConfigVerifier:
             cmd_runner = self.commander_name
 
         if timeout_type == TimeoutType.TimeoutNone:
-            timeout = 0
+            timeout = None
         elif timeout_type == TimeoutType.TimeoutFalse:
             timeout = delay * 2
         else:
@@ -19913,7 +19913,7 @@ class ConfigVerifier:
         client_id: int,
         delay_time: IntFloat,
         timeout_type: TimeoutType,
-        timeout: IntFloat,
+        timeout: Optional[IntFloat],
     ) -> None:
         """Handle the algo app connect execution and log msgs.
 
@@ -19975,31 +19975,8 @@ class ConfigVerifier:
 
         mock_ib.delay_time = delay_time
 
-        entry_log_msg = (
-            rf"AlgoApp {algo_name} \({group_name}\) "
-            "test_algo_app.py::ConfigVerifier.handle_connect:[0-9]+->"
-            f"connect_to_ib entry: ip_addr={ip_addr}, port={port}, "
-            f"client_id={client_id}"
-        )
-        exit_log_msg = (
-            rf"AlgoApp {algo_name} \({group_name}\) "
-            "test_algo_app.py::ConfigVerifier.handle_connect:[0-9]+->"
-            f"connect_to_ib exit: ip_addr={ip_addr}, port={port}, "
-            f"client_id={client_id}"
-        )
-
-        start_client_log_msg = (
-            rf"AlgoApp {algo_name} \({group_name}\) starting AlgoClient thread"
-        )
-
-        valid_id_log_msg = (
-            f"AlgoWrapper {algo_name} \({group_name}\) next valid ID is 1"
-        )
-
-        success_log_msg = rf"AlgoApp {algo_name} \({group_name}\) connect success"
-
-        self.add_log_msg(entry_log_msg)
-        self.add_log_msg(start_client_log_msg)
+        entry_exit = ("entry", "exit")
+        timeout_log_value = ""
 
         if timeout_type == TimeoutType.TimeoutNone:
             algo_app.connect_to_ib(
@@ -20007,28 +19984,17 @@ class ConfigVerifier:
                 port=port,
                 client_id=client_id,
             )
-            self.add_log_msg(exit_log_msg)
-            self.add_log_msg(
-                valid_id_log_msg,
-                log_level=logging.INFO,
-                log_name="scottbrian_algo1.algo_wrapper",
-            )
-            self.add_log_msg(success_log_msg, log_level=logging.INFO)
         elif timeout_type == TimeoutType.TimeoutFalse:
+            timeout_log_value = f", {timeout=}"
             algo_app.connect_to_ib(
                 ip_addr=ip_addr,
                 port=port,
                 client_id=client_id,
                 timeout=delay_time * 2,
             )
-            self.add_log_msg(exit_log_msg)
-            self.add_log_msg(
-                valid_id_log_msg,
-                log_level=logging.INFO,
-                log_name="scottbrian_algo1.algo_wrapper",
-            )
-            self.add_log_msg(success_log_msg, log_level=logging.INFO)
         else:
+            timeout_log_value = f", {timeout=}"
+            entry_exit = ("entry",)
             with pytest.raises(ConnectTimeout):
                 algo_app.connect_to_ib(
                     ip_addr=ip_addr,
@@ -20038,6 +20004,33 @@ class ConfigVerifier:
                 )
 
         mock_ib.delay_time = 0
+
+        for e_or_x in entry_exit:
+            self.add_log_msg(
+                rf"AlgoApp {algo_name} \({group_name}\) "
+                "test_algo_app.py::ConfigVerifier.handle_connect:[0-9]+->"
+                f"connect_to_ib {e_or_x}: ip_addr={ip_addr}, port={port}, "
+                f"client_id={client_id}{timeout_log_value}"
+            )
+            if e_or_x == "exit":
+                self.add_log_msg(
+                    new_log_msg=(
+                        rf"AlgoWrapper {algo_name} \({group_name}\) next "
+                        "valid ID is 1"
+                    ),
+                    log_level=logging.INFO,
+                    log_name="scottbrian_algo1.algo_wrapper",
+                )
+                self.add_log_msg(
+                    new_log_msg=(
+                        rf"AlgoApp {algo_name} \({group_name}\) connect " "successful"
+                    ),
+                    log_level=logging.INFO,
+                )
+
+        self.add_log_msg(
+            rf"AlgoApp {algo_name} \({group_name}\) starting AlgoClient thread"
+        )
 
         elapsed_time: float = time.time() - start_time
 
@@ -20059,7 +20052,7 @@ class ConfigVerifier:
         algo_name: str,
         delay_time: IntFloat,
         timeout_type: TimeoutType,
-        timeout: IntFloat,
+        timeout: Optional[IntFloat],
         pending_names: set[str],
     ) -> None:
         """Handle the algo app shutdown execution and log msgs.
@@ -20121,11 +20114,15 @@ class ConfigVerifier:
         mock_ib.delay_time = delay_time
 
         entry_exit = ("entry", "exit")
+        timeout_log_value = ""
+
         if timeout_type == TimeoutType.TimeoutNone:
             algo_app.shut_down()
         elif timeout_type == TimeoutType.TimeoutFalse:
+            timeout_log_value = f" {timeout=}"
             algo_app.shut_down(timeout=timeout)
         else:
+            timeout_log_value = f" {timeout=}"
             entry_exit = ("entry",)
             if pending_names:
                 error_msg = (
@@ -20149,11 +20146,12 @@ class ConfigVerifier:
             self.add_log_msg(
                 rf"AlgoApp {algo_name} \({group_name}\) "
                 "test_algo_app.py::ConfigVerifier.handle_shutdown:[0-9]+->shut_down "
-                f"{e_or_x}:"
+                f"{e_or_x}:{timeout_log_value}"
             )
             self.add_log_msg(
                 rf"AlgoApp {algo_name} \({group_name}\) "
                 f"algo_app.py::shut_down:[0-9]+->disconnect_from_ib {e_or_x}:"
+                f"{timeout_log_value}"
             )
             self.add_log_msg(
                 new_log_msg=(
@@ -20205,8 +20203,14 @@ class ConfigVerifier:
             )
             self.add_log_msg(
                 new_log_msg=(
-                    rf"AlgoClient {algo_name} \({group_name}\)joining algo_client"
+                    rf"AlgoApp {algo_name} \({group_name}\) joining algo_client"
                 ),
+            )
+            self.add_log_msg(
+                new_log_msg=(
+                    rf"AlgoApp {algo_name} \({group_name}\) disconnect complete"
+                ),
+                log_level=logging.INFO,
             )
 
         elapsed_time: float = time.time() - start_time
@@ -38679,7 +38683,7 @@ class TestAlgoAppConnect:
         # delay_arg: number of seconds to delay
         sdparms: list[ScenarioDriverParms] = []
         config_idx = -1
-        for async_tf_arg in [False]:  # (True, False):
+        for async_tf_arg in (True, False):
             for delay_arg in [0]:  # (0, 2, 4):
                 if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
                     continue

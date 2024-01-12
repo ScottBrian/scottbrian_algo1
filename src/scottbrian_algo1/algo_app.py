@@ -643,7 +643,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         """
         # self.stop_monitor = True
         self.disconnect_from_ib(timeout=timeout)
-        self.smart_unreg()
+        setup_args.smart_thread.smart_unreg(targets=self.algo_name)
 
     ####################################################################
     # setup_client_request
@@ -807,7 +807,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 )
                 raise ConnectTimeout(error_msg)
 
-        logger.info(f"{self.msg_prefix} connect success")
+        logger.info(f"{self.msg_prefix} connect successful")
 
         # if exit_log_msg:
         #     logger.debug(exit_log_msg)
