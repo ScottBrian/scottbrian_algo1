@@ -964,13 +964,13 @@ class MockIB:
                 self.log_test_msg(f"preventing connect ack with {self.delay_time=}")
                 recv_msg = make_msg("0")  # simulate timeout
             else:  # build the normal next valid id message
-                if self.delay_time > 0:  # non_zero case
-                    self.log_test_msg(f"delaying connect ack with {self.delay_time=}")
-                    sleep_time = self.delay_time
-                    if self.delay_time > 1000:
-                        sleep_time -= 1000
-                        self.delay_time = 0
-                    time.sleep(sleep_time)
+                # if self.delay_time > 0:  # non_zero case
+                #     self.log_test_msg(f"delaying connect ack with {self.delay_time=}")
+                #     sleep_time = self.delay_time
+                #     if self.delay_time > 1000:
+                #         sleep_time -= 1000
+                #         self.delay_time = 0
+                #     time.sleep(sleep_time)
                 recv_msg = make_msg(
                     make_field(IN.NEXT_VALID_ID) + make_field("1") + make_field("1")
                 )
@@ -1140,6 +1140,17 @@ class MockIB:
         self.log_test_msg("about to get msg from msg_rcv_q")
         msg = self.msg_rcv_q.get(timeout=1)  # wait for 1 second if empty
         self.log_test_msg(f"obtained from msg_recv_q {msg=}")
+        if msg == b"\x00\x00\x00\x069\x001\x001\x00":
+            self.log_test_msg(f"*** recv_msg next valid ID msg detected")
+            if self.delay_time > 0:  # non_zero case
+                self.log_test_msg(
+                    f"delaying recv of next valid ID with " f"{self.delay_time=}"
+                )
+                sleep_time = self.delay_time
+                # if self.delay_time > 1000:
+                #     sleep_time -= 1000
+                #     self.delay_time = 0
+                time.sleep(sleep_time)
         return msg
 
     ###########################################################################
@@ -20012,6 +20023,7 @@ class ConfigVerifier:
                 f"connect_to_ib {e_or_x}: ip_addr={ip_addr}, port={port}, "
                 f"client_id={client_id}{timeout_log_value}"
             )
+
             if e_or_x == "exit":
                 self.add_log_msg(
                     new_log_msg=(
@@ -20023,10 +20035,48 @@ class ConfigVerifier:
                 )
                 self.add_log_msg(
                     new_log_msg=(
-                        rf"AlgoApp {algo_name} \({group_name}\) connect " "successful"
+                        rf"AlgoApp {algo_name} \({group_name}\) connect successful"
                     ),
                     log_level=logging.INFO,
                 )
+
+        if timeout_type == TimeoutType.TimeoutTrue:
+            for e_or_x in ("entry", "exit"):
+                self.add_log_msg(
+                    new_log_msg=(
+                        rf"AlgoApp {algo_name} \({group_name}\) "
+                        "algo_app.py::connect_to_ib:[0-9]+->disconnect_from_ib "
+                        f"{e_or_x}:"
+                    ),
+                )
+                self.add_log_msg(
+                    new_log_msg=(
+                        rf"AlgoClient {algo_name} \({group_name}\) "
+                        "algo_app.py::disconnect_from_ib:[0-9]+->disconnect "
+                        f"{e_or_x}:"
+                    ),
+                    log_name="scottbrian_algo1.algo_client",
+                )
+
+            self.add_log_msg(
+                rf"AlgoApp {algo_name} \({group_name}\) calling EClient disconnect"
+            )
+            self.add_log_msg(
+                new_log_msg=(
+                    rf"AlgoClient {algo_name} \({group_name}\) setting conn state to "
+                    "EClient.DISCONNECTED"
+                ),
+                log_name="scottbrian_algo1.algo_client",
+            )
+            self.add_log_msg(
+                rf"AlgoApp {algo_name} \({group_name}\) joining algo_client"
+            )
+            self.add_log_msg(
+                new_log_msg=(
+                    rf"AlgoApp {algo_name} \({group_name}\) disconnect complete"
+                ),
+                log_level=logging.INFO,
+            )
 
         self.add_log_msg(
             rf"AlgoApp {algo_name} \({group_name}\) starting AlgoClient thread"

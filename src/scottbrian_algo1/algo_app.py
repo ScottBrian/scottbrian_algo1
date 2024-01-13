@@ -397,6 +397,7 @@ def algo_setup(
                 not self.ready_for_work
                 and func.__name__ != "connect_to_ib"
                 and func.__name__ != "disconnect_from_ib"
+                and func.__name__ != "shut_down"
             ):
                 error_msg = self._get_error_msg(
                     error=AlgoApiNotReady,
