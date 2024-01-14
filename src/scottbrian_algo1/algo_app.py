@@ -218,7 +218,7 @@ class SetupArgs:
     req_num: UniqueTStamp
 
 
-dummy_setup_args = SetupArgs(
+dummy__setup_args = SetupArgs(
     smart_thread=SmartThread(group_name="1", name="1"), req_num=0.0
 )
 
@@ -246,117 +246,117 @@ class ThreadBlock:
 ####################################################################
 # make_sync_async
 ####################################################################
-def setup_sync(func: Callable[..., Any]) -> Callable[..., Any]:
-    @functools.wraps(func)
-    def wrapped(self, *args, **kwargs) -> Any:
-        # logger.debug(f"{args=}, {kwargs=}")
-        smart_thread = SmartThread.get_current_smart_thread(group_name=self.group_name)
-        ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-
-        ret_value = func(self, *args, **kwargs)
-
-        return ret_value
-
-    return wrapped
+# def setup_sync(func: Callable[..., Any]) -> Callable[..., Any]:
+#     @functools.wraps(func)
+#     def wrapped(self, *args, **kwargs) -> Any:
+#         # logger.debug(f"{args=}, {kwargs=}")
+#         smart_thread = SmartThread.get_current_smart_thread(group_name=self.group_name)
+#         ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
+#
+#         ret_value = func(self, *args, **kwargs)
+#
+#         return ret_value
+#
+#     return wrapped
 
 
 ####################################################################
 # setup_teardown
 ####################################################################
-def setup_teardown(func: Callable[..., Any]) -> Callable[..., Any]:
-    """Decorator to get and pass SmartThread and req_num to request.
-
-    Args:
-        func: function to be decorated
-
-    Returns:
-        decorated function
-
-    Notes:
-        1) this decorator adds the args to the kwargs for the function
-           being decorated
-
-    """
-
-    @functools.wraps(func)
-    def decorator_setup_teardown(self, *args, **kwargs) -> Any:
-        # get unique timestamp to use for part of the smart thread name
-        req_num = UniqueTS.get_unique_ts()
-
-        with self.request_threads_lock:
-            if (
-                not self.ready_for_work
-                and func.__name__ != "connect_to_ib"
-                and func.__name__ != "disconnect_from_ib"
-            ):
-                error_msg = f"setup_teardown raising AlgoApiNotReady"
-                logging.error(error_msg)
-                raise AlgoApiNotReady(error_msg)
-            # if self.shut_down_in_progress:
-            #     error_msg = f"setup_teardown raising RequestAfterShutdown"
-            #     logging.error(error_msg)
-            #     raise RequestAfterShutdown(error_msg)
-            try:
-                # case 0: we are running under the thread that
-                #         instantiated the AlgoApi and should certainly
-                #         get back the already existing SmartThread
-                #         (which is self)
-                # case 1: we are running under a different thread than
-                #         the one that instantiated the AlgoApi and this
-                #         is the first time we have made a request on
-                #         this thread which means we do not yet have a
-                #         SmartThread. So we will get the
-                #         SmartThreadNotFound exception and create a new
-                #         SmartThread and place it in the
-                #         request_threads array.
-                # case 2: we are running under a different thread than
-                #         the one that instantiated the AlgoApi and this
-                #         is *not* the first time we have made a request
-                #         on this thread which means we already have a
-                #         a SmartThread and should get it returned on
-                #         this call. We will mark it in use and set the
-                #         start_time using the req_num time stamp.
-                req_smart_thread = SmartThread.get_current_smart_thread(
-                    group_name=self.group_name
-                )
-                if req_smart_thread is not self:
-                    self.request_threads[req_smart_thread.name].in_use_count += 1
-                    self.request_threads[req_smart_thread.name].start_time = req_num
-
-            except SmartThreadNotFound:
-                req_smart_thread_name = f"algo_requestor_{req_num}"
-                req_smart_thread = SmartThread(
-                    group_name=self.group_name, name=req_smart_thread_name
-                )
-                self.request_threads[req_smart_thread_name] = ThreadBlock(
-                    smart_thread=req_smart_thread,
-                    in_use_count=1,
-                    create_time=req_num,
-                    start_time=req_num,
-                )
-
-        kwargs["setup_args"] = SetupArgs(smart_thread=req_smart_thread, req_num=req_num)
-
-        try:
-            ret_value = func(self, *args, **kwargs)
-        finally:
-            if req_smart_thread is not self:
-                with self.request_threads_lock:
-                    # if we just did a disconnect
-                    self.request_threads[req_smart_thread.name].in_use_count -= 1
-                    self.request_threads[req_smart_thread.name].time_freed = time.time()
-                    if (
-                        not self.ready_for_work
-                        and self.request_threads[req_smart_thread.name].in_use_count
-                        == 0
-                    ):
-                        del self.request_threads[req_smart_thread.name]
-                        req_smart_thread.smart_unreg()
-
-        return ret_value
-
-    # return SetupArgs(smart_thread=req_smart_thread, req_num=req_num)
-    return decorator_setup_teardown
+# def setup_teardown(func: Callable[..., Any]) -> Callable[..., Any]:
+#     """Decorator to get and pass SmartThread and req_num to request.
+#
+#     Args:
+#         func: function to be decorated
+#
+#     Returns:
+#         decorated function
+#
+#     Notes:
+#         1) this decorator adds the args to the kwargs for the function
+#            being decorated
+#
+#     """
+#
+#     @functools.wraps(func)
+#     def decorator_setup_teardown(self, *args, **kwargs) -> Any:
+#         # get unique timestamp to use for part of the smart thread name
+#         req_num = UniqueTS.get_unique_ts()
+#
+#         with self.request_threads_lock:
+#             if (
+#                 not self.ready_for_work
+#                 and func.__name__ != "connect_to_ib"
+#                 and func.__name__ != "disconnect_from_ib"
+#             ):
+#                 error_msg = f"setup_teardown raising AlgoApiNotReady"
+#                 logging.error(error_msg)
+#                 raise AlgoApiNotReady(error_msg)
+#             # if self.shut_down_in_progress:
+#             #     error_msg = f"setup_teardown raising RequestAfterShutdown"
+#             #     logging.error(error_msg)
+#             #     raise RequestAfterShutdown(error_msg)
+#             try:
+#                 # case 0: we are running under the thread that
+#                 #         instantiated the AlgoApi and should certainly
+#                 #         get back the already existing SmartThread
+#                 #         (which is self)
+#                 # case 1: we are running under a different thread than
+#                 #         the one that instantiated the AlgoApi and this
+#                 #         is the first time we have made a request on
+#                 #         this thread which means we do not yet have a
+#                 #         SmartThread. So we will get the
+#                 #         SmartThreadNotFound exception and create a new
+#                 #         SmartThread and place it in the
+#                 #         request_threads array.
+#                 # case 2: we are running under a different thread than
+#                 #         the one that instantiated the AlgoApi and this
+#                 #         is *not* the first time we have made a request
+#                 #         on this thread which means we already have a
+#                 #         a SmartThread and should get it returned on
+#                 #         this call. We will mark it in use and set the
+#                 #         start_time using the req_num time stamp.
+#                 req_smart_thread = SmartThread.get_current_smart_thread(
+#                     group_name=self.group_name
+#                 )
+#                 if req_smart_thread is not self:
+#                     self.request_threads[req_smart_thread.name].in_use_count += 1
+#                     self.request_threads[req_smart_thread.name].start_time = req_num
+#
+#             except SmartThreadNotFound:
+#                 req_smart_thread_name = f"algo_requestor_{req_num}"
+#                 req_smart_thread = SmartThread(
+#                     group_name=self.group_name, name=req_smart_thread_name
+#                 )
+#                 self.request_threads[req_smart_thread_name] = ThreadBlock(
+#                     smart_thread=req_smart_thread,
+#                     in_use_count=1,
+#                     create_time=req_num,
+#                     start_time=req_num,
+#                 )
+#
+#         kwargs["_setup_args"] = SetupArgs(smart_thread=req_smart_thread, req_num=req_num)
+#
+#         try:
+#             ret_value = func(self, *args, **kwargs)
+#         finally:
+#             if req_smart_thread is not self:
+#                 with self.request_threads_lock:
+#                     # if we just did a disconnect
+#                     self.request_threads[req_smart_thread.name].in_use_count -= 1
+#                     self.request_threads[req_smart_thread.name].time_freed = time.time()
+#                     if (
+#                         not self.ready_for_work
+#                         and self.request_threads[req_smart_thread.name].in_use_count
+#                         == 0
+#                     ):
+#                         del self.request_threads[req_smart_thread.name]
+#                         req_smart_thread.smart_unreg()
+#
+#         return ret_value
+#
+#     # return SetupArgs(smart_thread=req_smart_thread, req_num=req_num)
+#     return decorator_setup_teardown
 
 
 ####################################################################
@@ -443,7 +443,9 @@ def algo_setup(
                     start_time=req_num,
                 )
 
-        kwargs["setup_args"] = SetupArgs(smart_thread=req_smart_thread, req_num=req_num)
+        kwargs["_setup_args"] = SetupArgs(
+            smart_thread=req_smart_thread, req_num=req_num
+        )
 
         try:
             exit_log_msg = ""
@@ -472,6 +474,7 @@ def algo_setup(
             ret_value = func(self, *args, **kwargs)
             if exit_log_msg:
                 logger.debug(exit_log_msg)
+
         finally:
             if req_smart_thread is not self:
                 with self.request_threads_lock:
@@ -628,11 +631,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # shut_down
     ####################################################################
-    @algo_setup(omit_args="setup_args")
+    @algo_setup(omit_args="_setup_args")
     def shut_down(
         self,
+        _setup_args: SetupArgs,
         timeout: Optional[IntFloat] = None,
-        setup_args: SetupArgs = dummy_setup_args,
     ) -> None:
         """Shut down the AlgoApp.
 
@@ -644,7 +647,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         """
         # self.stop_monitor = True
         self.disconnect_from_ib(timeout=timeout)
-        setup_args.smart_thread.smart_unreg(targets=self.algo_name)
+        _setup_args.smart_thread.smart_unreg(targets=self.algo_name)
 
     ####################################################################
     # setup_client_request
@@ -734,15 +737,15 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # connect_to_ib
     ###########################################################################
-    @algo_setup(omit_args="setup_args")
+    @algo_setup(omit_args="_setup_args")
     def connect_to_ib(
         self,
         *,
         ip_addr: str,
         port: int,
         client_id: int,
+        _setup_args: SetupArgs,
         timeout: Optional[IntFloat] = None,
-        setup_args: SetupArgs = dummy_setup_args,
     ) -> None:
         """Connect to IB on the given addr and port and client id.
 
@@ -753,7 +756,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             timeout: specifies the amount of time allowed for the
                 request. If exceeded, a ConnectTimeout error will be
                 raised.
-            setup_args: the async args
+            _setup_args: the async args
 
         Raises:
             ConnectTimeout: timed out waiting for next valid request ID
@@ -765,7 +768,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             if self.algo_client.isConnected():
                 error_msg = self._get_error_msg(
                     error=AlreadyConnected,
-                    extra=f"SmartThread name={setup_args.smart_thread.name}, "
+                    extra=f"SmartThread name={_setup_args.smart_thread.name}, "
                     f"{ip_addr=}, {port=}, {client_id=}",
                 )
                 logger.debug(error_msg)
@@ -781,8 +784,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                     market_data=self.market_data,
                 )
             req_id = self.setup_client_request(
-                requestor_name=setup_args.smart_thread.name,
-                req_num=setup_args.req_num,
+                requestor_name=_setup_args.smart_thread.name,
+                req_num=_setup_args.req_num,
             )
             self.algo_client.connect(ip_addr, port, client_id)
             logger.debug(f"{self.msg_prefix} starting AlgoClient thread")
@@ -790,7 +793,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
             # we will wait on the first requestID here
             try:
-                setup_args.smart_thread.smart_wait(
+                _setup_args.smart_thread.smart_wait(
                     resumers=self.client_name,
                     timeout=timeout,
                     log_msg="connect_to_ib wait for nextValid_ID",
@@ -803,7 +806,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 error_msg = self._get_error_msg(
                     error=ConnectTimeout,
                     extra="waiting to receive nextValid_ID. "
-                    f"SmartThread name={setup_args.smart_thread.name}, "
+                    f"SmartThread name={_setup_args.smart_thread.name}, "
                     f"{ip_addr=}, {port=}, {client_id=}",
                 )
                 raise ConnectTimeout(error_msg)
@@ -816,11 +819,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # disconnect_from_ib
     ####################################################################
-    @algo_setup(omit_args="setup_args")
+    @algo_setup(omit_args="_setup_args")
     def disconnect_from_ib(
         self,
+        _setup_args: SetupArgs,
         timeout: Optional[IntFloat] = None,
-        setup_args: SetupArgs = dummy_setup_args,
     ) -> None:
         """Disconnect from ib.
 
@@ -834,9 +837,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         """
         timer = Timer(timeout=timeout, default_timeout=self.default_timeout)
 
-        # setup_args = self.get_setup_args()
-
-        # self.shut_down_in_progress = True
         self.ready_for_work = False
 
         while True:
@@ -845,7 +845,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             with self.request_threads_lock:
                 # the algo_api smartThread is not in self.request_threads
                 for key, item in self.request_threads.items():
-                    if item.smart_thread is not setup_args.smart_thread:
+                    if item.smart_thread is not _setup_args.smart_thread:
                         if item.in_use_count > 0:
                             pending_names.append(key)
                         else:
@@ -854,7 +854,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                     del self.request_threads[name]
 
             if names_to_remove:
-                setup_args.smart_thread.smart_unreg(targets=names_to_remove)
+                _setup_args.smart_thread.smart_unreg(targets=names_to_remove)
 
             if not pending_names:
                 break
@@ -878,7 +878,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             else:
                 logger.debug(f"{self.msg_prefix} joining algo_client")
                 try:
-                    setup_args.smart_thread.smart_join(
+                    _setup_args.smart_thread.smart_join(
                         targets=self.client_name,
                         timeout=timer.remaining_time(),
                     )
