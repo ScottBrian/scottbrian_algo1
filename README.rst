@@ -58,7 +58,7 @@ To install ibapi into venv312:
     2) run: py -m pip install file:///C:/TWS%20API/source/pythonclient/dist/ibapi-10.24.1-py3-none-any.whl
 
 To install paratools for testing:
-    1) get into venv311 folder
+    1) get into venv312 folder
     2) run: py -m pip install file:///C:/Users/Tiger/PycharmProjects/scottbrian_paratools/dist/scottbrian_paratools-1.0.0-py2.py3-none-any.whl
 
 Usage examples:

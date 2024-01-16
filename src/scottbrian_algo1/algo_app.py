@@ -38,6 +38,81 @@ asynchronously. When synchronous, any results are returned directly.
 For asynchronous requests, the requestor must do a SmartThread
 smart_recv request to receive the result.
 
+:Example 1: Instantiate AlgoApp for the current thread:
+
+.. code-block:: python
+
+    from pathlib import Path
+    from scottbrian_algo1.algo_app import AlgoApp
+    from scottbrian_utils.file_catalog import FileCatalog
+
+
+    d = tmp_path / "t_files"
+    d.mkdir()
+    symbols_path = d / "symbols.csv"
+    stock_symbols_path = d / "stock_symbols.csv"
+    symbol_status_path = d / "symbol_status.csv"
+    contracts_path = d / "contracts.csv"
+    contract_details_path = d / "contract_details.csv"
+    extra_contract_path = d / "extra_contract.csv"
+    fundamental_data_path = d / "fundamental_data.csv"
+
+    catalog = FileCatalog(
+        {
+            "symbols": symbols_path,
+            "stock_symbols": stock_symbols_path,
+            "symbols_status": symbol_status_path,
+            "contracts": contracts_path,
+            "contract_details": contract_details_path,
+            "extra_contract": extra_contract_path,
+            "fundamental_data": fundamental_data_path,
+        }
+    )
+    algo_app = AlgoApp(ds_catalog=test_cat,
+                       group_name="algo_app_group1",
+                       algo_name="algo_app1")
+
+
+:Example 2: Instantiate a SmartThread with a *target_rtn* argument to
+            create a new thread that will execute under the *target_rtn*
+            routine:
+
+.. code-block:: python
+
+    from scottbrian_paratools.smart_thread import SmartThread
+    def f1() -> None:
+        pass
+
+    beta_smart_thread = SmartThread(group_name='group_1', name='beta',
+                                    target_rtn=f1)
+
+.. invisible-code-block: python
+
+    alpha_smart_thread.smart_unreg(targets="beta")
+
+
+:Example 3: Instantiate a SmartThread with a *thread* argument while
+            running under an already established thread that was
+            created via ``threading.Thread()``:
+
+.. code-block:: python
+
+    from scottbrian_paratools.smart_thread import SmartThread
+    def f1() -> None:
+        pass
+
+    beta_thread = threading.Thread(target=f1)
+    beta_smart_thread = SmartThread(group_name='group_1', name='beta',
+                                    thread=beta_thread,
+                                    auto_start=False)
+    beta_smart_thread.smart_start()
+
+
+.. invisible-code-block: python
+
+    alpha_smart_thread.smart_join(targets="beta")
+    alpha_smart_thread.smart_unreg()
+
 """
 ########################################################################
 # Standard Library
@@ -218,11 +293,6 @@ class SetupArgs:
     req_num: UniqueTStamp
 
 
-dummy__setup_args = SetupArgs(
-    smart_thread=SmartThread(group_name="1", name="1"), req_num=0.0
-)
-
-
 ########################################################################
 # ThreadConfig
 ########################################################################
@@ -241,122 +311,6 @@ class ThreadBlock:
     create_time: float = 0.0
     start_time: float = 0.0
     time_freed: float = 0.0
-
-
-####################################################################
-# make_sync_async
-####################################################################
-# def setup_sync(func: Callable[..., Any]) -> Callable[..., Any]:
-#     @functools.wraps(func)
-#     def wrapped(self, *args, **kwargs) -> Any:
-#         # logger.debug(f"{args=}, {kwargs=}")
-#         smart_thread = SmartThread.get_current_smart_thread(group_name=self.group_name)
-#         ref_num: UniqueTStamp = UniqueTS.get_unique_ts()
-#
-#         ret_value = func(self, *args, **kwargs)
-#
-#         return ret_value
-#
-#     return wrapped
-
-
-####################################################################
-# setup_teardown
-####################################################################
-# def setup_teardown(func: Callable[..., Any]) -> Callable[..., Any]:
-#     """Decorator to get and pass SmartThread and req_num to request.
-#
-#     Args:
-#         func: function to be decorated
-#
-#     Returns:
-#         decorated function
-#
-#     Notes:
-#         1) this decorator adds the args to the kwargs for the function
-#            being decorated
-#
-#     """
-#
-#     @functools.wraps(func)
-#     def decorator_setup_teardown(self, *args, **kwargs) -> Any:
-#         # get unique timestamp to use for part of the smart thread name
-#         req_num = UniqueTS.get_unique_ts()
-#
-#         with self.request_threads_lock:
-#             if (
-#                 not self.ready_for_work
-#                 and func.__name__ != "connect_to_ib"
-#                 and func.__name__ != "disconnect_from_ib"
-#             ):
-#                 error_msg = f"setup_teardown raising AlgoApiNotReady"
-#                 logging.error(error_msg)
-#                 raise AlgoApiNotReady(error_msg)
-#             # if self.shut_down_in_progress:
-#             #     error_msg = f"setup_teardown raising RequestAfterShutdown"
-#             #     logging.error(error_msg)
-#             #     raise RequestAfterShutdown(error_msg)
-#             try:
-#                 # case 0: we are running under the thread that
-#                 #         instantiated the AlgoApi and should certainly
-#                 #         get back the already existing SmartThread
-#                 #         (which is self)
-#                 # case 1: we are running under a different thread than
-#                 #         the one that instantiated the AlgoApi and this
-#                 #         is the first time we have made a request on
-#                 #         this thread which means we do not yet have a
-#                 #         SmartThread. So we will get the
-#                 #         SmartThreadNotFound exception and create a new
-#                 #         SmartThread and place it in the
-#                 #         request_threads array.
-#                 # case 2: we are running under a different thread than
-#                 #         the one that instantiated the AlgoApi and this
-#                 #         is *not* the first time we have made a request
-#                 #         on this thread which means we already have a
-#                 #         a SmartThread and should get it returned on
-#                 #         this call. We will mark it in use and set the
-#                 #         start_time using the req_num time stamp.
-#                 req_smart_thread = SmartThread.get_current_smart_thread(
-#                     group_name=self.group_name
-#                 )
-#                 if req_smart_thread is not self:
-#                     self.request_threads[req_smart_thread.name].in_use_count += 1
-#                     self.request_threads[req_smart_thread.name].start_time = req_num
-#
-#             except SmartThreadNotFound:
-#                 req_smart_thread_name = f"algo_requestor_{req_num}"
-#                 req_smart_thread = SmartThread(
-#                     group_name=self.group_name, name=req_smart_thread_name
-#                 )
-#                 self.request_threads[req_smart_thread_name] = ThreadBlock(
-#                     smart_thread=req_smart_thread,
-#                     in_use_count=1,
-#                     create_time=req_num,
-#                     start_time=req_num,
-#                 )
-#
-#         kwargs["_setup_args"] = SetupArgs(smart_thread=req_smart_thread, req_num=req_num)
-#
-#         try:
-#             ret_value = func(self, *args, **kwargs)
-#         finally:
-#             if req_smart_thread is not self:
-#                 with self.request_threads_lock:
-#                     # if we just did a disconnect
-#                     self.request_threads[req_smart_thread.name].in_use_count -= 1
-#                     self.request_threads[req_smart_thread.name].time_freed = time.time()
-#                     if (
-#                         not self.ready_for_work
-#                         and self.request_threads[req_smart_thread.name].in_use_count
-#                         == 0
-#                     ):
-#                         del self.request_threads[req_smart_thread.name]
-#                         req_smart_thread.smart_unreg()
-#
-#         return ret_value
-#
-#     # return SetupArgs(smart_thread=req_smart_thread, req_num=req_num)
-#     return decorator_setup_teardown
 
 
 ####################################################################

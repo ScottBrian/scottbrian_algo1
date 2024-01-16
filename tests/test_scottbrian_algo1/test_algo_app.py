@@ -18745,81 +18745,6 @@ class ConfigVerifier:
         )
 
     ####################################################################
-    # build_smart_start_scenario
-    ####################################################################
-    def build_smart_start_scenario(
-        self,
-        num_auto_start: int,
-        num_manual_start: int,
-        num_unreg: int,
-        num_alive: int,
-        num_stopped: int,
-    ) -> None:
-        """Return a list of ConfigCmd items for smart_start.
-
-        Args:
-            num_auto_start: number of threads to auto start
-            num_manual_start: number of threads to manually start
-            num_unreg: number of thread that are unregistered
-            num_alive: number of threads that are alive
-            num_stopped: number of threads that are stopped
-
-        """
-        # Make sure we have enough threads
-        num_alt_cmd_runners = 1
-
-        alt_cmd_runners = get_names("alt_cmd_runner_", num_alt_cmd_runners)
-        auto_start_names = get_names("auto_start_name_", num_auto_start)
-        manual_start_names = get_names("manual_start_name_", num_manual_start)
-        unreg_names = get_names("unreg_names_", num_unreg)
-        alive_names = get_names("alive_name_", num_alive)
-        stopped_remotes = get_names("stopped_remote_", num_stopped)
-
-        self.create_config(
-            unreg_names=auto_start_names | unreg_names,
-            reg_names=manual_start_names,
-            active_names=alt_cmd_runners | alive_names,
-            stopped_names=stopped_remotes,
-        )
-
-        unreg_remotes = unreg_names | alive_names | stopped_remotes
-
-        for idx, name in enumerate(roundrobin(auto_start_names, manual_start_names)):
-            if name in auto_start_names:
-                self.add_cmd(
-                    CreateF1AutoStart(
-                        cmd_runners=self.commander_name,
-                        f1_create_items=[
-                            F1CreateItem(
-                                name=name, auto_start=True, target_rtn=outer_f1
-                            ),
-                        ],
-                    )
-                )
-                self.unregistered_names -= {name}
-                self.active_names |= {name}
-
-            elif name in manual_start_names:
-                smart_start_serial_num = self.add_cmd(
-                    StartThread(
-                        cmd_runners="alt_cmd_runner_0",
-                        start_names=unreg_remotes | {name},
-                        unreg_remotes=unreg_remotes,
-                        log_msg="smart_start test 1",
-                    )
-                )
-                self.add_cmd(
-                    ConfirmResponse(
-                        cmd_runners=self.commander_name,
-                        confirm_cmd="StartThread",
-                        confirm_serial_num=smart_start_serial_num,
-                        confirmers="alt_cmd_runner_0",
-                    )
-                )
-                self.registered_names -= {name}
-                self.active_names |= {name}
-
-    ####################################################################
     # build_start_suite
     ####################################################################
     def build_start_suite(
@@ -23076,13 +23001,8 @@ class ConfigVerifier:
             self.monitor_event.set()
             self.monitor_thread.join()
 
-            # if self.test_case_aborted:
-            #     with open(path_to_file, 'w') as file:
-
-            # assert not self.test_case_aborted
-
             self.log_test_msg(
-                f"main_driver exit: {self.group_name=}, " f"{self.test_case_aborted=}"
+                f"main_driver exit: {self.group_name=}, {self.test_case_aborted=}"
             )
 
     ####################################################################
@@ -38136,67 +38056,6 @@ class TestSmartThreadComboScenarios:
         )
 
     ####################################################################
-    # test_smart_start_scenarios
-    ####################################################################
-    @pytest.mark.parametrize("num_unreg_arg", [0, 1, 2])
-    @pytest.mark.parametrize("num_alive_arg", [0, 1, 2])
-    @pytest.mark.parametrize("num_stopped_arg", [0, 1, 2])
-    # @pytest.mark.seltest
-    def test_smart_start_scenarios(
-        self,
-        num_unreg_arg: int,
-        num_alive_arg: int,
-        num_stopped_arg: int,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """Test smart_sync scenarios.
-
-        Args:
-            num_unreg_arg: number threads to not create for timeout
-            num_alive_arg: number threads alive already
-            num_stopped_arg: number threads stopped
-            caplog: pytest fixture to capture log output
-
-        """
-        # num_auto_start_arg: number of threads to auto start
-        # num_manual_start_arg: number of thread to manually start
-        sdparms: list[ScenarioDriverParms] = []
-        config_idx = -1
-        for num_auto_start_arg in (0, 1, 2):
-            for num_manual_start_arg in (0, 1, 2):
-                if (
-                    num_auto_start_arg
-                    + num_manual_start_arg
-                    + num_unreg_arg
-                    + num_alive_arg
-                    + num_stopped_arg
-                ) == 0:
-                    continue
-                config_idx += 1
-                args_for_scenario_builder: dict[str, Any] = {
-                    "num_auto_start": num_auto_start_arg,
-                    "num_manual_start": num_manual_start_arg,
-                    "num_unreg": num_unreg_arg,
-                    "num_alive": num_alive_arg,
-                    "num_stopped": num_stopped_arg,
-                }
-
-                sdparms.append(
-                    ScenarioDriverParms(
-                        scenario_builder=ConfigVerifier.build_smart_start_scenario,
-                        scenario_builder_args=args_for_scenario_builder,
-                        commander_config=AppConfig(config_idx % len(AppConfig) + 1),
-                        commander_name=f"alpha{config_idx}",
-                        group_name=f"test{config_idx}",
-                    )
-                )
-
-        scenario_driver(
-            caplog_to_use=caplog,
-            scenario_driver_parms=sdparms,
-        )
-
-    ####################################################################
     # test_smart_recv_sender_count_scenario
     ####################################################################
     @pytest.mark.parametrize("num_count_0_arg", [0, 1, 2, 3, 4, 5])
@@ -38429,45 +38288,6 @@ def lock_verify(exp_positions: list[str]) -> None:
     logger.debug(f"lock_verify exit: {exp_positions=}, {line_num=}")
 
 
-class LogMsgBuilder:
-    """Build log messages that are to be added to LogVer."""
-
-    def __init__(self):
-        self.msg1 = ""
-        self.msg2 = ""
-        self.msg3 = ""
-        self.msg4 = ""
-
-    def build_msg1(
-        self,
-        ip_addr: str,
-        port: int,
-        client_id: int,
-        timeout: OptIntFloat = None,
-    ):
-        self.msg1 = (
-            f"connect_to_ib entry: {ip_addr=}, {port=}, {client_id=}, {timeout=} "
-        )
-        cat_app.log_ver.add_msg(
-            log_msg=re.escape(log_msg), log_name="scottbrian_algo1.algo_app"
-        )
-        cat_app.log_ver.add_msg(
-            log_msg="starting AlgoClient thread 1",
-            log_name="scottbrian_algo1.algo_app",
-            log_level=logging.INFO,
-        )
-
-    connect_log_msgs: list[tuple[int, str]] = [
-        (
-            logging.INFO,
-            "next valid ID is 1, "
-            "threading.current_thread()=AlgoClient(algo_name='algo_app'), "
-            "self=AlgoWrapper(, group_name=algo_app_group, algo_name=algo_app, "
-            "client_name=ibapi_client)",
-        )
-    ]
-
-
 ########################################################################
 # TestSmartThreadInterface class
 ########################################################################
@@ -38587,9 +38407,34 @@ class TestAlgoAppInterface:
 
 
 ########################################################################
-# TestAlgoAppConnect class
+# TestAlgoExamples
 ########################################################################
-class TestAlgoAppConnect:
+@pytest.mark.cover
+class TestAlgoExamples:
+    """Test class for SmartThread example tests."""
+
+    ####################################################################
+    # test_smart_thread_instantiation_example_1
+    ####################################################################
+    def test_algo_instantiation_example_1(self, capsys: Any) -> None:
+        """Test smart_thread instantiation example 1.
+
+        Create a SmartThread configuration for threads named alpha and
+        beta, send and receive a message, and resume a wait. Note the
+        use of auto_start=False and doing the smart_start.
+
+        Args:
+            capsys: pytest fixture to get the print output
+        """
+        print("mainline alpha entered")
+
+        logger.debug("mainline exiting")
+
+
+########################################################################
+# TestAlgoAppBasicTests
+########################################################################
+class TestAlgoAppBasicTests:
     """TestAlgoAppConnect class."""
 
     ####################################################################
@@ -38727,6 +38572,165 @@ class TestAlgoAppConnect:
         algo_app.shut_down()
 
     ####################################################################
+    # test_mock_disconnect_from_ib
+    ####################################################################
+    @pytest.mark.parametrize("async_tf_arg", [True, False])
+    @pytest.mark.parametrize("delay_arg", [0, 2, 4])
+    @pytest.mark.parametrize(
+        "timeout_type_arg",
+        [
+            TimeoutType.TimeoutNone,
+            TimeoutType.TimeoutFalse,
+            TimeoutType.TimeoutTrue,
+        ],
+    )
+    def test_mock_disconnect_from_ib(
+        self,
+        async_tf_arg: bool,
+        delay_arg: int,
+        timeout_type_arg: int,
+        app_cat: "FileCatalog",
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test disconnecting from IB.
+
+        Args:
+            delay_arg: number of seconds to delay
+            timeout_type_arg: specifies whether timeout should occur
+            app_cat: catalog to use for connect
+        """
+        def lock_f1(f1_smart_thread: SmartThread):
+
+            disc_lock = algo_app.algo_client.disconnect_lock
+            while True:
+                my_msg = msgs.get_msg(f1_smart_thread.name, timeout=60)
+                if my_msg == 'exit':
+                    break
+                elif my_msg == 'get_lock':
+                    disc_lock.acquire()
+                    msgs.queue_msg('alpha', 'lock_obtained')
+                elif my_msg == 'rel_lock':
+                    disc_lock.release()
+
+        def f1(f1_smart_thread: SmartThread, f1_timeout_type_arg: int):
+            disconnect_test(f1_timeout_type_arg)
+            f1_smart_thread.smart_resume(waiters="alpha")
+
+        def disconnect_test(ct_timeout_type_arg: int):
+            if ct_timeout_type_arg == TimeoutType.TimeoutNone:
+                algo_app.disconnect_from_ib()
+            elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
+                algo_app.disconnect_from_ib(
+                    timeout=delay_arg * 2,
+                )
+            else:
+                # mock_ib.delay_value = -1
+                with pytest.raises(DisconnectTimeout):
+                    algo_app.disconnect_from_ib(
+                        timeout=delay_arg / 2.0,
+                    )
+
+        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
+            return
+
+        msgs = Msgs()
+
+        algo_group_name = "algo_group_1"
+        algo_name = "algo_1"
+        ip_addr = "127.0.0.1"
+        port = AlgoApp.PORT_FOR_LIVE_TRADING
+
+        log_ver = LogVer()
+
+        mock_ib = MockIB(
+            test_cat=test_cat,
+            log_ver=log_ver,
+            monkeypatch_to_use=monkeypatch,
+            group_name=algo_group_name,
+            algo_name=algo_name,
+            ip_addr=ip_addr,
+            port=port,
+        )
+
+        algo_app = AlgoApp(
+            ds_catalog=app_cat,
+            group_name=algo_group_name,
+            algo_name=algo_name,
+        )
+        verify_algo_app_initialized(algo_app)
+
+        # we are testing connect_to_ib and the subsequent code that gets
+        # control as a result, such as getting the first requestID and
+        # then starting a separate thread for the run loop.
+        logger.debug("about to connect")
+        algo_app.connect_to_ib(ip_addr=ip_addr, port=port, client_id=1)
+
+        verify_algo_app_connected(algo_app)
+
+        mock_ib.delay_time = delay_arg
+
+        alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
+
+        SmartThread(
+            group_name="test1",
+            name="lock1",
+            target_rtn=lock_f1,
+            thread_parm_name="f1_smart_thread",
+        )
+
+        SmartThread(
+            group_name="test1",
+            name="lock2",
+            target_rtn=lock_f1,
+            thread_parm_name="f1_smart_thread",
+        )
+
+        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
+            msgs.queue_msg("lock1", "get_lock")
+
+
+
+        mock_ib.log_test_msg("about to disconnect")
+
+        if async_tf_arg:
+
+            SmartThread(
+                group_name="test1",
+                name="beta",
+                target_rtn=f1,
+                thread_parm_name="f1_smart_thread",
+                kwargs={"f1_timeout_type_arg": timeout_type_arg},
+            )
+
+            alpha_smart_thread.smart_wait(resumers="beta")
+            alpha_smart_thread.smart_join(targets="beta")
+            alpha_smart_thread.smart_unreg()
+
+        else:
+            disconnect_test(timeout_type_arg)
+
+        mock_ib.log_test_msg("back from disconnect")
+
+        mock_ib.delay_time = 0
+
+        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
+            verify_algo_app_connected(algo_app)
+
+            algo_app.disconnect_from_ib()
+
+        verify_algo_app_disconnected(algo_app)
+
+        algo_app.shut_down()
+
+
+########################################################################
+# TestAlgoAppConnect class
+########################################################################
+class TestAlgoAppConnect:
+    """TestAlgoAppConnect class."""
+
+    ####################################################################
     # test_connect_scenario
     ####################################################################
     @pytest.mark.parametrize(
@@ -38792,66 +38796,6 @@ class TestAlgoAppConnect:
             caplog_to_use=caplog,
             scenario_driver_parms=sdparms,
         )
-
-    ####################################################################
-    # test_mock_disconnect_from_ib
-    ####################################################################
-    @pytest.mark.parametrize("delay_arg", [0, 2, 4])
-    @pytest.mark.parametrize(
-        "timeout_type_arg",
-        [
-            TimeoutType.TimeoutNone,
-            TimeoutType.TimeoutFalse,
-            TimeoutType.TimeoutTrue,
-        ],
-    )
-    def test_mock_disconnect_from_ib(
-        self,
-        delay_arg: int,
-        timeout_type_arg: int,
-        cat_app: "MockIB",
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """Test disconnecting from IB.
-
-        Args:
-            delay_arg: number of seconds to delay
-            timeout_type_arg: specifies whether timeout should occur
-            cat_app: pytest fixture (see conftest.py)
-        """
-        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
-            return
-
-        algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
-        verify_algo_app_initialized(algo_app)
-
-        # we are testing connect_to_ib and the subsequent code that gets
-        # control as a result, such as getting the first requestID and
-        # then starting a separate thread for the run loop.
-        logger.debug("about to connect")
-        algo_app.connect_to_ib(
-            ip_addr="127.0.0.1", port=algo_app.PORT_FOR_LIVE_TRADING, client_id=1
-        )
-
-        verify_algo_app_connected(algo_app)
-
-        cat_app.delay_value = delay_arg
-
-        if timeout_type_arg == TimeoutType.TimeoutNone:
-            algo_app.disconnect_from_ib()
-        elif timeout_type_arg == TimeoutType.TimeoutFalse:
-            timeout_value = abs(delay_arg) * 2
-            algo_app.disconnect_from_ib(timeout=timeout_value)
-        else:
-            timeout_value = abs(delay_arg) * 0.5
-            algo_app.disconnect_from_ib(timeout=timeout_value)
-
-        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
-            time.sleep(delay_arg + 1)
-
-        verify_algo_app_disconnected(algo_app)
-
-        # algo_app.shut_down()
 
     ####################################################################
     # test_mock_connect_to_ib_async
