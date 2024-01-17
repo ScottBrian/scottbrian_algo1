@@ -38233,7 +38233,7 @@ def get_smart_thread_name(
 ####################################################################
 # lock_verify
 ####################################################################
-def lock_verify(exp_positions: list[str], lock: sel.SELock) -> None:
+def lock_verify(exp_positions: list[list[str, str]], lock: sel.SELock) -> None:
     """Increment the pending operations count.
 
     Args:
@@ -38264,15 +38264,15 @@ def lock_verify(exp_positions: list[str], lock: sel.SELock) -> None:
             )
             lock_verified = False
         else:
-            for idx, expected_name in enumerate(exp_positions):
+            for idx, expected_name_group in enumerate(exp_positions):
+                expected_name = expected_name_group[0]
+                expected_group = expected_name_group[1]
                 search_thread = lock.owner_wait_q[idx].thread
                 test_name = get_smart_thread_name(
-                    search_thread=search_thread, group_name="algo_app_group"
+                    search_thread=search_thread, group_name=expected_group
                 )
                 if test_name != expected_name:
-                    logger.debug(
-                        f"lock_verify False 2: {test_name=}, " f"{expected_name=}"
-                    )
+                    logger.debug(f"lock_verify False 2: {test_name=}, {expected_name=}")
                     lock_verified = False
                     break
 
@@ -38628,13 +38628,23 @@ class TestAlgoAppBasicTests:
 
             # verify lock1 and disconnector are locked
             mock_ib.log_test_msg("lock_man about to verify locks held 1")
-            lock_verify(exp_positions=["lock1", disc_name], lock=disc_lock)
+            lock_verify(
+                exp_positions=[["lock1", "test1"], [disc_name, algo_group_name]],
+                lock=disc_lock,
+            )
 
             # tell lock2 to get lock
             f1_smart_thread.smart_resume(waiters="lock2")
 
             # verify lock1, disconnector, and lock2 are locked
-            lock_verify(exp_positions=["lock1", disc_name, "lock2"], lock=disc_lock)
+            lock_verify(
+                exp_positions=[
+                    ["lock1", "test1"],
+                    [disc_name, algo_group_name],
+                    ["lock2", "test1"],
+                ],
+                lock=disc_lock,
+            )
 
             # tell lock1 to drop lock
             f1_smart_thread.smart_resume(waiters="lock1")
@@ -38747,7 +38757,6 @@ class TestAlgoAppBasicTests:
 
             alpha_smart_thread.smart_wait(resumers="beta")
             alpha_smart_thread.smart_join(targets="beta")
-            alpha_smart_thread.smart_unreg()
 
         else:
             mock_ib.log_test_msg("alpha about to call disconnect_test")
@@ -38755,14 +38764,13 @@ class TestAlgoAppBasicTests:
 
         mock_ib.log_test_msg("back from disconnect")
 
-        # mock_ib.delay_time = 0
-
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
-            verify_algo_app_connected(algo_app)
-
             algo_app.disconnect_from_ib()
 
         verify_algo_app_disconnected(algo_app)
+
+        alpha_smart_thread.smart_join(targets=["lock1", "lock2", "lock_man"])
+        alpha_smart_thread.smart_unreg()
 
         algo_app.shut_down()
 
