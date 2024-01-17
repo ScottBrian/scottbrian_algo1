@@ -38233,7 +38233,7 @@ def get_smart_thread_name(
 ####################################################################
 # lock_verify
 ####################################################################
-def lock_verify(exp_positions: list[str]) -> None:
+def lock_verify(exp_positions: list[str], lock: sel.SELock) -> None:
     """Increment the pending operations count.
 
     Args:
@@ -38257,15 +38257,15 @@ def lock_verify(exp_positions: list[str]) -> None:
     while not lock_verified:
         lock_verified = True  # assume lock will verify
 
-        if len(exp_positions) != len(AlgoApp._config_lock.owner_wait_q):
+        if len(exp_positions) != len(lock.owner_wait_q):
             logger.debug(
                 f"lock_verify False 1: {len(exp_positions)=}, "
-                f"{len(AlgoApp._config_lock.owner_wait_q)=}"
+                f"{len(lock.owner_wait_q)=}"
             )
             lock_verified = False
         else:
             for idx, expected_name in enumerate(exp_positions):
-                search_thread = AlgoApp._config_lock.owner_wait_q[idx].thread
+                search_thread = lock.owner_wait_q[idx].thread
                 test_name = get_smart_thread_name(
                     search_thread=search_thread, group_name="algo_app_group"
                 )
@@ -38282,7 +38282,7 @@ def lock_verify(exp_positions: list[str]) -> None:
                     f"lock_verify from {line_num=} timed out after"
                     f" {timeout_value} seconds waiting for the "
                     f"{exp_positions=} to match \n"
-                    f"{AlgoApp._config_lock.owner_wait_q=} "
+                    f"{lock.owner_wait_q=} "
                 )
             time.sleep(0.2)
     logger.debug(f"lock_verify exit: {exp_positions=}, {line_num=}")
@@ -38600,18 +38600,59 @@ class TestAlgoAppBasicTests:
             timeout_type_arg: specifies whether timeout should occur
             app_cat: catalog to use for connect
         """
-        def lock_f1(f1_smart_thread: SmartThread):
 
+        def lock_manager(f1_smart_thread: SmartThread):
+            mock_ib.log_test_msg("lock_man entry:")
             disc_lock = algo_app.algo_client.disconnect_lock
-            while True:
-                my_msg = msgs.get_msg(f1_smart_thread.name, timeout=60)
-                if my_msg == 'exit':
-                    break
-                elif my_msg == 'get_lock':
-                    disc_lock.acquire()
-                    msgs.queue_msg('alpha', 'lock_obtained')
-                elif my_msg == 'rel_lock':
-                    disc_lock.release()
+
+            # tell lock1 to get lock
+            f1_smart_thread.smart_resume(waiters="lock1")
+
+            # wait for lock1 to get lock
+            f1_smart_thread.smart_wait(resumers="lock1")
+
+            # tell mainline to do disconnect and get behind lock1
+            mock_ib.log_test_msg("lock_man about to resume alpha")
+            f1_smart_thread.smart_resume(waiters="alpha")
+
+            # get name of disconnector
+            if not async_tf_arg:
+                disc_name = "algo_1"
+            else:
+                while True:
+                    with algo_app.request_threads_lock:
+                        if algo_app.request_threads:
+                            disc_name = list(algo_app.request_threads.keys())[0]
+                            break
+                    time.sleep(0.01)
+
+            # verify lock1 and disconnector are locked
+            mock_ib.log_test_msg("lock_man about to verify locks held 1")
+            lock_verify(exp_positions=["lock1", disc_name], lock=disc_lock)
+
+            # tell lock2 to get lock
+            f1_smart_thread.smart_resume(waiters="lock2")
+
+            # verify lock1, disconnector, and lock2 are locked
+            lock_verify(exp_positions=["lock1", disc_name, "lock2"], lock=disc_lock)
+
+            # tell lock1 to drop lock
+            f1_smart_thread.smart_resume(waiters="lock1")
+
+            # wait for lock2 to get lock
+            f1_smart_thread.smart_wait(resumers="lock2")
+
+            # cause delay condition
+            time.sleep(delay_arg)
+
+            # tell lock2 to drop lock
+            f1_smart_thread.smart_resume(waiters="lock2")
+
+        def lock_f1(f1_smart_thread: SmartThread):
+            f1_smart_thread.smart_wait(resumers="lock_man")
+            with sel.SELockExcl(algo_app.algo_client.disconnect_lock):
+                f1_smart_thread.smart_resume(waiters="lock_man")
+                f1_smart_thread.smart_wait(resumers="lock_man")
 
         def f1(f1_smart_thread: SmartThread, f1_timeout_type_arg: int):
             disconnect_test(f1_timeout_type_arg)
@@ -38633,8 +38674,6 @@ class TestAlgoAppBasicTests:
 
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
             return
-
-        msgs = Msgs()
 
         algo_group_name = "algo_group_1"
         algo_name = "algo_1"
@@ -38663,12 +38702,10 @@ class TestAlgoAppBasicTests:
         # we are testing connect_to_ib and the subsequent code that gets
         # control as a result, such as getting the first requestID and
         # then starting a separate thread for the run loop.
-        logger.debug("about to connect")
+        mock_ib.log_test_msg("about to connect")
         algo_app.connect_to_ib(ip_addr=ip_addr, port=port, client_id=1)
 
         verify_algo_app_connected(algo_app)
-
-        mock_ib.delay_time = delay_arg
 
         alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
 
@@ -38686,15 +38723,20 @@ class TestAlgoAppBasicTests:
             thread_parm_name="f1_smart_thread",
         )
 
-        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
-            msgs.queue_msg("lock1", "get_lock")
+        SmartThread(
+            group_name="test1",
+            name="lock_man",
+            target_rtn=lock_manager,
+            thread_parm_name="f1_smart_thread",
+        )
 
-
+        mock_ib.log_test_msg("alpha about to wait for lock_man")
+        alpha_smart_thread.smart_wait(resumers="lock_man")
 
         mock_ib.log_test_msg("about to disconnect")
 
         if async_tf_arg:
-
+            mock_ib.log_test_msg("alpha about to start beta")
             SmartThread(
                 group_name="test1",
                 name="beta",
@@ -38708,11 +38750,12 @@ class TestAlgoAppBasicTests:
             alpha_smart_thread.smart_unreg()
 
         else:
+            mock_ib.log_test_msg("alpha about to call disconnect_test")
             disconnect_test(timeout_type_arg)
 
         mock_ib.log_test_msg("back from disconnect")
 
-        mock_ib.delay_time = 0
+        # mock_ib.delay_time = 0
 
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
             verify_algo_app_connected(algo_app)

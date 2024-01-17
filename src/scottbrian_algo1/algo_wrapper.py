@@ -79,8 +79,7 @@ class AlgoWrapper(EWrapper):  # type: ignore
         Args:
             algo_name: name of main algo
             client_name: name of client for EClient class instance
-            disconnect_lock: lock used to serialize connect and
-                disconnect
+
         """
         self.specified_args = locals()  # used for __repr__, see below
         EWrapper.__init__(self)

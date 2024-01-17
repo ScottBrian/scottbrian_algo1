@@ -27,6 +27,7 @@ from ibapi.contract import Contract, ContractDetails  # type: ignore
 from ibapi.wrapper import EWrapper  # type: ignore
 import pandas as pd  # type: ignore
 
+from scottbrian_locking import se_lock as sel
 from scottbrian_paratools.smart_thread import (
     SmartThread,
     ThreadState,
@@ -211,7 +212,7 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
             auto_start=False,
         )
 
-        self.disconnect_lock = Lock()
+        self.disconnect_lock = sel.SELock()
 
         self.active_requests: dict[int, ClientRequestBlock] = {}
 
@@ -385,7 +386,7 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
         # cases of disconnect being called from different threads:
         # 1) from mainline through disconnect_from_ib in AlgoApp
         # 2) from the EClient run method in the run thread.
-        with self.disconnect_lock:
+        with sel.SELockExcl(self.disconnect_lock):
             logger.debug(
                 f"{self.msg_prefix} setting conn state to EClient.DISCONNECTED"
             )
