@@ -3,14 +3,13 @@ name = "scottbrian_algo1"
 version = "1.0.0"
 description = "Analyze and trade financial instruments"
 readme = "README.rst"
-requires-python = ">=3.12"
+requires-python = "~=3.12"
 license = {file = "LICENSE.txt"}
 keywords = ["trade", "invest", "ibapi", "stocks", "options"]
 authors = [{name = "Scott Tuttle", email = "sbtuttle@outlook.com"}]
 classifiers = [
     "License :: OSI Approved :: MIT License",
-    "Development Status :: 3 - Alpha",
-    #"Development Status :: 5 - Production/Stable",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Financial and Insurance Industry",
     "Topic :: Office/Business :: Financial :: Investment",
@@ -18,21 +17,18 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Operating System :: Microsoft :: Windows :: Windows 10"]
 dependencies = [
-    "pandas==2.0.0",
-    "scottbrian_utils",
-    "ibapi @ file://localhost/TWS%20API/source/pythonclient/dist/ibapi-10.24.1-py3-none-any.whl",
+    "pandas ~=2.2",
+#    "scottbrian_utils ~=4.0",
+    "scottbrian_utils @  file://C:/Users/Tiger/PycharmProjects/scottbrian_utils/dist/scottbrian_utils-4.0.0-py3-none-any.whl",
+    #"scottbrian_paratools ~=1.0",
     "scottbrian_paratools @  file://C:/Users/Tiger/PycharmProjects/scottbrian_paratools/dist/scottbrian_paratools-1.0.0-py2.py3-none-any.whl",
+    "ibapi @ file://localhost/TWS%20API/source/pythonclient/dist/ibapi-10.24.1-py3-none-any.whl",
+
 ]
 
 [tool.setuptools]
 packages = ["scottbrian_algo1"]
 package-dir = {"" = "src"}
-#packages = ["scottbrian_algo1", "ibapi"]
-
-#[tool.setuptools.package-dir]
-#scottbrian_algo1 = "src/scottbrian_algo1"
-#ibapi = "pythonclient/ibapi"
-#ibapi = "venv311/Lib/site-packages/ibapi"
 
 [project.urls]
 Documentation = "https://scottbrian-algo1.readthedocs.io/en/latest/"
@@ -40,7 +36,7 @@ Source = "https://github.com/ScottBrian/scottbrian_algo1.git"
 
 [build-system]
 requires = [
-    "setuptools >= 69.0.0",
-#    "wheel >= 0.41.2"
+    "setuptools ~=69.5",
+    "wheel ~=0.43"
 ]
 build-backend = "setuptools.build_meta"

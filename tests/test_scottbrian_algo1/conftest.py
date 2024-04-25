@@ -110,10 +110,19 @@ test_cat = FileCatalog(
 #
 ########################################################################
 class ExcHook:
+    """ExcHook class."""
+
     def __init__(self):
+        """Initialize the ExcHook class instance."""
         self.exc_err_msg1 = ""
 
     def raise_exc_if_one(self):
+        """Raise an error is we have one.
+
+        Raises:
+            Exception: exc_msg
+
+        """
         if self.exc_err_msg1:
             exc_msg = self.exc_err_msg1
             self.exc_err_msg1 = ""
@@ -134,13 +143,26 @@ def thread_exc(monkeypatch: Any) -> ExcHook:
     exc_hook = ExcHook()
 
     def mock_threading_excepthook(args):
+        """Build error message from exception.
+
+        Args:
+            args: contains:
+                      args.exc_type: Optional[Type[BaseException]]
+                      args.exc_value: Optional[BaseException]
+                      args.exc_traceback: Optional[TracebackType]
+
+        Raises:
+            Exception: Test case thread test error
+
+        """
         exc_err_msg = (
-            f"Algo1 excepthook: {args.exc_type=}, "
+            f"Test case excepthook: {args.exc_type=}, "
             f"{args.exc_value=}, {args.exc_traceback=},"
             f" {args.thread=}"
         )
-        print("SBT printing tb")
+        # print("SBT printing tb")
         traceback.print_tb(args.exc_traceback)
+        logger.debug(exc_err_msg)
         current_thread = threading.current_thread()
         logging.exception(f"exception caught for {current_thread}")
         logger.debug(f"excepthook current thread is {current_thread}")
@@ -153,12 +175,6 @@ def thread_exc(monkeypatch: Any) -> ExcHook:
     new_hook = threading.excepthook
 
     yield exc_hook
-
-    # clean the registry in SmartThread class
-    # SmartThread._registry = {}
-    # SmartThread._pair_array = defaultdict(dict)
-    # assert threading.current_thread().name == 'alpha'
-    # threading.current_thread().name = "MainThread"  # restore name
 
     # surface any remote thread uncaught exceptions
     exc_hook.raise_exc_if_one()
