@@ -143,6 +143,7 @@ from typing import (
     Optional,
     Type,
     TypeAlias,
+    TypeVar,
     TYPE_CHECKING,
     Union,
 )
@@ -177,11 +178,13 @@ from scottbrian_paratools.smart_thread import (
     SmartThreadRemoteThreadNotAlive,
     SmartThreadRequestTimedOut,
 )
+from scottbrian_utils.entry_trace import etrace
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
 from scottbrian_utils.timer import Timer
 from scottbrian_utils.unique_ts import UniqueTS, UniqueTStamp
 
+import wrapt
 ########################################################################
 # Local
 ########################################################################
@@ -209,6 +212,7 @@ OptIntFloat: TypeAlias = Optional[IntFloat]
 ########################################################################
 logger = logging.getLogger(__name__)
 
+algo_app_etrace: bool = True
 
 ########################################################################
 # pandas options
@@ -316,16 +320,19 @@ class ThreadBlock:
 ####################################################################
 # algo_setup decorator
 ####################################################################
+F = TypeVar("F", bound=Callable[..., Any])
+
+
 def algo_setup(
-    func=None,
+    func: Optional[F] = None,
     *,
-    omit_args: Optional[Iterable[str]] = None,
-    extra_args: Optional[Iterable[str]] = None,
+    omit_parms: Optional[Iterable[str]] = None,
 ):
     """Decorator to setup thread and produce entry/exit log.
 
     Args:
         func: function to be decorated
+        omit_parms: optional list of parms to omit
 
     Returns:
         decorated function
@@ -336,13 +343,21 @@ def algo_setup(
 
     """
     if func is None:
-        return functools.partial(algo_setup, omit_args=omit_args, extra_args=extra_args)
+        return functools.partial(algo_setup, omit_parms=omit_parms)
 
-    omit_args = set({omit_args} if isinstance(omit_args, str) else omit_args or "")
-    extra_args = set({extra_args} if isinstance(extra_args, str) else extra_args or "")
+    omit_parms = set({omit_parms} if isinstance(omit_parms, str) else omit_parms or "")
 
+    # @etrace(enable_trace=algo_app_etrace, omit_parms=omit_parms)
+    # @wrapt.decorator
+    # def _algo_setup(func: F,
+    #                 instance: Optional[Any],
+    #                 args: tuple[Any, ...],
+    #                 kwargs: dict[str, Any], ) -> Any:
+
+    @etrace(enable_trace=algo_app_etrace, omit_parms=omit_parms)
     @functools.wraps(func)
     def _algo_setup(self, *args, **kwargs) -> Any:
+
         # get unique timestamp to use for part of the smart thread name
         req_num = UniqueTS.get_unique_ts()
 
@@ -402,32 +417,7 @@ def algo_setup(
         )
 
         try:
-            exit_log_msg = ""
-            if logger.isEnabledFor(logging.DEBUG):
-                log_args: str = ""
-                comma: str = ""
-                for key, item in kwargs.items():
-                    if key not in omit_args and item is not None and item is not self:
-                        log_args = f"{log_args}{comma} {key}={item}"
-                        comma = ","
-
-                for extra_arg in extra_args:
-                    log_args = f"{log_args}{comma} {extra_arg}={eval(extra_arg)}"
-                    comma = ","
-
-                log_msg_prefix = (
-                    f"{self.msg_prefix} "
-                    f"{get_formatted_call_sequence(latest=1, depth=1)}->"
-                    f"{func.__name__}"
-                )
-                entry_log_msg = f"{log_msg_prefix} entry:{log_args}"
-                exit_log_msg = f"{log_msg_prefix} exit:{log_args}"
-
-                logger.debug(entry_log_msg)
-
             ret_value = func(self, *args, **kwargs)
-            if exit_log_msg:
-                logger.debug(exit_log_msg)
 
         finally:
             if req_smart_thread is not self:
@@ -485,7 +475,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             default_timeout: number of seconds to use as a timeout
                 value if timeout is not specifies on a method that
                 provides a timeout parameter. If this default_timeout is
-                not specifies, the default_tineout is set to 30 seconds.
+                not specified, the default_tineout is set to 30 seconds.
 
         :Example: instantiate AlgoApp and print it
 
@@ -585,7 +575,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # shut_down
     ####################################################################
-    @algo_setup(omit_args="_setup_args")
+    @algo_setup(omit_parms="_setup_args")
     def shut_down(
         self,
         _setup_args: SetupArgs,
@@ -650,14 +640,14 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     def _issue_algo_entry_log_msg(
         self,
         request_args: dict[str, Any],
-        omit_args: Optional[tuple[str]] = None,
+        omit_parms: Optional[tuple[str]] = None,
         frame_num: int = 1,
     ) -> str:
         """Issue an entry log message.
 
         Args:
             request_args: arguments passed to the request
-            omit_args: arguments that should not be traced
+            omit_parms: arguments that should not be traced
             frame_num: which frame to use for func_name
 
         Returns:
@@ -668,8 +658,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         if not logger.isEnabledFor(logging.DEBUG):
             return ""
 
-        if omit_args is None:
-            omit_args = tuple()
+        if omit_parms is None:
+            omit_parms = tuple()
 
         caller = get_formatted_call_sequence(latest=3, depth=1)
         func_name = _getframe(frame_num).f_code.co_name
@@ -677,7 +667,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         args: str = ""
         comma: str = ""
         for key, item in request_args.items():
-            if key not in omit_args and item is not None and item is not self:
+            if key not in omit_parms and item is not None and item is not self:
                 args = f"{args}{comma} {key}={item}"
                 comma = ","
 
@@ -691,7 +681,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # connect_to_ib
     ###########################################################################
-    @algo_setup(omit_args="_setup_args")
+    # @algo_setup(omit_parms="_setup_args")
+    @algo_setup
     def connect_to_ib(
         self,
         *,
@@ -773,7 +764,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # disconnect_from_ib
     ####################################################################
-    @algo_setup(omit_args="_setup_args")
+    @algo_setup(omit_parms="_setup_args")
     def disconnect_from_ib(
         self,
         _setup_args: SetupArgs,

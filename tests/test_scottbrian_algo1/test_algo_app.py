@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum, auto
+import itertools as it
 from itertools import combinations, chain
 from pathlib import Path
 import queue
@@ -192,10 +193,10 @@ test_cat = FileCatalog(
 ########################################################################
 # connect style
 ########################################################################
-class TestThreadConfig(Enum):
-    TestNoSmartThreadAlgoAppCurrent = auto()
-    TestSmartThreadAlgoAppCurrent = auto()
-    TestSmartThreadAlgoAppRemote = auto()
+# class TestThreadConfig(Enum):
+#     TestNoSmartThreadAlgoAppCurrent = auto()
+#     TestSmartThreadAlgoAppCurrent = auto()
+#     TestSmartThreadAlgoAppRemote = auto()
 
 
 ########################################################################
@@ -1481,12 +1482,12 @@ def get_test_catalog() -> "FileCatalog":
 #
 #         """
 #         mock_ib: MockIB = MockIB.mock_obj_array[(self.host, self.port)]
-#         mock_ib.log_test_msg(f"entry: {self.port=}, {self.host=}")
+#         log_ver.test_msg(f"entry: {self.port=}, {self.host=}")
 #         try:
 #             self.socket = socket.socket()
 #         # TO DO list the exceptions you want to catch
 #         except socket.error:
-#             mock_ib.log_test_msg("socket.error exception")
+#             log_ver.test_msg("socket.error exception")
 #             if self.wrapper:
 #                 self.wrapper.error(
 #                     NO_VALID_ID, FAIL_CREATE_SOCK.code(), FAIL_CREATE_SOCK.msg()
@@ -1516,7 +1517,7 @@ def get_test_catalog() -> "FileCatalog":
 #
 #         self.socket.settimeout(1)  # non-blocking
 #
-#         mock_ib.log_test_msg(f"exit: {self.port=}, {self.host=}")
+#         log_ver.test_msg(f"exit: {self.port=}, {self.host=}")
 #
 #     # monkeypatch.setattr(Connection, "connect", mock_connection_connect)
 #
@@ -1552,10 +1553,10 @@ def get_test_catalog() -> "FileCatalog":
 #
 #         try:
 #             if self.socket is not None:
-#                 mock_ib.log_test_msg("disconnecting")
+#                 log_ver.test_msg("disconnecting")
 #                 # self.socket.close()
 #                 self.socket = None
-#                 mock_ib.log_test_msg("disconnected")
+#                 log_ver.test_msg("disconnected")
 #                 if self.wrapper:
 #                     self.wrapper.connectionClosed()
 #         finally:
@@ -1581,26 +1582,26 @@ def get_test_catalog() -> "FileCatalog":
 #
 #         """
 #         mock_ib: MockIB = MockIB.mock_obj_array[(self.host, self.port)]
-#         mock_ib.log_test_msg(f"entered with msg: {msg}")
-#         mock_ib.log_test_msg("acquiring lock")
+#         log_ver.test_msg(f"entered with msg: {msg}")
+#         log_ver.test_msg("acquiring lock")
 #         self.lock.acquire()
-#         mock_ib.log_test_msg("acquired lock")
+#         log_ver.test_msg("acquired lock")
 #         if not self.isConnected():
-#             mock_ib.log_test_msg("sendMsg attempt while not connected, releasing lock")
+#             log_ver.test_msg("sendMsg attempt while not connected, releasing lock")
 #             self.lock.release()
 #             return 0
 #         try:
 #             nSent = len(msg)
 #             mock_ib.send_msg(msg)
 #         except queue.Full:
-#             mock_ib.log_test_msg("queue full exception on sendMsg attempt")
+#             log_ver.test_msg("queue full exception on sendMsg attempt")
 #             raise
 #         finally:
-#             mock_ib.log_test_msg("releasing lock")
+#             log_ver.test_msg("releasing lock")
 #             self.lock.release()
-#             mock_ib.log_test_msg("released lock")
+#             log_ver.test_msg("released lock")
 #
-#         mock_ib.log_test_msg(f"sendMsg: number bytes sent: {nSent}")
+#         log_ver.test_msg(f"sendMsg: number bytes sent: {nSent}")
 #         return nSent
 #
 #     # monkeypatch.setattr(Connection, "sendMsg", mock_connection_send_msg)
@@ -1620,17 +1621,17 @@ def get_test_catalog() -> "FileCatalog":
 #         """
 #         mock_ib: MockIB = MockIB.mock_obj_array[(self.host, self.port)]
 #         if not self.isConnected():
-#             mock_ib.log_test_msg("recvMsg attempted while not connected")
+#             log_ver.test_msg("recvMsg attempted while not connected")
 #             return b""
 #         try:
 #             buf = mock_ib.recv_msg()  # <-- mock
 #             # receiving 0 bytes outside a timeout means the connection is
 #             # either closed or broken
 #             if len(buf) == 0:
-#                 mock_ib.log_test_msg("socket either closed or broken, disconnecting")
+#                 log_ver.test_msg("socket either closed or broken, disconnecting")
 #                 self.disconnect()
 #         except queue.Empty:
-#             mock_ib.log_test_msg("timeout from recvMsg")
+#             log_ver.test_msg("timeout from recvMsg")
 #             buf = b""
 #         return buf
 #
@@ -26393,43 +26394,10 @@ class TestSmartThreadInterface:
     ####################################################################
     # test_smart_thread_interface_1
     ####################################################################
+    num_f1_args_combos = it.product((0, 1), (0, 1, 2, 3), (0, 1, 2, 3))
+
     @pytest.mark.parametrize(
-        "num_f1_args",
-        [
-            (0, 0, 0),
-            (0, 0, 1),
-            (0, 0, 2),
-            (0, 0, 3),
-            (0, 1, 0),
-            (0, 1, 1),
-            (0, 1, 2),
-            (0, 1, 3),
-            (0, 2, 0),
-            (0, 2, 1),
-            (0, 2, 2),
-            (0, 2, 3),
-            (0, 3, 0),
-            (0, 3, 1),
-            (0, 3, 2),
-            (0, 3, 3),
-            (1, 0, 0),
-            (1, 0, 1),
-            (1, 0, 2),
-            (1, 0, 3),
-            (1, 1, 0),
-            (1, 1, 1),
-            (1, 1, 2),
-            (1, 1, 3),
-            (1, 2, 0),
-            (1, 2, 1),
-            (1, 2, 2),
-            (1, 2, 3),
-            (1, 3, 0),
-            (1, 3, 1),
-            (1, 3, 2),
-            (1, 3, 3),
-        ],
-    )
+        "num_f1_args",num_f1_args_combos)
     def test_smart_thread_interface_1(self, num_f1_args: tuple[int, int, int]) -> None:
         """Test SmartThread interface.
 
@@ -27151,43 +27119,10 @@ class TestSmartThreadInterface:
     ####################################################################
     # test_smart_thread_interface_1b
     ####################################################################
+    num_f1_args_combos = it.product((0, 1), (0, 1, 2, 3), (0, 1, 2, 3))
+
     @pytest.mark.parametrize(
-        "num_f1_args",
-        [
-            (0, 0, 0),
-            (0, 0, 1),
-            (0, 0, 2),
-            (0, 0, 3),
-            (0, 1, 0),
-            (0, 1, 1),
-            (0, 1, 2),
-            (0, 1, 3),
-            (0, 2, 0),
-            (0, 2, 1),
-            (0, 2, 2),
-            (0, 2, 3),
-            (0, 3, 0),
-            (0, 3, 1),
-            (0, 3, 2),
-            (0, 3, 3),
-            (1, 0, 0),
-            (1, 0, 1),
-            (1, 0, 2),
-            (1, 0, 3),
-            (1, 1, 0),
-            (1, 1, 1),
-            (1, 1, 2),
-            (1, 1, 3),
-            (1, 2, 0),
-            (1, 2, 1),
-            (1, 2, 2),
-            (1, 2, 3),
-            (1, 3, 0),
-            (1, 3, 1),
-            (1, 3, 2),
-            (1, 3, 3),
-        ],
-    )
+        "num_f1_args", num_f1_args_combos)
     @pytest.mark.parametrize(
         "group_names_arg",
         [
@@ -28095,43 +28030,10 @@ class TestSmartThreadInterface:
     ####################################################################
     # test_smart_thread_interface_2
     ####################################################################
+    num_f1_args_combos = it.product((0, 1), (0, 1, 2, 3), (0, 1, 2, 3))
+
     @pytest.mark.parametrize(
-        "num_f1_args",
-        [
-            (0, 0, 0),
-            (0, 0, 1),
-            (0, 0, 2),
-            (0, 0, 3),
-            (0, 1, 0),
-            (0, 1, 1),
-            (0, 1, 2),
-            (0, 1, 3),
-            (0, 2, 0),
-            (0, 2, 1),
-            (0, 2, 2),
-            (0, 2, 3),
-            (0, 3, 0),
-            (0, 3, 1),
-            (0, 3, 2),
-            (0, 3, 3),
-            (1, 0, 0),
-            (1, 0, 1),
-            (1, 0, 2),
-            (1, 0, 3),
-            (1, 1, 0),
-            (1, 1, 1),
-            (1, 1, 2),
-            (1, 1, 3),
-            (1, 2, 0),
-            (1, 2, 1),
-            (1, 2, 2),
-            (1, 2, 3),
-            (1, 3, 0),
-            (1, 3, 1),
-            (1, 3, 2),
-            (1, 3, 3),
-        ],
-    )
+        "num_f1_args", num_f1_args_combos)
     def test_smart_thread_interface_2(self, num_f1_args: tuple[int, int, int]) -> None:
         """Test SmartThread interface.
 
@@ -28700,43 +28602,10 @@ class TestSmartThreadInterface:
     ####################################################################
     # test_smart_thread_interface_2b
     ####################################################################
+    num_f1_args_combos = it.product((0, 1), (0, 1, 2, 3), (0, 1, 2, 3))
+
     @pytest.mark.parametrize(
-        "num_f1_args",
-        [
-            (0, 0, 0),
-            (0, 0, 1),
-            (0, 0, 2),
-            (0, 0, 3),
-            (0, 1, 0),
-            (0, 1, 1),
-            (0, 1, 2),
-            (0, 1, 3),
-            (0, 2, 0),
-            (0, 2, 1),
-            (0, 2, 2),
-            (0, 2, 3),
-            (0, 3, 0),
-            (0, 3, 1),
-            (0, 3, 2),
-            (0, 3, 3),
-            (1, 0, 0),
-            (1, 0, 1),
-            (1, 0, 2),
-            (1, 0, 3),
-            (1, 1, 0),
-            (1, 1, 1),
-            (1, 1, 2),
-            (1, 1, 3),
-            (1, 2, 0),
-            (1, 2, 1),
-            (1, 2, 2),
-            (1, 2, 3),
-            (1, 3, 0),
-            (1, 3, 1),
-            (1, 3, 2),
-            (1, 3, 3),
-        ],
-    )
+        "num_f1_args", num_f1_args_combos)
     @pytest.mark.parametrize(
         "group_names_arg",
         [
@@ -29383,43 +29252,10 @@ class TestSmartThreadInterface:
     ####################################################################
     # test_smart_thread_interface_3
     ####################################################################
+    num_f1_args_combos = it.product((0, 1), (0, 1, 2, 3), (0, 1, 2, 3))
+
     @pytest.mark.parametrize(
-        "num_f1_args",
-        [
-            (0, 0, 0),
-            (0, 0, 1),
-            (0, 0, 2),
-            (0, 0, 3),
-            (0, 1, 0),
-            (0, 1, 1),
-            (0, 1, 2),
-            (0, 1, 3),
-            (0, 2, 0),
-            (0, 2, 1),
-            (0, 2, 2),
-            (0, 2, 3),
-            (0, 3, 0),
-            (0, 3, 1),
-            (0, 3, 2),
-            (0, 3, 3),
-            (1, 0, 0),
-            (1, 0, 1),
-            (1, 0, 2),
-            (1, 0, 3),
-            (1, 1, 0),
-            (1, 1, 1),
-            (1, 1, 2),
-            (1, 1, 3),
-            (1, 2, 0),
-            (1, 2, 1),
-            (1, 2, 2),
-            (1, 2, 3),
-            (1, 3, 0),
-            (1, 3, 1),
-            (1, 3, 2),
-            (1, 3, 3),
-        ],
-    )
+        "num_f1_args", num_f1_args_combos)
     def test_smart_thread_interface_3(self, num_f1_args: tuple[int, int, int]) -> None:
         """Test SmartThread interface.
 
@@ -29744,43 +29580,10 @@ class TestSmartThreadInterface:
     ####################################################################
     # test_smart_thread_interface_3b
     ####################################################################
+    num_f1_args_combos = it.product((0, 1), (0, 1, 2, 3), (0, 1, 2, 3))
+
     @pytest.mark.parametrize(
-        "num_f1_args",
-        [
-            (0, 0, 0),
-            (0, 0, 1),
-            (0, 0, 2),
-            (0, 0, 3),
-            (0, 1, 0),
-            (0, 1, 1),
-            (0, 1, 2),
-            (0, 1, 3),
-            (0, 2, 0),
-            (0, 2, 1),
-            (0, 2, 2),
-            (0, 2, 3),
-            (0, 3, 0),
-            (0, 3, 1),
-            (0, 3, 2),
-            (0, 3, 3),
-            (1, 0, 0),
-            (1, 0, 1),
-            (1, 0, 2),
-            (1, 0, 3),
-            (1, 1, 0),
-            (1, 1, 1),
-            (1, 1, 2),
-            (1, 1, 3),
-            (1, 2, 0),
-            (1, 2, 1),
-            (1, 2, 2),
-            (1, 2, 3),
-            (1, 3, 0),
-            (1, 3, 1),
-            (1, 3, 2),
-            (1, 3, 3),
-        ],
-    )
+        "num_f1_args", num_f1_args_combos)
     @pytest.mark.parametrize(
         "group_names_arg",
         [
@@ -30270,43 +30073,10 @@ class TestSmartThreadInterface:
     ####################################################################
     # test_smart_thread_interface_4
     ####################################################################
+    num_f1_args_combos = it.product((0, 1), (0, 1, 2, 3), (0, 1, 2, 3))
+
     @pytest.mark.parametrize(
-        "num_f1_args",
-        [
-            (0, 0, 0),
-            (0, 0, 1),
-            (0, 0, 2),
-            (0, 0, 3),
-            (0, 1, 0),
-            (0, 1, 1),
-            (0, 1, 2),
-            (0, 1, 3),
-            (0, 2, 0),
-            (0, 2, 1),
-            (0, 2, 2),
-            (0, 2, 3),
-            (0, 3, 0),
-            (0, 3, 1),
-            (0, 3, 2),
-            (0, 3, 3),
-            (1, 0, 0),
-            (1, 0, 1),
-            (1, 0, 2),
-            (1, 0, 3),
-            (1, 1, 0),
-            (1, 1, 1),
-            (1, 1, 2),
-            (1, 1, 3),
-            (1, 2, 0),
-            (1, 2, 1),
-            (1, 2, 2),
-            (1, 2, 3),
-            (1, 3, 0),
-            (1, 3, 1),
-            (1, 3, 2),
-            (1, 3, 3),
-        ],
-    )
+        "num_f1_args", num_f1_args_combos)
     def test_smart_thread_interface_4(self, num_f1_args: tuple[int, int, int]) -> None:
         """Test SmartThread interface.
 
@@ -30417,43 +30187,10 @@ class TestSmartThreadInterface:
     ####################################################################
     # test_smart_thread_interface_4b
     ####################################################################
+    num_f1_args_combos = it.product((0, 1), (0, 1, 2, 3), (0, 1, 2, 3))
+
     @pytest.mark.parametrize(
-        "num_f1_args",
-        [
-            (0, 0, 0),
-            (0, 0, 1),
-            (0, 0, 2),
-            (0, 0, 3),
-            (0, 1, 0),
-            (0, 1, 1),
-            (0, 1, 2),
-            (0, 1, 3),
-            (0, 2, 0),
-            (0, 2, 1),
-            (0, 2, 2),
-            (0, 2, 3),
-            (0, 3, 0),
-            (0, 3, 1),
-            (0, 3, 2),
-            (0, 3, 3),
-            (1, 0, 0),
-            (1, 0, 1),
-            (1, 0, 2),
-            (1, 0, 3),
-            (1, 1, 0),
-            (1, 1, 1),
-            (1, 1, 2),
-            (1, 1, 3),
-            (1, 2, 0),
-            (1, 2, 1),
-            (1, 2, 2),
-            (1, 2, 3),
-            (1, 3, 0),
-            (1, 3, 1),
-            (1, 3, 2),
-            (1, 3, 3),
-        ],
-    )
+        "num_f1_args", num_f1_args_combos)
     @pytest.mark.parametrize(
         "group_names_arg",
         [
@@ -38465,7 +38202,9 @@ class TestAlgoAppBasicTests:
             async_tf_arg: if True, do async connect
             delay_arg: number of seconds to delay
             timeout_type_arg: specifies whether timeout should occur
-            cat_app: pytest fixture (see conftest.py)
+            app_cat: testing infrastructure
+            caplog: pytest fixture that captures log messages
+            monkeypatch: used to alter code
         """
         # print(f"{logging.Logger.manager.loggerDict.keys()=}\n")
 
@@ -38517,7 +38256,7 @@ class TestAlgoAppBasicTests:
         ip_addr = "127.0.0.1"
         port = AlgoApp.PORT_FOR_LIVE_TRADING
 
-        log_ver = LogVer()
+        log_ver = LogVer(log_name="algo_app_test_log")
 
         mock_ib = MockIB(
             test_cat=test_cat,
@@ -38537,7 +38276,8 @@ class TestAlgoAppBasicTests:
         # we are testing connect_to_ib and the subsequent code that gets
         # control as a result, such as getting the first requestID and
         # then starting a separate thread for the run loop.
-        mock_ib.log_test_msg("about to connect")
+        # log_ver.test_msg("about to connect")
+        log_ver.test_msg("about to connect")
 
         if async_tf_arg:
             alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
@@ -38556,7 +38296,7 @@ class TestAlgoAppBasicTests:
         else:
             connect_test(timeout_type_arg)
 
-        mock_ib.log_test_msg("back from connect")
+        log_ver.test_msg("back from connect")
 
         # if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
         #     time.sleep(delay_arg + 1)
@@ -38570,6 +38310,13 @@ class TestAlgoAppBasicTests:
         verify_algo_app_disconnected(algo_app)
 
         algo_app.shut_down()
+
+        ################################################################
+        # check log results
+        ################################################################
+        match_results = log_ver.get_match_results(caplog=caplog)
+        log_ver.print_match_results(match_results, print_matched=True)
+        log_ver.verify_match_results(match_results)
 
     ####################################################################
     # test_mock_disconnect_from_ib
@@ -38602,7 +38349,7 @@ class TestAlgoAppBasicTests:
         """
 
         def lock_manager(f1_smart_thread: SmartThread):
-            mock_ib.log_test_msg("lock_man entry:")
+            log_ver.test_msg("lock_man entry:")
             disc_lock = algo_app.algo_client.disconnect_lock
 
             # tell lock1 to get lock
@@ -38612,7 +38359,7 @@ class TestAlgoAppBasicTests:
             f1_smart_thread.smart_wait(resumers="lock1")
 
             # tell mainline to do disconnect and get behind lock1
-            mock_ib.log_test_msg("lock_man about to resume alpha")
+            log_ver.test_msg("lock_man about to resume alpha")
             f1_smart_thread.smart_resume(waiters="alpha")
 
             # get name of disconnector
@@ -38627,7 +38374,7 @@ class TestAlgoAppBasicTests:
                     time.sleep(0.01)
 
             # verify lock1 and disconnector are locked
-            mock_ib.log_test_msg("lock_man about to verify locks held 1")
+            log_ver.test_msg("lock_man about to verify locks held 1")
             lock_verify(
                 exp_positions=[["lock1", "test1"], [disc_name, algo_group_name]],
                 lock=disc_lock,
@@ -38712,7 +38459,7 @@ class TestAlgoAppBasicTests:
         # we are testing connect_to_ib and the subsequent code that gets
         # control as a result, such as getting the first requestID and
         # then starting a separate thread for the run loop.
-        mock_ib.log_test_msg("about to connect")
+        log_ver.test_msg("about to connect")
         algo_app.connect_to_ib(ip_addr=ip_addr, port=port, client_id=1)
 
         verify_algo_app_connected(algo_app)
@@ -38740,13 +38487,13 @@ class TestAlgoAppBasicTests:
             thread_parm_name="f1_smart_thread",
         )
 
-        mock_ib.log_test_msg("alpha about to wait for lock_man")
+        log_ver.test_msg("alpha about to wait for lock_man")
         alpha_smart_thread.smart_wait(resumers="lock_man")
 
-        mock_ib.log_test_msg("about to disconnect")
+        log_ver.test_msg("about to disconnect")
 
         if async_tf_arg:
-            mock_ib.log_test_msg("alpha about to start beta")
+            log_ver.test_msg("alpha about to start beta")
             SmartThread(
                 group_name="test1",
                 name="beta",
@@ -38759,10 +38506,10 @@ class TestAlgoAppBasicTests:
             alpha_smart_thread.smart_join(targets="beta")
 
         else:
-            mock_ib.log_test_msg("alpha about to call disconnect_test")
+            log_ver.test_msg("alpha about to call disconnect_test")
             disconnect_test(timeout_type_arg)
 
-        mock_ib.log_test_msg("back from disconnect")
+        log_ver.test_msg("back from disconnect")
 
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
             algo_app.disconnect_from_ib()

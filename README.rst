@@ -61,6 +61,12 @@ To install paratools for testing:
     1) get into venv312 folder
     2) run: py -m pip install file:///C:/Users/Tiger/PycharmProjects/scottbrian_paratools/dist/scottbrian_paratools-1.0.0-py2.py3-none-any.whl
 
+To install utils for testing:
+    1) get into venv312 folder
+    2) run: py -m pip install file:///C:/Users/Tiger/PycharmProjects/scottbrian_utils/dist/scottbrian_utils-4.0.0-py3-none-any.whl
+       or
+       run: py -m pip install --upgrade --force-reinstall file:///C:/Users/Tiger/PycharmProjects/scottbrian_utils/dist/scottbrian_utils-4.0.0-py3-none-any.whl
+
 Usage examples:
 ===============
 
