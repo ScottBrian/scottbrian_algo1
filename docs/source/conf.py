@@ -24,11 +24,11 @@ sys.path.insert(0, fspath(proj_dir / 'src/scottbrian_algo1'))
 # -- Project information -----------------------------------------------------
 
 project = 'scottbrian_algo1'
-copyright = '2020, 2021, Scott Tuttle'
+copyright = '2020, 2024, Scott Tuttle'
 author = 'Scott Tuttle'
 
 # The full version, including alpha/beta/rc tags
-release = '1.1.0'
+release = '1.0.0'
 
 
 # -- General configuration ---------------------------------------------------
@@ -42,6 +42,7 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx_rtd_theme']
 
 autoclass_content = 'both'
+autodoc_member_order = "groupwise"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

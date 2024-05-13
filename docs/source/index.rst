@@ -7,7 +7,8 @@
 .. include:: ../../README.rst
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 2
+   :titlesonly:
    :caption: API Reference:
 
    algo_api <algo_api_link>

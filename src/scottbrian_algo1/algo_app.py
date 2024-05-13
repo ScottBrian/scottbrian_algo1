@@ -347,14 +347,6 @@ def algo_setup(
 
     omit_parms = set({omit_parms} if isinstance(omit_parms, str) else omit_parms or "")
 
-    # @etrace(enable_trace=algo_app_etrace, omit_parms=omit_parms)
-    # @wrapt.decorator
-    # def _algo_setup(func: F,
-    #                 instance: Optional[Any],
-    #                 args: tuple[Any, ...],
-    #                 kwargs: dict[str, Any], ) -> Any:
-
-    @etrace(enable_trace=algo_app_etrace, omit_parms=omit_parms)
     @functools.wraps(func)
     def _algo_setup(self, *args, **kwargs) -> Any:
 
@@ -575,7 +567,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # shut_down
     ####################################################################
-    @algo_setup(omit_parms="_setup_args")
+    @algo_setup
     def shut_down(
         self,
         _setup_args: SetupArgs,
@@ -584,6 +576,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         """Shut down the AlgoApp.
 
         Args:
+            _setup_args: internal use only
             timeout: specifies the amount of time allowed for the
                 request. If exceeded, a DisconnectTimeout error will be
                 raised.
@@ -634,55 +627,11 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             extra = f" {extra}"
         return f"{self.msg_prefix} {func_name} raising {error}{extra}."
 
-    ####################################################################
-    # issue_entry_log_msg
-    ####################################################################
-    def _issue_algo_entry_log_msg(
-        self,
-        request_args: dict[str, Any],
-        omit_parms: Optional[tuple[str]] = None,
-        frame_num: int = 1,
-    ) -> str:
-        """Issue an entry log message.
-
-        Args:
-            request_args: arguments passed to the request
-            omit_parms: arguments that should not be traced
-            frame_num: which frame to use for func_name
-
-        Returns:
-            the log message to use for the exit call or empty string if
-            logging is not enabled for debug
-
-        """
-        if not logger.isEnabledFor(logging.DEBUG):
-            return ""
-
-        if omit_parms is None:
-            omit_parms = tuple()
-
-        caller = get_formatted_call_sequence(latest=3, depth=1)
-        func_name = _getframe(frame_num).f_code.co_name
-
-        args: str = ""
-        comma: str = ""
-        for key, item in request_args.items():
-            if key not in omit_parms and item is not None and item is not self:
-                args = f"{args}{comma} {key}={item}"
-                comma = ","
-
-        log_msg_prefix = f"{self.msg_prefix} {caller}->{func_name}"
-        entry_log_msg = f"{log_msg_prefix} entry:{args}"
-        exit_log_msg = f"{log_msg_prefix} exit:{args}"
-
-        logger.debug(entry_log_msg, stacklevel=frame_num + 1)
-        return exit_log_msg
-
     ###########################################################################
     # connect_to_ib
     ###########################################################################
-    # @algo_setup(omit_parms="_setup_args")
     @algo_setup
+    @etrace(enable_trace=algo_app_etrace, omit_parms="_setup_args", latest=2, depth=2)
     def connect_to_ib(
         self,
         *,
@@ -707,8 +656,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
-        # exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
-
         with sel.SELockExcl(AlgoApp._config_lock):
             if self.algo_client.isConnected():
                 error_msg = self._get_error_msg(
@@ -757,9 +704,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 raise ConnectTimeout(error_msg)
 
         logger.info(f"{self.msg_prefix} connect successful")
-
-        # if exit_log_msg:
-        #     logger.debug(exit_log_msg)
 
     ####################################################################
     # disconnect_from_ib
@@ -870,6 +814,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # load_contracts
     ###########################################################################
+    @etrace(enable_trace=algo_app_etrace)
     def load_contracts(self, path: Path) -> Any:
         """Load the contracts DataFrame.
 
@@ -879,7 +824,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         Returns:
               a dataframe of contracts
         """
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         ret_df = pd.read_csv(
             path,
             header=0,
@@ -904,14 +848,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             },
         )
 
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
-
         return ret_df
 
     ###########################################################################
     # load_contracts
     ###########################################################################
+    @etrace(enable_trace=algo_app_etrace)
     def load_fundamental_data(self, path: Path) -> Any:
         """Load the fundamental_data DataFrame.
 
@@ -921,23 +863,19 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         Returns:
               a dataframe of fundamental data
         """
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         ret_df = pd.read_csv(path, header=0, index_col=0)
-
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
 
         return ret_df
 
     ####################################################################
     # load_contract_details
     ####################################################################
+    @etrace(enable_trace=algo_app_etrace)
     def load_contract_details(self) -> None:
         """Load the contracts DataFrame."""
         ################################################################
         # if contract_details data set exists, load it and reset the index
         ################################################################
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         contract_details_path = self.ds_catalog.get_path("contract_details")
         logger.info(f"{self.msg_prefix} {contract_details_path=}")
 
@@ -979,18 +917,16 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                     "notes": lambda x: x,
                 },
             )
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
 
     ####################################################################
     # save_contracts
     ####################################################################
+    @etrace(enable_trace=algo_app_etrace)
     def save_contracts(self) -> None:
         """Save the contracts DataFrame."""
         ################################################################
         # Get the contracts path
         ################################################################
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         contracts_path = self.ds_catalog.get_path("contracts")
         logger.info(f"{self.msg_prefix} {contracts_path=}")
 
@@ -1009,18 +945,15 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         self.market_data.contracts.to_csv(contracts_path)
 
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
-
     ####################################################################
     # save_contract_details
     ####################################################################
+    @etrace(enable_trace=algo_app_etrace)
     def save_contract_details(self) -> None:
         """Save the contract_details DataFrame."""
         #######################################################################
         # get the contract_details path
         #######################################################################
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         contract_details_path = self.ds_catalog.get_path("contract_details")
         logger.info(f"{self.msg_prefix} {contract_details_path=}")
 
@@ -1038,18 +971,15 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         logger.info(f"{self.msg_prefix} saving contract_details DataFrame to csv")
         self.market_data.contract_details.to_csv(contract_details_path)
 
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
-
     ####################################################################
     # save_fundamental_data
     ####################################################################
+    @etrace(enable_trace=algo_app_etrace)
     def save_fundamental_data(self) -> None:
         """Save the fundamental_data DataFrame."""
         #######################################################################
         # Get the fundamental_data path
         #######################################################################
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         fundamental_data_path = self.ds_catalog.get_path("fundamental_data")
         logger.info(f"{self.msg_prefix} {fundamental_data_path=}")
 
@@ -1068,14 +998,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         self.market_data.contracts.to_csv(fundamental_data_path)
 
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
-
     ###########################################################################
     ###########################################################################
     # get_symbols
     ###########################################################################
     ###########################################################################
+    @etrace(enable_trace=algo_app_etrace)
     def get_symbols(self) -> None:
         """Gets symbols and place them in the symbols list."""
         # get_symbols is the starting point to the reqMatchingSymbols request
@@ -1104,7 +1032,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         #######################################################################
         # if symbols data set exists, load it and reset the index
         #######################################################################
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         symbols_path = self.ds_catalog.get_path("symbols")
         logger.info(f"{self.msg_prefix} get_symbols {symbols_path=}")
 
@@ -1194,12 +1121,10 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         self.market_data.symbols_status.to_csv(symbols_status_path)
 
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
-
     ####################################################################
     # get_symbols_recursive
     ####################################################################
+    @etrace(enable_trace=algo_app_etrace)
     def get_symbols_recursive(self, search_string: str) -> None:
         """Gets symbols and place them in the symbols list.
 
@@ -1207,7 +1132,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             search_string: string to start with
 
         """
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         self.request_symbols(search_string)
         # if self.num_symbols_received > 15:  # possibly more to find
         if self.market_data.num_symbols_received > 15:  # possibly more to find
@@ -1216,12 +1140,10 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 longer_search_string = search_string + add_char
                 self.get_symbols_recursive(longer_search_string)
 
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
-
     ####################################################################
     # request_symbols
     ####################################################################
+    @etrace(enable_trace=algo_app_etrace)
     def request_symbols(self, symbol_to_get: str) -> None:
         """Request contract info from IB for given symbol.
 
@@ -1229,7 +1151,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             symbol_to_get: one of more chars to match to symbols
 
         """
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         # logger.info(
         #     f"{self.msg_prefix} getting symbols that start with {symbol_to_get}"
         # )
@@ -1250,9 +1171,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # doing the 1 second wait before making the request).
         time.sleep(self.request_throttle_secs)  # avoid overloading IB
         self.wait_for_request_completion(req_id)
-
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
 
     # ###########################################################################
     # # symbolSamples - callback
@@ -1327,6 +1245,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     # get_contract_details
     ###########################################################################
     ###########################################################################
+    @etrace(enable_trace=algo_app_etrace)
     def get_contract_details(self, contract: Contract) -> None:
         """Get contract details for one or more contracts.
 
@@ -1371,7 +1290,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         ################################################################
         # load the contracts and contract_details DataFrames
         ################################################################
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         contracts_path = self.ds_catalog.get_path("contracts")
         logger.info(f"{self.msg_prefix} get_contract_details {contracts_path=}")
 
@@ -1393,9 +1311,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         #######################################################################
         self.save_contracts()
         self.save_contract_details()
-
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
 
     # ###########################################################################
     # # contractDetails callback method
@@ -1464,6 +1379,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     # get_fundamental_data
     ###########################################################################
     ###########################################################################
+    @etrace(enable_trace=algo_app_etrace)
     def get_fundamental_data(self, contract: Contract, report_type: str) -> None:
         """Get fundamental data for one contract.
 
@@ -1485,7 +1401,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         ################################################################
         # load the fundamental_data DataFrame
         ################################################################
-        exit_log_msg = self._issue_algo_entry_log_msg(request_args=locals())
         fundamental_data_path = self.ds_catalog.get_path("fundamental_data")
         logger.info(f"{self.msg_prefix} get_fundamental_data {fundamental_data_path=}")
 
@@ -1506,9 +1421,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         # Save fundamental_data DataFrame
         #######################################################################
         self.save_fundamental_data()
-
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
 
     # ###########################################################################
     # # fundamentalData callback method
