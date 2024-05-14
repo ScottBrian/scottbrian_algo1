@@ -56,6 +56,8 @@ ReqID = NewType("ReqID", int)
 ########################################################################
 logger = logging.getLogger(__name__)
 
+algo_client_etrace: bool = True
+
 
 ########################################################################
 # Exceptions
@@ -314,7 +316,7 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
     ###########################################################################
     # disconnect
     ###########################################################################
-    @etrace
+    @etrace(enable_trace=algo_client_etrace)
     def disconnect(self) -> None:
         """Call this function to terminate the connections with TWS."""
         # We would like to call EClient.disconnect, but it does not wait

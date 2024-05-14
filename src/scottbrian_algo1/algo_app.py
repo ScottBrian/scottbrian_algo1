@@ -361,7 +361,7 @@ def algo_setup(
                 and func.__name__ != "shut_down"
             ):
                 error_msg = self._get_error_msg(
-                    error=AlgoApiNotReady,
+                    error="AlgoApiNotReady",
                 )
                 logging.error(error_msg)
                 raise AlgoApiNotReady(error_msg)
@@ -605,7 +605,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     def _get_error_msg(
         self,
-        error: AlgoExceptions,
+        error: str,
         extra: str = "",
         frame_num: int = 1,
     ) -> str:
@@ -659,7 +659,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         with se_lock.SELockExcl(AlgoApp._config_lock):
             if self.algo_client.isConnected():
                 error_msg = self._get_error_msg(
-                    error=AlreadyConnected,
+                    error="AlreadyConnected",
                     extra=f"SmartThread name={_setup_args.smart_thread.name}, "
                     f"{ip_addr=}, {port=}, {client_id=}",
                 )
@@ -696,11 +696,12 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             except SmartThreadRequestTimedOut:
                 self.disconnect_from_ib()
                 error_msg = self._get_error_msg(
-                    error=ConnectTimeout,
+                    error="ConnectTimeout",
                     extra="waiting to receive nextValid_ID. "
                     f"SmartThread name={_setup_args.smart_thread.name}, "
                     f"{ip_addr=}, {port=}, {client_id=}",
                 )
+                logger.error(error_msg)
                 raise ConnectTimeout(error_msg)
 
         logger.info(f"{self.msg_prefix} connect successful")
@@ -751,7 +752,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
             if timer.is_expired():
                 error_msg = self._get_error_msg(
-                    error=DisconnectTimeout, extra=f"waiting for {pending_names=}"
+                    error="DisconnectTimeout", extra=f"waiting for {pending_names=}"
                 )
                 logging.error(error_msg)
                 raise DisconnectTimeout(error_msg)
@@ -774,7 +775,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                     )
                 except SmartThreadRequestTimedOut:
                     error_msg = self._get_error_msg(
-                        error=DisconnectTimeout,
+                        error="DisconnectTimeout",
                         extra=f"waiting for smart_join of "
                         f"client_name={self.client_name}.",
                     )
