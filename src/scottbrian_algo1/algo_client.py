@@ -35,6 +35,7 @@ from scottbrian_paratools.smart_thread import (
     SmartThreadRequestTimedOut,
 )
 
+from scottbrian_utils.entry_trace import etrace
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.diag_msg import get_formatted_call_sequence
 from scottbrian_utils.unique_ts import UniqueTS, UniqueTStamp
@@ -86,65 +87,6 @@ class ClientRequestBlock:
     req_num: UniqueTStamp
     request_complete: bool = False
     request_resumed: bool = False
-
-
-####################################################################
-# algo_trace decorator
-####################################################################
-def algo_trace(
-    func=None,
-    *,
-    omit_args: Optional[Iterable[str]] = None,
-    extra_args: Optional[Iterable[str]] = None,
-):
-    """Decorator to produce entry/exit log.
-
-    Args:
-        func: function to be decorated
-
-    Returns:
-        decorated function
-
-    """
-    if func is None:
-        return functools.partial(algo_setup, omit_args=omit_args, extra_args=extra_args)
-
-    omit_args = set({omit_args} if isinstance(omit_args, str) else omit_args or "")
-    extra_args = set({extra_args} if isinstance(extra_args, str) else extra_args or "")
-
-    @functools.wraps(func)
-    def _algo_trace(self, *args, **kwargs) -> Any:
-        """Setup the trace."""
-        exit_log_msg = ""
-        if logger.isEnabledFor(logging.DEBUG):
-            log_args: str = ""
-            comma: str = ""
-            for key, item in kwargs.items():
-                if key not in omit_args and item is not None and item is not self:
-                    log_args = f"{log_args}{comma} {key}={item}"
-                    comma = ","
-
-            for extra_arg in extra_args:
-                log_args = f"{log_args}{comma} {extra_arg}={eval(extra_arg)}"
-                comma = ","
-
-            log_msg_prefix = (
-                f"{self.msg_prefix} "
-                f"{get_formatted_call_sequence(latest=1, depth=1)}->"
-                f"{func.__name__}"
-            )
-            entry_log_msg = f"{log_msg_prefix} entry:{log_args}"
-            exit_log_msg = f"{log_msg_prefix} exit:{log_args}"
-
-            logger.debug(entry_log_msg)
-
-        ret_value = func(self, *args, **kwargs)
-        if exit_log_msg:
-            logger.debug(exit_log_msg)
-
-        return ret_value
-
-    return _algo_trace
 
 
 ########################################################################
@@ -372,7 +314,7 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
     ###########################################################################
     # disconnect
     ###########################################################################
-    @algo_trace
+    @etrace
     def disconnect(self) -> None:
         """Call this function to terminate the connections with TWS."""
         # We would like to call EClient.disconnect, but it does not wait

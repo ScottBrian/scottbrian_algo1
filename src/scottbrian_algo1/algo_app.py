@@ -170,7 +170,7 @@ from ibapi.contract import Contract, ContractDetails  # type: ignore
 #
 # from ibapi.account_summary_tags import *
 import pandas as pd  # type: ignore
-from scottbrian_locking import se_lock as sel
+from scottbrian_locking import se_lock
 from scottbrian_paratools.smart_thread import (
     SmartThread,
     ThreadState,
@@ -446,7 +446,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     K_LOOP_IDLE_TIME: Final[IntFloat] = 1.0
     K_DEFAULT_TIMEOUT: Final[IntFloat] = 30
 
-    _config_lock: ClassVar[sel.SELock] = sel.SELock()
+    _config_lock: ClassVar[se_lock.SELock] = se_lock.SELock()
 
     ####################################################################
     # __init__
@@ -647,16 +647,16 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
             ip_addr: addr to connect to
             port: port to connect to
             client_id: client id to use for connection
+            _setup_args: the async args
             timeout: specifies the amount of time allowed for the
                 request. If exceeded, a ConnectTimeout error will be
                 raised.
-            _setup_args: the async args
 
         Raises:
             ConnectTimeout: timed out waiting for next valid request ID
 
         """
-        with sel.SELockExcl(AlgoApp._config_lock):
+        with se_lock.SELockExcl(AlgoApp._config_lock):
             if self.algo_client.isConnected():
                 error_msg = self._get_error_msg(
                     error=AlreadyConnected,
@@ -717,6 +717,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         """Disconnect from ib.
 
         Args:
+            _setup_args: the async args
             timeout: specifies the amount of time allowed for the
                 request. If exceeded, a DisconnectTimeout error will be
                 raised.
@@ -756,7 +757,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 raise DisconnectTimeout(error_msg)
             time.sleep(0.2)
 
-        with sel.SELockExcl(AlgoApp._config_lock, allow_recursive_obtain=True):
+        with se_lock.SELockExcl(AlgoApp._config_lock, allow_recursive_obtain=True):
             logger.debug(f"{self.msg_prefix} calling EClient disconnect")
 
             # call our disconnect (overrides EClient)
