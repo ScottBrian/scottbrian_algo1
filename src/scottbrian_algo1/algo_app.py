@@ -200,6 +200,8 @@ from scottbrian_algo1.algo_maps import get_contract_description_dict
 from scottbrian_algo1.algo_client import AlgoClient, ClientRequestBlock, ReqID
 from scottbrian_algo1.algo_data import MarketData
 
+from scottbrian_algo1 import etrace_enabled
+
 
 ########################################################################
 # TypeAlias
@@ -211,8 +213,6 @@ OptIntFloat: TypeAlias = Optional[IntFloat]
 # logging
 ########################################################################
 logger = logging.getLogger(__name__)
-
-algo_app_etrace: bool = True
 
 ########################################################################
 # pandas options
@@ -323,111 +323,89 @@ class ThreadBlock:
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+@wrapt.decorator
 def algo_setup(
-    func: Optional[F] = None,
-    *,
-    omit_parms: Optional[Iterable[str]] = None,
-):
-    """Decorator to setup thread and produce entry/exit log.
+        wrapped: F,
+        instance: Optional[Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+) -> Any:
+    # get unique timestamp to use for part of the smart thread name
+    req_num = UniqueTS.get_unique_ts()
 
-    Args:
-        func: function to be decorated
-        omit_parms: optional list of parms to omit
-
-    Returns:
-        decorated function
-
-    Notes:
-        1) this decorator adds the args to the kwargs for the function
-           being decorated
-
-    """
-    if func is None:
-        return functools.partial(algo_setup, omit_parms=omit_parms)
-
-    omit_parms = set({omit_parms} if isinstance(omit_parms, str) else omit_parms or "")
-
-    @functools.wraps(func)
-    def _algo_setup(self, *args, **kwargs) -> Any:
-
-        # get unique timestamp to use for part of the smart thread name
-        req_num = UniqueTS.get_unique_ts()
-
-        with self.request_threads_lock:
-            if (
-                not self.ready_for_work
-                and func.__name__ != "connect_to_ib"
-                and func.__name__ != "disconnect_from_ib"
-                and func.__name__ != "shut_down"
-            ):
-                error_msg = self._get_error_msg(
-                    error="AlgoApiNotReady",
-                )
-                logging.error(error_msg)
-                raise AlgoApiNotReady(error_msg)
-            try:
-                # case 0: we are running under the thread that
-                #         instantiated the AlgoApi and should certainly
-                #         get back the already existing SmartThread
-                #         (which is self)
-                # case 1: we are running under a different thread than
-                #         the one that instantiated the AlgoApi and this
-                #         is the first time we have made a request on
-                #         this thread which means we do not yet have a
-                #         SmartThread. So we will get the
-                #         SmartThreadNotFound exception and create a new
-                #         SmartThread and place it in the
-                #         request_threads array.
-                # case 2: we are running under a different thread than
-                #         the one that instantiated the AlgoApi and this
-                #         is *not* the first time we have made a request
-                #         on this thread which means we already have a
-                #         a SmartThread and should get it returned on
-                #         this call. We will mark it in use and set the
-                #         start_time using the req_num time stamp.
-                req_smart_thread = SmartThread.get_current_smart_thread(
-                    group_name=self.group_name
-                )
-                if req_smart_thread is not self:
-                    self.request_threads[req_smart_thread.name].in_use_count += 1
-                    self.request_threads[req_smart_thread.name].start_time = req_num
-
-            except SmartThreadNotFound:
-                req_smart_thread_name = f"algo_requestor_{req_num}"
-                req_smart_thread = SmartThread(
-                    group_name=self.group_name, name=req_smart_thread_name
-                )
-                self.request_threads[req_smart_thread_name] = ThreadBlock(
-                    smart_thread=req_smart_thread,
-                    in_use_count=1,
-                    create_time=req_num,
-                    start_time=req_num,
-                )
-
-        kwargs["_setup_args"] = SetupArgs(
-            smart_thread=req_smart_thread, req_num=req_num
-        )
-
+    with instance.request_threads_lock:
+        if (
+            not instance.ready_for_work
+            and wrapped.__name__ != "connect_to_ib"
+            and wrapped.__name__ != "disconnect_from_ib"
+            and wrapped.__name__ != "shut_down"
+        ):
+            error_msg = instance._get_error_msg(
+                error="AlgoApiNotReady",
+            )
+            logging.error(error_msg)
+            raise AlgoApiNotReady(error_msg)
         try:
-            ret_value = func(self, *args, **kwargs)
+            # case 0: we are running under the thread that
+            #         instantiated the AlgoApi and should certainly
+            #         get back the already existing SmartThread
+            #         (which is instance)
+            # case 1: we are running under a different thread than
+            #         the one that instantiated the AlgoApi and this
+            #         is the first time we have made a request on
+            #         this thread which means we do not yet have a
+            #         SmartThread. So we will get the
+            #         SmartThreadNotFound exception and create a new
+            #         SmartThread and place it in the
+            #         request_threads array.
+            # case 2: we are running under a different thread than
+            #         the one that instantiated the AlgoApi and this
+            #         is *not* the first time we have made a request
+            #         on this thread which means we already have a
+            #         a SmartThread and should get it returned on
+            #         this call. We will mark it in use and set the
+            #         start_time using the req_num time stamp.
+            req_smart_thread = SmartThread.get_current_smart_thread(
+                group_name=instance.group_name
+            )
+            if req_smart_thread is not instance:
+                instance.request_threads[req_smart_thread.name].in_use_count += 1
+                instance.request_threads[req_smart_thread.name].start_time = req_num
 
-        finally:
-            if req_smart_thread is not self:
-                with self.request_threads_lock:
-                    # if we just did a disconnect
-                    self.request_threads[req_smart_thread.name].in_use_count -= 1
-                    self.request_threads[req_smart_thread.name].time_freed = time.time()
-                    if (
-                        not self.ready_for_work
-                        and self.request_threads[req_smart_thread.name].in_use_count
-                        == 0
-                    ):
-                        del self.request_threads[req_smart_thread.name]
-                        req_smart_thread.smart_unreg()
+        except SmartThreadNotFound:
+            req_smart_thread_name = f"algo_requestor_{req_num}"
+            req_smart_thread = SmartThread(
+                group_name=instance.group_name, name=req_smart_thread_name
+            )
+            instance.request_threads[req_smart_thread_name] = ThreadBlock(
+                smart_thread=req_smart_thread,
+                in_use_count=1,
+                create_time=req_num,
+                start_time=req_num,
+            )
 
-        return ret_value
+    kwargs["_setup_args"] = SetupArgs(
+        smart_thread=req_smart_thread, req_num=req_num
+    )
 
-    return _algo_setup
+    try:
+        ret_value = wrapped(*args, **kwargs)
+
+    finally:
+        if req_smart_thread is not instance:
+            with instance.request_threads_lock:
+                # if we just did a disconnect
+                instance.request_threads[req_smart_thread.name].in_use_count -= 1
+                instance.request_threads[req_smart_thread.name].time_freed = time.time()
+                if (
+                    not instance.ready_for_work
+                    and instance.request_threads[req_smart_thread.name].in_use_count
+                    == 0
+                ):
+                    del instance.request_threads[req_smart_thread.name]
+                    req_smart_thread.smart_unreg()
+
+    return ret_value
 
 
 ########################################################################
@@ -630,8 +608,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # connect_to_ib
     ###########################################################################
+    # @etrace(enable_trace=etrace_enabled, omit_parms="_setup_args", latest=2, depth=2)
     @algo_setup
-    @etrace(enable_trace=algo_app_etrace, omit_parms="_setup_args", latest=2, depth=2)
+    @etrace(enable_trace=etrace_enabled, omit_parms="_setup_args", latest=2, depth=2)
     def connect_to_ib(
         self,
         *,
@@ -709,7 +688,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # disconnect_from_ib
     ####################################################################
-    @algo_setup(omit_parms="_setup_args")
+    @algo_setup
     def disconnect_from_ib(
         self,
         _setup_args: SetupArgs,
@@ -816,7 +795,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # load_contracts
     ###########################################################################
-    @etrace(enable_trace=algo_app_etrace)
+    @etrace(enable_trace=etrace_enabled)
     def load_contracts(self, path: Path) -> Any:
         """Load the contracts DataFrame.
 
@@ -855,7 +834,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # load_contracts
     ###########################################################################
-    @etrace(enable_trace=algo_app_etrace)
+    @etrace(enable_trace=etrace_enabled)
     def load_fundamental_data(self, path: Path) -> Any:
         """Load the fundamental_data DataFrame.
 
@@ -872,7 +851,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # load_contract_details
     ####################################################################
-    @etrace(enable_trace=algo_app_etrace)
+    @etrace(enable_trace=etrace_enabled)
     def load_contract_details(self) -> None:
         """Load the contracts DataFrame."""
         ################################################################
@@ -923,7 +902,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # save_contracts
     ####################################################################
-    @etrace(enable_trace=algo_app_etrace)
+    @etrace(enable_trace=etrace_enabled)
     def save_contracts(self) -> None:
         """Save the contracts DataFrame."""
         ################################################################
@@ -950,7 +929,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # save_contract_details
     ####################################################################
-    @etrace(enable_trace=algo_app_etrace)
+    @etrace(enable_trace=etrace_enabled)
     def save_contract_details(self) -> None:
         """Save the contract_details DataFrame."""
         #######################################################################
@@ -976,7 +955,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # save_fundamental_data
     ####################################################################
-    @etrace(enable_trace=algo_app_etrace)
+    @etrace(enable_trace=etrace_enabled)
     def save_fundamental_data(self) -> None:
         """Save the fundamental_data DataFrame."""
         #######################################################################
@@ -1005,7 +984,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     # get_symbols
     ###########################################################################
     ###########################################################################
-    @etrace(enable_trace=algo_app_etrace)
+    @etrace(enable_trace=etrace_enabled)
     def get_symbols(self) -> None:
         """Gets symbols and place them in the symbols list."""
         # get_symbols is the starting point to the reqMatchingSymbols request
@@ -1126,7 +1105,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # get_symbols_recursive
     ####################################################################
-    @etrace(enable_trace=algo_app_etrace)
+    @etrace(enable_trace=etrace_enabled)
     def get_symbols_recursive(self, search_string: str) -> None:
         """Gets symbols and place them in the symbols list.
 
@@ -1145,7 +1124,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ####################################################################
     # request_symbols
     ####################################################################
-    @etrace(enable_trace=algo_app_etrace)
+    @etrace(enable_trace=etrace_enabled)
     def request_symbols(self, symbol_to_get: str) -> None:
         """Request contract info from IB for given symbol.
 
@@ -1247,7 +1226,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     # get_contract_details
     ###########################################################################
     ###########################################################################
-    @etrace(enable_trace=algo_app_etrace)
+    @etrace(enable_trace=etrace_enabled)
     def get_contract_details(self, contract: Contract) -> None:
         """Get contract details for one or more contracts.
 
@@ -1381,7 +1360,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     # get_fundamental_data
     ###########################################################################
     ###########################################################################
-    @etrace(enable_trace=algo_app_etrace)
+    @etrace(enable_trace=etrace_enabled)
     def get_fundamental_data(self, contract: Contract, report_type: str) -> None:
         """Get fundamental data for one contract.
 
