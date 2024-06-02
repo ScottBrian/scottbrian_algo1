@@ -252,60 +252,61 @@ class AlgoAppVer:
         #     ds_catalog=app_cat, group_name=algo_group_name, algo_name=algo_name
         # )
 
-    # def connect_to_ib(
-    #     self, timeout_type: TimeoutType, timeout: int = 0, con_caller: str = ""
-    # ) -> None:
-    #     self.add_entry_trace_pattern(
-    #         ip_addr=self.ip_addr,
-    #         port=self.port,
-    #         client_id=self.client_id,
-    #         timeout=timeout,
-    #         caller=self.algo_app_msg_prefix,
-    #     )
+    def connect_to_ib(
+        self, timeout_type: TimeoutType, timeout: int = 0, con_caller: str = ""
+    ) -> None:
+        self.add_entry_trace_pattern(
+            ip_addr=self.ip_addr,
+            port=self.port,
+            client_id=self.client_id,
+            timeout=timeout,
+            caller=con_caller,
+            exit_trace=(not timeout_type == TimeoutType.TimeoutTrue),
+        )
 
-    # if timeout_type_arg == TimeoutType.TimeoutNone:
-    #     timeout = None
-    # elif timeout_type_arg == TimeoutType.TimeoutFalse:
-    #     timeout = delay_arg * 2
-    # else:
-    #     timeout = delay_arg / 2
-
-    # if timeout_type == TimeoutType.TimeoutNone:
-    #     self.algo_app.connect_to_ib(
-    #         ip_addr=self.ip_addr,
-    #         port=self.port,
-    #         client_id=self.client_id,
-    #     )
-    # elif timeout_type == TimeoutType.TimeoutFalse:
-    #     self.algo_app.connect_to_ib(
-    #         ip_addr=self.ip_addr,
-    #         port=self.port,
-    #         client_id=self.client_id,
-    #         timeout=timeout,
-    #     )
-    # else:
-    #     func_name = "connect_to_ib"
-    #     error = "ConnectTimeout"
-    #     extra = (
-    #         "waiting to receive nextValid_ID. "
-    #         f"SmartThread name={ct_smart_thread_name}, "
-    #         f"ip_addr={self.ip_addr}, port={self.port}, client_id={self.client_id}"
-    #     )
-    #     test_error_msg = (
-    #         f"{self.algo_app_msg_prefix} {func_name} raising {error} {extra}."
-    #     )
-    #     self.log_ver.add_pattern(
-    #         pattern=test_error_msg,
-    #         level=40,
-    #         log_name="scottbrian_algo1.algo_app",
-    #     )
-    #     with pytest.raises(ConnectTimeout, match=test_error_msg):
-    #         self.algo_app.connect_to_ib(
-    #             ip_addr=self.ip_addr,
-    #             port=self.port,
-    #             client_id=self.client_id,
-    #             timeout=timeout,
-    #         )
+        # if timeout_type_arg == TimeoutType.TimeoutNone:
+        #     timeout = None
+        # elif timeout_type_arg == TimeoutType.TimeoutFalse:
+        #     timeout = delay_arg * 2
+        # else:
+        #     timeout = delay_arg / 2
+        #
+        # if timeout_type == TimeoutType.TimeoutNone:
+        #     self.algo_app.connect_to_ib(
+        #         ip_addr=self.ip_addr,
+        #         port=self.port,
+        #         client_id=self.client_id,
+        #     )
+        # elif timeout_type == TimeoutType.TimeoutFalse:
+        #     self.algo_app.connect_to_ib(
+        #         ip_addr=self.ip_addr,
+        #         port=self.port,
+        #         client_id=self.client_id,
+        #         timeout=timeout,
+        #     )
+        # else:
+        #     func_name = "connect_to_ib"
+        #     error = "ConnectTimeout"
+        #     extra = (
+        #         "waiting to receive nextValid_ID. "
+        #         f"SmartThread name={ct_smart_thread_name}, "
+        #         f"ip_addr={self.ip_addr}, port={self.port}, client_id={self.client_id}"
+        #     )
+        #     test_error_msg = (
+        #         f"{self.algo_app_msg_prefix} {func_name} raising {error} {extra}."
+        #     )
+        #     self.log_ver.add_pattern(
+        #         pattern=test_error_msg,
+        #         level=40,
+        #         log_name="scottbrian_algo1.algo_app",
+        #     )
+        #     with pytest.raises(ConnectTimeout, match=test_error_msg):
+        #         self.algo_app.connect_to_ib(
+        #             ip_addr=self.ip_addr,
+        #             port=self.port,
+        #             client_id=self.client_id,
+        #             timeout=timeout,
+        #         )
 
     ####################################################################
     # add_entry_trace_pattern
@@ -317,8 +318,9 @@ class AlgoAppVer:
         client_id: int,
         timeout: IntFloat,
         caller: str,
+        exit_trace: bool = True,
     ) -> None:
-        """Method to add entrr trace pattern to LogVer.
+        """Method to add entry and exit trace pattern to LogVer.
 
         Args:
             ip_addr (str): IP address of client.
@@ -326,6 +328,7 @@ class AlgoAppVer:
             client_id (int): Client ID.
             timeout (IntFloat): Timeout in seconds.
             caller (str): Caller ID.
+            exit_trace: If True, add exit trace pattern
 
         """
         con_etrace_entry = (
@@ -338,13 +341,14 @@ class AlgoAppVer:
             pattern=con_etrace_entry, log_name="scottbrian_utils.entry_trace"
         )
 
-        con_etrace_exit = (
-            "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value=None"
-        )
+        if exit_trace:
+            con_etrace_exit = (
+                "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value=None"
+            )
 
-        self.log_ver.add_pattern(
-            pattern=con_etrace_exit, log_name="scottbrian_utils.entry_trace"
-        )
+            self.log_ver.add_pattern(
+                pattern=con_etrace_exit, log_name="scottbrian_utils.entry_trace"
+            )
 
 
 ########################################################################
@@ -1212,7 +1216,7 @@ class TestAlgoAppBasicTests:
         self,
         async_tf_arg: bool,
         delay_arg: int,
-        timeout_type_arg: int,
+        timeout_type_arg: TimeoutType,
         app_cat: "FileCatalog",
         caplog: pytest.LogCaptureFixture,
         monkeypatch: pytest.MonkeyPatch,
@@ -1278,7 +1282,7 @@ class TestAlgoAppBasicTests:
                 extra = (
                     "waiting to receive nextValid_ID. "
                     f"SmartThread name={ct_smart_thread_name}, "
-                    f"ip_addr={algo_app_ver.ip_addr}, port={algo_app_ver.port}, "
+                    f"ip_addr='{algo_app_ver.ip_addr}', port={algo_app_ver.port}, "
                     f"client_id={algo_app_ver.client_id}"
                 )
                 test_error_msg = (
@@ -1325,13 +1329,19 @@ class TestAlgoAppBasicTests:
                 "test_mock_connect_to_ib:[0-9]+ "
                 "-> test_algo_app.py::connect_test:[0-9]+"
             )
-        algo_app_ver.add_entry_trace_pattern(
-            ip_addr=algo_app_ver.ip_addr,
-            port=algo_app_ver.port,
-            client_id=algo_app_ver.client_id,
+        # algo_app_ver.add_entry_trace_pattern(
+        #     ip_addr=algo_app_ver.ip_addr,
+        #     port=algo_app_ver.port,
+        #     client_id=algo_app_ver.client_id,
+        #     timeout=timeout,
+        #     caller=con_caller,
+        # )
+        algo_app_ver.connect_to_ib(
+            timeout_type=timeout_type_arg,
             timeout=timeout,
-            caller=con_caller,
+            con_caller=con_caller,
         )
+
         # con_etrace_entry = (
         #     "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
         #     f"{ip_addr=}, {port=}, {client_id=}, "
