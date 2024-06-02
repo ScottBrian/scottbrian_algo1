@@ -142,6 +142,54 @@ test_cat = FileCatalog(
 
 
 ########################################################################
+# LogVerMgr
+########################################################################
+class LogVerMgr(LogVer):
+    """LogVerMgr to test with LogVer."""
+
+    ####################################################################
+    # __init__
+    ####################################################################
+    # def __init__(self, log_name: str = "root", str_col_width: Optional[int] = None):
+    #     super().__init__(log_name=log_name, str_col_width=str_col_width)
+    #
+    # ####################################################################
+    # # add_entry_trace_pattern
+    # ####################################################################
+    # def add_entry_trace_pattern(
+    #     self,
+    #     ip_addr: str,
+    #     port: int,
+    #     client_id: int,
+    #     timeout: IntFloat,
+    #     caller: str,
+    # ):
+    #     """Method to add entrr trace pattern to LogVer.
+    #
+    #     Args:
+    #         ip_addr (str): IP address of client.
+    #         port (int): Port of client.
+    #         client_id (int): Client ID.
+    #         timeout (IntFloat): Timeout in seconds.
+    #         caller (str): Caller ID.
+    #
+    #     """
+    #     con_etrace_entry = (
+    #         "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
+    #         f"{ip_addr=}, {port=}, {client_id=}, "
+    #         f"_setup_args='...', {timeout=}, "
+    #         f"caller: {caller}"
+    #     )
+    #     self.add_pattern(pattern=con_etrace_entry)
+    #
+    #     con_etrace_exit = (
+    #         "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value=None"
+    #     )
+    #
+    #     self.add_pattern(pattern=con_etrace_exit)
+
+
+########################################################################
 # SyncAsync
 ########################################################################
 class SyncAsync(Enum):
@@ -203,7 +251,17 @@ class AlgoAppVer:
             ds_catalog=app_cat, group_name=algo_group_name, algo_name=algo_name
         )
 
-    def connect_to_ib(self, timeout_type: TimeoutType, timeout: int = 0) -> None:
+    def connect_to_ib(self, timeout_type: TimeoutType, timeout: int = 0, con_caller: str = "") -> None:
+        self.add_entry_trace_pattern(ip_addr=self.ip_addr, port=self.port, client_id=self.client_id, timeout=timeout, caller=self.algo_app_msg_prefix)
+
+        if timeout_type_arg == TimeoutType.TimeoutNone:
+            timeout = None
+        elif timeout_type_arg == TimeoutType.TimeoutFalse:
+            timeout = delay_arg * 2
+        else:
+            timeout = delay_arg / 2
+
+
         if timeout_type == TimeoutType.TimeoutNone:
             self.algo_app.connect_to_ib(
                 ip_addr=self.ip_addr,
@@ -241,6 +299,40 @@ class AlgoAppVer:
                     timeout=timeout,
                 )
 
+    ####################################################################
+    # add_entry_trace_pattern
+    ####################################################################
+    def add_entry_trace_pattern(
+        self,
+        ip_addr: str,
+        port: int,
+        client_id: int,
+        timeout: IntFloat,
+        caller: str,
+    ):
+        """Method to add entrr trace pattern to LogVer.
+
+        Args:
+            ip_addr (str): IP address of client.
+            port (int): Port of client.
+            client_id (int): Client ID.
+            timeout (IntFloat): Timeout in seconds.
+            caller (str): Caller ID.
+
+        """
+        con_etrace_entry = (
+            "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
+            f"{ip_addr=}, {port=}, {client_id=}, "
+            f"_setup_args='...', {timeout=}, "
+            f"caller: {caller}"
+        )
+        self.add_pattern(pattern=con_etrace_entry)
+
+        con_etrace_exit = (
+            "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value=None"
+        )
+
+        self.add_pattern(pattern=con_etrace_exit)
 
 ########################################################################
 # LockMgr
@@ -1197,7 +1289,8 @@ class TestAlgoAppBasicTests:
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
             return
 
-        log_ver = LogVer(log_name="algo_app_test_log")
+        log_ver = LogVerMgr(log_name="algo_app_test_log")
+        algo_app_ver = AlgoAppVer(log_ver=log_ver)
 
         if timeout_type_arg == TimeoutType.TimeoutNone:
             timeout = None
@@ -1217,20 +1310,21 @@ class TestAlgoAppBasicTests:
                 "test_mock_connect_to_ib:[0-9]+ "
                 "-> test_algo_app.py::connect_test:[0-9]+"
             )
-        con_etrace_entry = (
-            "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
-            f"{ip_addr=}, {port=}, {client_id=}, "
-            f"_setup_args='...', {timeout=}, "
-            f"caller: {con_caller}"
-        )
+        # con_etrace_entry = (
+        #     "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
+        #     f"{ip_addr=}, {port=}, {client_id=}, "
+        #     f"_setup_args='...', {timeout=}, "
+        #     f"caller: {con_caller}"
+        # )
 
-        con_etrace_exit = (
-            "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value=None"
-        )
 
-        log_ver.add_pattern(
-            pattern=con_etrace_entry, log_name="scottbrian_utils.entry_trace"
-        )
+        # con_etrace_exit = (
+        #     "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value=None"
+        # )
+        #
+        # log_ver.add_pattern(
+        #     pattern=con_etrace_entry, log_name="scottbrian_utils.entry_trace"
+        # )
 
         log_ver.add_pattern(
             pattern=f"{algo_app_msg_prefix} starting AlgoClient thread",
