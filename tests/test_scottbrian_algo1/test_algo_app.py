@@ -234,6 +234,8 @@ class AlgoAppVer:
         """
         self.log_ver = log_ver
 
+        self.app_cat = app_cat
+
         self.algo_group_name = algo_group_name
         self.algo_name = algo_name
         self.ip_addr = ip_addr
@@ -248,17 +250,39 @@ class AlgoAppVer:
             f"AlgoWrapper {algo_name} ({algo_group_name})"
         )
 
-        # self.algo_app = AlgoApp(
-        #     ds_catalog=app_cat, group_name=algo_group_name, algo_name=algo_name
-        # )
+        self.algo_app = AlgoApp(
+            ds_catalog=app_cat, group_name=algo_group_name, algo_name=algo_name
+        )
+
+        self.verify_algo_app_initialized()
 
     def connect_to_ib(
-        self, timeout_type: TimeoutType, timeout: int = 0, con_caller: str = ""
+        self,
+        timeout_type: TimeoutType,
+        delay: int,
+        async_tf: bool,
+        con_caller: str = "",
     ) -> None:
-        self.add_entry_trace_pattern(
-            timeout=timeout,
-            caller=con_caller,
-            ret_value=(None if timeout_type == TimeoutType.TimeoutTrue else "None"),
+
+        if timeout_type == TimeoutType.TimeoutNone:
+            timeout = None
+        elif timeout_type == TimeoutType.TimeoutFalse:
+            timeout = delay * 2
+        else:
+            timeout = delay / 2
+
+        etrace_caller = (
+            f"{con_caller} -> test_algo_app.py::AlgoAppVer.connect_to_ib:" f"[0-9]+"
+        )
+
+        con_etrace_entry = (
+            "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
+            f"ip_addr='{self.ip_addr}', port={self.port}, client_id={self.client_id}, "
+            f"_setup_args='...', {timeout=}, "
+            f"caller: {etrace_caller}"
+        )
+        self.log_ver.add_pattern(
+            pattern=con_etrace_entry, log_name="scottbrian_utils.entry_trace"
         )
 
         self.log_ver.add_pattern(
@@ -277,91 +301,70 @@ class AlgoAppVer:
                 level=20,
                 log_name="scottbrian_algo1.algo_wrapper",
             )
-            # log_ver.add_pattern(
-            #     pattern=con_etrace_exit, log_name="scottbrian_utils.entry_trace"
-            # )
-
-        # if timeout_type_arg == TimeoutType.TimeoutNone:
-        #     timeout = None
-        # elif timeout_type_arg == TimeoutType.TimeoutFalse:
-        #     timeout = delay_arg * 2
-        # else:
-        #     timeout = delay_arg / 2
-        #
-        # if timeout_type == TimeoutType.TimeoutNone:
-        #     self.algo_app.connect_to_ib(
-        #         ip_addr=self.ip_addr,
-        #         port=self.port,
-        #         client_id=self.client_id,
-        #     )
-        # elif timeout_type == TimeoutType.TimeoutFalse:
-        #     self.algo_app.connect_to_ib(
-        #         ip_addr=self.ip_addr,
-        #         port=self.port,
-        #         client_id=self.client_id,
-        #         timeout=timeout,
-        #     )
-        # else:
-        #     func_name = "connect_to_ib"
-        #     error = "ConnectTimeout"
-        #     extra = (
-        #         "waiting to receive nextValid_ID. "
-        #         f"SmartThread name={ct_smart_thread_name}, "
-        #         f"ip_addr={self.ip_addr}, port={self.port}, client_id={self.client_id}"
-        #     )
-        #     test_error_msg = (
-        #         f"{self.algo_app_msg_prefix} {func_name} raising {error} {extra}."
-        #     )
-        #     self.log_ver.add_pattern(
-        #         pattern=test_error_msg,
-        #         level=40,
-        #         log_name="scottbrian_algo1.algo_app",
-        #     )
-        #     with pytest.raises(ConnectTimeout, match=test_error_msg):
-        #         self.algo_app.connect_to_ib(
-        #             ip_addr=self.ip_addr,
-        #             port=self.port,
-        #             client_id=self.client_id,
-        #             timeout=timeout,
-        #         )
-
-    ####################################################################
-    # add_entry_trace_pattern
-    ####################################################################
-    def add_entry_trace_pattern(
-        self,
-        timeout: IntFloat,
-        caller: str,
-        ret_value: Optional[Any] = None,
-    ) -> None:
-        """Method to add entry and exit trace pattern to LogVer.
-
-        Args:
-            timeout (IntFloat): Timeout in seconds.
-            caller (str): Caller ID.
-            ret_value: If None, no exit trace. Otherwise, exit trace
-                with the specified ret_value.
-
-        """
-        con_etrace_entry = (
-            "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
-            f"ip_addr='{self.ip_addr}', port={self.port}, client_id={self.client_id}, "
-            f"_setup_args='...', {timeout=}, "
-            f"caller: {caller}"
-        )
-        self.log_ver.add_pattern(
-            pattern=con_etrace_entry, log_name="scottbrian_utils.entry_trace"
-        )
-
-        if ret_value is not None:
             con_etrace_exit = (
-                "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value="
-                f"{ret_value}"
+                "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value=None"
             )
 
             self.log_ver.add_pattern(
                 pattern=con_etrace_exit, log_name="scottbrian_utils.entry_trace"
             )
+
+        if timeout_type == TimeoutType.TimeoutNone:
+            self.algo_app.connect_to_ib(
+                ip_addr="127.0.0.1",
+                port=AlgoApp.PORT_FOR_LIVE_TRADING,
+                client_id=self.client_id,
+            )
+        elif timeout_type == TimeoutType.TimeoutFalse:
+            self.algo_app.connect_to_ib(
+                ip_addr="127.0.0.1",
+                port=AlgoApp.PORT_FOR_LIVE_TRADING,
+                client_id=self.client_id,
+                timeout=timeout,
+            )
+        else:
+            # mock_ib.delay_value = -1
+            if async_tf:
+                smart_thread_name = f"algo_requestor_[0-9]+.[0-9]+"
+            else:
+                smart_thread_name = self.algo_name
+
+            func_name = "connect_to_ib"
+            error = "ConnectTimeout"
+            extra = (
+                "waiting to receive nextValid_ID. "
+                f"SmartThread name={smart_thread_name}, "
+                f"ip_addr='{self.ip_addr}', port={self.port}, "
+                f"client_id={self.client_id}"
+            )
+            test_error_msg = (
+                f"{self.algo_app_msg_prefix} {func_name} " f"raising {error} {extra}."
+            )
+            self.log_ver.add_pattern(
+                pattern=test_error_msg,
+                level=40,
+                log_name="scottbrian_algo1.algo_app",
+            )
+            with pytest.raises(ConnectTimeout, match=test_error_msg):
+                self.algo_app.connect_to_ib(
+                    ip_addr="127.0.0.1",
+                    port=AlgoApp.PORT_FOR_LIVE_TRADING,
+                    client_id=self.client_id,
+                    timeout=timeout,
+                )
+
+    ########################################################################
+    # verify_algo_app_initialized
+    ########################################################################
+    def verify_algo_app_initialized(self) -> None:
+        """Helper function to verify the algo_app instance is initialized."""
+        assert len(self.algo_app.ds_catalog) > 0
+        assert self.algo_app.algo_client.algo_wrapper.request_id == 0
+        assert self.algo_app.market_data.symbols.empty
+        assert self.algo_app.market_data.stock_symbols.empty
+        assert self.algo_app.response_complete_event.is_set() is False
+        assert self.algo_app.__repr__() == "AlgoApp(ds_catalog)"
+        # assert self.algo_app.ibapi_client_smart_thread.thread is None
 
 
 ########################################################################
@@ -1244,21 +1247,6 @@ class TestAlgoAppBasicTests:
             caplog: pytest fixture that captures log messages
             monkeypatch: used to alter code
         """
-        # print(f"{logging.Logger.manager.loggerDict.keys()=}\n")
-
-        # algo_app._algo_app_etrace = True
-
-        # for key, item in logging.Logger.manager.loggerDict.items():
-        #     # print(f"{key=} {type(item)=}\n")
-        #     if key[0:5] == "ibapi" and not isinstance(item, logging.PlaceHolder):
-        #         logging.Logger.manager.loggerDict[key].setLevel(logging.CRITICAL)
-        #     if isinstance(lock_manager_logger, logging.PlaceHolder):
-        #         raise InvalidConfigurationDetected(
-        #             "test_smart_thread_log_msg detected that the manager "
-        #             "logger for scottbrian_locking is a PlaceHolder"
-        #         )
-
-        # logging.Logger.manager.loggerDict["ibapi"].setLevel(logging.CRITICAL)
 
         def f1(
             f1_smart_thread: SmartThread,
@@ -1266,54 +1254,61 @@ class TestAlgoAppBasicTests:
             f1_timeout: Optional[int] = None,
         ):
 
-            con_smart_thread_name = f"algo_requestor_[0-9]+.[0-9]+"
-            connect_test(f1_timeout_type_arg, con_smart_thread_name, f1_timeout)
+            # con_smart_thread_name = f"algo_requestor_[0-9]+.[0-9]+"
+
+            algo_app_ver.connect_to_ib(
+                timeout_type=timeout_type_arg,
+                delay=delay_arg,
+                con_caller="test_algo_app.py::f1:[0-9]+",
+                async_tf=async_tf_arg,
+            )
+            # connect_test(f1_timeout_type_arg, con_smart_thread_name, f1_timeout)
             f1_smart_thread.smart_resume(waiters="alpha")
 
-        def connect_test(
-            ct_timeout_type_arg: int,
-            ct_smart_thread_name: str,
-            ct_timeout: Optional[int] = None,
-        ):
-            if ct_timeout_type_arg == TimeoutType.TimeoutNone:
-                algo_app.connect_to_ib(
-                    ip_addr="127.0.0.1",
-                    port=AlgoApp.PORT_FOR_LIVE_TRADING,
-                    client_id=algo_app_ver.client_id,
-                )
-            elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
-                algo_app.connect_to_ib(
-                    ip_addr="127.0.0.1",
-                    port=AlgoApp.PORT_FOR_LIVE_TRADING,
-                    client_id=algo_app_ver.client_id,
-                    timeout=ct_timeout,
-                )
-            else:
-                # mock_ib.delay_value = -1
-                func_name = "connect_to_ib"
-                error = "ConnectTimeout"
-                extra = (
-                    "waiting to receive nextValid_ID. "
-                    f"SmartThread name={ct_smart_thread_name}, "
-                    f"ip_addr='{algo_app_ver.ip_addr}', port={algo_app_ver.port}, "
-                    f"client_id={algo_app_ver.client_id}"
-                )
-                test_error_msg = (
-                    f"{algo_app_ver.algo_app_msg_prefix} {func_name} "
-                    f"raising {error} {extra}."
-                )
-                log_ver.add_pattern(
-                    pattern=test_error_msg,
-                    level=40,
-                    log_name="scottbrian_algo1.algo_app",
-                )
-                with pytest.raises(ConnectTimeout, match=test_error_msg):
-                    algo_app.connect_to_ib(
-                        ip_addr="127.0.0.1",
-                        port=AlgoApp.PORT_FOR_LIVE_TRADING,
-                        client_id=algo_app_ver.client_id,
-                        timeout=ct_timeout,
-                    )
+        # def connect_test(
+        #     ct_timeout_type_arg: int,
+        #     ct_smart_thread_name: str,
+        #     ct_timeout: Optional[int] = None,
+        # ):
+        #     if ct_timeout_type_arg == TimeoutType.TimeoutNone:
+        #         algo_app.connect_to_ib(
+        #             ip_addr="127.0.0.1",
+        #             port=AlgoApp.PORT_FOR_LIVE_TRADING,
+        #             client_id=algo_app_ver.client_id,
+        #         )
+        #     elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
+        #         algo_app.connect_to_ib(
+        #             ip_addr="127.0.0.1",
+        #             port=AlgoApp.PORT_FOR_LIVE_TRADING,
+        #             client_id=algo_app_ver.client_id,
+        #             timeout=ct_timeout,
+        #         )
+        #     else:
+        #         # mock_ib.delay_value = -1
+        #         func_name = "connect_to_ib"
+        #         error = "ConnectTimeout"
+        #         extra = (
+        #             "waiting to receive nextValid_ID. "
+        #             f"SmartThread name={ct_smart_thread_name}, "
+        #             f"ip_addr='{algo_app_ver.ip_addr}', port={algo_app_ver.port}, "
+        #             f"client_id={algo_app_ver.client_id}"
+        #         )
+        #         test_error_msg = (
+        #             f"{algo_app_ver.algo_app_msg_prefix} {func_name} "
+        #             f"raising {error} {extra}."
+        #         )
+        #         log_ver.add_pattern(
+        #             pattern=test_error_msg,
+        #             level=40,
+        #             log_name="scottbrian_algo1.algo_app",
+        #         )
+        #         with pytest.raises(ConnectTimeout, match=test_error_msg):
+        #             algo_app.connect_to_ib(
+        #                 ip_addr="127.0.0.1",
+        #                 port=AlgoApp.PORT_FOR_LIVE_TRADING,
+        #                 client_id=algo_app_ver.client_id,
+        #                 timeout=ct_timeout,
+        #             )
 
         ################################################################
         # mainline
@@ -1321,7 +1316,7 @@ class TestAlgoAppBasicTests:
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
             return
 
-        log_ver = LogVerMgr(log_name="algo_app_test_log")
+        log_ver = LogVer(log_name="algo_app_test_log")
         algo_app_ver = AlgoAppVer(log_ver=log_ver, app_cat=app_cat)
 
         if timeout_type_arg == TimeoutType.TimeoutNone:
@@ -1331,17 +1326,17 @@ class TestAlgoAppBasicTests:
         else:
             timeout = delay_arg / 2
 
-        if async_tf_arg:
-            con_caller = (
-                "test_algo_app.py::f1:[0-9]+ "
-                "-> test_algo_app.py::connect_test:[0-9]+"
-            )
-        else:
-            con_caller = (
-                "test_algo_app.py::TestAlgoAppBasicTests."
-                "test_mock_connect_to_ib:[0-9]+ "
-                "-> test_algo_app.py::connect_test:[0-9]+"
-            )
+        # if async_tf_arg:
+        #     con_caller = (
+        #         "test_algo_app.py::f1:[0-9]+ "
+        #         "-> test_algo_app.py::connect_test:[0-9]+"
+        #     )
+        # else:
+        #     con_caller = (
+        #         "test_algo_app.py::TestAlgoAppBasicTests."
+        #         "test_mock_connect_to_ib:[0-9]+ "
+        #         "-> test_algo_app.py::connect_test:[0-9]+"
+        #     )
         # algo_app_ver.add_entry_trace_pattern(
         #     ip_addr=algo_app_ver.ip_addr,
         #     port=algo_app_ver.port,
@@ -1349,11 +1344,11 @@ class TestAlgoAppBasicTests:
         #     timeout=timeout,
         #     caller=con_caller,
         # )
-        algo_app_ver.connect_to_ib(
-            timeout_type=timeout_type_arg,
-            timeout=timeout,
-            con_caller=con_caller,
-        )
+        # algo_app_ver.connect_to_ib(
+        #     timeout_type=timeout_type_arg,
+        #     delay=delay_arg,
+        #     con_caller=con_caller,
+        # )
 
         # con_etrace_entry = (
         #     "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
@@ -1465,12 +1460,12 @@ class TestAlgoAppBasicTests:
 
         mock_ib.delay_time = delay_arg
 
-        algo_app = AlgoApp(
-            ds_catalog=app_cat,
-            group_name=algo_app_ver.algo_group_name,
-            algo_name=algo_app_ver.algo_name,
-        )
-        verify_algo_app_initialized(algo_app)
+        # algo_app = AlgoApp(
+        #     ds_catalog=app_cat,
+        #     group_name=algo_app_ver.algo_group_name,
+        #     algo_name=algo_app_ver.algo_name,
+        # )
+        # verify_algo_app_initialized(algo_app)
 
         # we are testing connect_to_ib and the subsequent code that gets
         # control as a result, such as getting the first requestID and
@@ -1478,7 +1473,7 @@ class TestAlgoAppBasicTests:
         # log_ver.test_msg("about to connect")
         log_ver.test_msg("about to connect")
 
-        smart_thread_name = algo_app_ver.algo_name
+        # smart_thread_name = algo_app_ver.algo_name
         if async_tf_arg:
             smart_thread_name = "alpha"
             alpha_smart_thread = SmartThread(group_name="test1", name=smart_thread_name)
@@ -1495,7 +1490,17 @@ class TestAlgoAppBasicTests:
             alpha_smart_thread.smart_unreg()
 
         else:
-            connect_test(timeout_type_arg, smart_thread_name, timeout)
+            con_caller = (
+                "test_algo_app.py::TestAlgoAppBasicTests."
+                "test_mock_connect_to_ib:[0-9]+"
+            )
+            algo_app_ver.connect_to_ib(
+                timeout_type=timeout_type_arg,
+                delay=delay_arg,
+                con_caller=con_caller,
+                async_tf=async_tf_arg,
+            )
+            # connect_test(timeout_type_arg, smart_thread_name, timeout)
 
         log_ver.test_msg("back from connect")
 
@@ -1504,13 +1509,13 @@ class TestAlgoAppBasicTests:
         #
         # if mock_ib.delay_time != -1:
         if not (timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0):
-            verify_algo_app_connected(algo_app)
+            verify_algo_app_connected(algo_app_ver.algo_app)
 
-            algo_app.disconnect_from_ib()
+            algo_app_ver.algo_app.disconnect_from_ib()
 
-        verify_algo_app_disconnected(algo_app)
+        verify_algo_app_disconnected(algo_app_ver.algo_app)
 
-        algo_app.shut_down()
+        algo_app_ver.algo_app.shut_down()
 
         ################################################################
         # check log results
