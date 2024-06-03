@@ -256,13 +256,30 @@ class AlgoAppVer:
         self, timeout_type: TimeoutType, timeout: int = 0, con_caller: str = ""
     ) -> None:
         self.add_entry_trace_pattern(
-            ip_addr=self.ip_addr,
-            port=self.port,
-            client_id=self.client_id,
             timeout=timeout,
             caller=con_caller,
-            exit_trace=(not timeout_type == TimeoutType.TimeoutTrue),
+            ret_value=(None if timeout_type == TimeoutType.TimeoutTrue else "None"),
         )
+
+        self.log_ver.add_pattern(
+            pattern=f"{self.algo_app_msg_prefix} starting AlgoClient thread",
+            log_name="scottbrian_algo1.algo_app",
+        )
+
+        if timeout_type != TimeoutType.TimeoutTrue:
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_app_msg_prefix} connect successful",
+                level=20,
+                log_name="scottbrian_algo1.algo_app",
+            )
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_wrapper_msg_prefix} next valid ID is 1",
+                level=20,
+                log_name="scottbrian_algo1.algo_wrapper",
+            )
+            # log_ver.add_pattern(
+            #     pattern=con_etrace_exit, log_name="scottbrian_utils.entry_trace"
+            # )
 
         # if timeout_type_arg == TimeoutType.TimeoutNone:
         #     timeout = None
@@ -313,27 +330,22 @@ class AlgoAppVer:
     ####################################################################
     def add_entry_trace_pattern(
         self,
-        ip_addr: str,
-        port: int,
-        client_id: int,
         timeout: IntFloat,
         caller: str,
-        exit_trace: bool = True,
+        ret_value: Optional[Any] = None,
     ) -> None:
         """Method to add entry and exit trace pattern to LogVer.
 
         Args:
-            ip_addr (str): IP address of client.
-            port (int): Port of client.
-            client_id (int): Client ID.
             timeout (IntFloat): Timeout in seconds.
             caller (str): Caller ID.
-            exit_trace: If True, add exit trace pattern
+            ret_value: If None, no exit trace. Otherwise, exit trace
+                with the specified ret_value.
 
         """
         con_etrace_entry = (
             "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
-            f"{ip_addr=}, {port=}, {client_id=}, "
+            f"ip_addr='{self.ip_addr}', port={self.port}, client_id={self.client_id}, "
             f"_setup_args='...', {timeout=}, "
             f"caller: {caller}"
         )
@@ -341,9 +353,10 @@ class AlgoAppVer:
             pattern=con_etrace_entry, log_name="scottbrian_utils.entry_trace"
         )
 
-        if exit_trace:
+        if ret_value is not None:
             con_etrace_exit = (
-                "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value=None"
+                "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value="
+                f"{ret_value}"
             )
 
             self.log_ver.add_pattern(
@@ -1357,25 +1370,25 @@ class TestAlgoAppBasicTests:
         #     pattern=con_etrace_entry, log_name="scottbrian_utils.entry_trace"
         # )
 
-        log_ver.add_pattern(
-            pattern=f"{algo_app_ver.algo_app_msg_prefix} starting AlgoClient thread",
-            log_name="scottbrian_algo1.algo_app",
-        )
+        # log_ver.add_pattern(
+        #     pattern=f"{algo_app_ver.algo_app_msg_prefix} starting AlgoClient thread",
+        #     log_name="scottbrian_algo1.algo_app",
+        # )
 
-        if timeout_type_arg != TimeoutType.TimeoutTrue:
-            log_ver.add_pattern(
-                pattern=f"{algo_app_ver.algo_app_msg_prefix} connect successful",
-                level=20,
-                log_name="scottbrian_algo1.algo_app",
-            )
-            log_ver.add_pattern(
-                pattern=f"{algo_app_ver.algo_wrapper_msg_prefix} next valid ID is 1",
-                level=20,
-                log_name="scottbrian_algo1.algo_wrapper",
-            )
-            # log_ver.add_pattern(
-            #     pattern=con_etrace_exit, log_name="scottbrian_utils.entry_trace"
-            # )
+        # if timeout_type_arg != TimeoutType.TimeoutTrue:
+        #     log_ver.add_pattern(
+        #         pattern=f"{algo_app_ver.algo_app_msg_prefix} connect successful",
+        #         level=20,
+        #         log_name="scottbrian_algo1.algo_app",
+        #     )
+        #     log_ver.add_pattern(
+        #         pattern=f"{algo_app_ver.algo_wrapper_msg_prefix} next valid ID is 1",
+        #         level=20,
+        #         log_name="scottbrian_algo1.algo_wrapper",
+        #     )
+        #     log_ver.add_pattern(
+        #         pattern=con_etrace_exit, log_name="scottbrian_utils.entry_trace"
+        #     )
 
         ################################################################################
         # algo client disconnect expected log messages
