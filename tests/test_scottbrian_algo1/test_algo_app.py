@@ -256,6 +256,9 @@ class AlgoAppVer:
 
         self.verify_algo_app_initialized()
 
+    ####################################################################
+    # connect_to_ib
+    ####################################################################
     def connect_to_ib(
         self,
         timeout_type: TimeoutType,
@@ -263,6 +266,16 @@ class AlgoAppVer:
         async_tf: bool,
         con_caller: str = "",
     ) -> None:
+        """Connect to ib.
+
+        Args:
+            timeout_type: the TimeoutType,
+            delay: number of seconds to delay response for the request
+                id
+            async_tf: if True, connect is being done in remote thread
+            con_caller: caller string to use for error message
+
+        """
 
         if timeout_type == TimeoutType.TimeoutNone:
             timeout = None
@@ -272,7 +285,7 @@ class AlgoAppVer:
             timeout = delay / 2
 
         etrace_caller = (
-            f"{con_caller} -> test_algo_app.py::AlgoAppVer.connect_to_ib:" f"[0-9]+"
+            f"{con_caller} -> test_algo_app.py::AlgoAppVer.connect_to_ib:[0-9]+"
         )
 
         con_etrace_entry = (
@@ -352,6 +365,77 @@ class AlgoAppVer:
                     client_id=self.client_id,
                     timeout=timeout,
                 )
+
+    ####################################################################
+    # disconnect_from_ib
+    ####################################################################
+    def disconnect_from_ib(self) -> None:
+        """Disconnect from ib."""
+
+        dis_etrace_entry1 = (
+            "algo_client.py::AlgoClient.disconnect:[0-9]+ entry: "
+            "caller: algo_app.py::AlgoApp.disconnect_from_ib:[0-9]+"
+        )
+
+        dis_etrace_entry2 = (
+            "algo_client.py::AlgoClient.disconnect:[0-9]+ entry: "
+            "caller: client.py::EClient.run:[0-9]+"
+        )
+
+        for _ in range(2):
+            self.log_ver.add_pattern(
+                pattern=dis_etrace_entry1, log_name="scottbrian_utils.entry_trace"
+            )
+
+        self.log_ver.add_pattern(
+            pattern=dis_etrace_entry2, log_name="scottbrian_utils.entry_trace"
+        )
+
+        dis_etrace_exit = (
+            "algo_client.py::AlgoClient.disconnect:[0-9]+ exit: return_value=None"
+        )
+        for _ in range(3):
+            self.log_ver.add_pattern(
+                pattern=dis_etrace_exit, log_name="scottbrian_utils.entry_trace"
+            )
+
+        for _ in range(3):
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_client_msg_prefix} setting conn state to "
+                f"EClient.DISCONNECTED",
+                log_name="scottbrian_algo1.algo_client",
+            )
+        self.log_ver.add_pattern(
+            pattern=f"{self.algo_client_msg_prefix} disconnecting",
+            log_name="scottbrian_algo1.algo_client",
+        )
+        self.log_ver.add_pattern(
+            pattern=f"{self.algo_client_msg_prefix} about to join reader "
+            f"reader_id=[0-9]+ for my_id=[0-9]+",
+            log_name="scottbrian_algo1.algo_client",
+        )
+        self.log_ver.add_pattern(
+            pattern=f"{self.algo_client_msg_prefix} back from join "
+            f"reader_id=[0-9]+ for my_id=[0-9]+",
+            log_name="scottbrian_algo1.algo_client",
+        )
+
+        # we get 2 disconnects, one for calling disconnect_from_ib, and
+        # the other from calling shut_down
+        for _ in range(2):
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_app_msg_prefix} calling EClient disconnect",
+                log_name="scottbrian_algo1.algo_app",
+            )
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_app_msg_prefix} joining algo_client",
+                log_name="scottbrian_algo1.algo_app",
+            )
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_app_msg_prefix} disconnect complete",
+                level=20,
+                log_name="scottbrian_algo1.algo_app",
+            )
 
     ########################################################################
     # verify_algo_app_initialized
@@ -1248,13 +1332,8 @@ class TestAlgoAppBasicTests:
             monkeypatch: used to alter code
         """
 
-        def f1(
-            f1_smart_thread: SmartThread,
-            f1_timeout_type_arg: int,
-            f1_timeout: Optional[int] = None,
-        ):
-
-            # con_smart_thread_name = f"algo_requestor_[0-9]+.[0-9]+"
+        def f1(f1_smart_thread: SmartThread) -> None:
+            """F1 connect routine."""
 
             algo_app_ver.connect_to_ib(
                 timeout_type=timeout_type_arg,
@@ -1262,53 +1341,8 @@ class TestAlgoAppBasicTests:
                 con_caller="test_algo_app.py::f1:[0-9]+",
                 async_tf=async_tf_arg,
             )
-            # connect_test(f1_timeout_type_arg, con_smart_thread_name, f1_timeout)
-            f1_smart_thread.smart_resume(waiters="alpha")
 
-        # def connect_test(
-        #     ct_timeout_type_arg: int,
-        #     ct_smart_thread_name: str,
-        #     ct_timeout: Optional[int] = None,
-        # ):
-        #     if ct_timeout_type_arg == TimeoutType.TimeoutNone:
-        #         algo_app.connect_to_ib(
-        #             ip_addr="127.0.0.1",
-        #             port=AlgoApp.PORT_FOR_LIVE_TRADING,
-        #             client_id=algo_app_ver.client_id,
-        #         )
-        #     elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
-        #         algo_app.connect_to_ib(
-        #             ip_addr="127.0.0.1",
-        #             port=AlgoApp.PORT_FOR_LIVE_TRADING,
-        #             client_id=algo_app_ver.client_id,
-        #             timeout=ct_timeout,
-        #         )
-        #     else:
-        #         # mock_ib.delay_value = -1
-        #         func_name = "connect_to_ib"
-        #         error = "ConnectTimeout"
-        #         extra = (
-        #             "waiting to receive nextValid_ID. "
-        #             f"SmartThread name={ct_smart_thread_name}, "
-        #             f"ip_addr='{algo_app_ver.ip_addr}', port={algo_app_ver.port}, "
-        #             f"client_id={algo_app_ver.client_id}"
-        #         )
-        #         test_error_msg = (
-        #             f"{algo_app_ver.algo_app_msg_prefix} {func_name} "
-        #             f"raising {error} {extra}."
-        #         )
-        #         log_ver.add_pattern(
-        #             pattern=test_error_msg,
-        #             level=40,
-        #             log_name="scottbrian_algo1.algo_app",
-        #         )
-        #         with pytest.raises(ConnectTimeout, match=test_error_msg):
-        #             algo_app.connect_to_ib(
-        #                 ip_addr="127.0.0.1",
-        #                 port=AlgoApp.PORT_FOR_LIVE_TRADING,
-        #                 client_id=algo_app_ver.client_id,
-        #                 timeout=ct_timeout,
-        #             )
+            f1_smart_thread.smart_resume(waiters="alpha")
 
         ################################################################
         # mainline
@@ -1319,134 +1353,68 @@ class TestAlgoAppBasicTests:
         log_ver = LogVer(log_name="algo_app_test_log")
         algo_app_ver = AlgoAppVer(log_ver=log_ver, app_cat=app_cat)
 
-        if timeout_type_arg == TimeoutType.TimeoutNone:
-            timeout = None
-        elif timeout_type_arg == TimeoutType.TimeoutFalse:
-            timeout = delay_arg * 2
-        else:
-            timeout = delay_arg / 2
-
-        # if async_tf_arg:
-        #     con_caller = (
-        #         "test_algo_app.py::f1:[0-9]+ "
-        #         "-> test_algo_app.py::connect_test:[0-9]+"
-        #     )
-        # else:
-        #     con_caller = (
-        #         "test_algo_app.py::TestAlgoAppBasicTests."
-        #         "test_mock_connect_to_ib:[0-9]+ "
-        #         "-> test_algo_app.py::connect_test:[0-9]+"
-        #     )
-        # algo_app_ver.add_entry_trace_pattern(
-        #     ip_addr=algo_app_ver.ip_addr,
-        #     port=algo_app_ver.port,
-        #     client_id=algo_app_ver.client_id,
-        #     timeout=timeout,
-        #     caller=con_caller,
-        # )
-        # algo_app_ver.connect_to_ib(
-        #     timeout_type=timeout_type_arg,
-        #     delay=delay_arg,
-        #     con_caller=con_caller,
-        # )
-
-        # con_etrace_entry = (
-        #     "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
-        #     f"{ip_addr=}, {port=}, {client_id=}, "
-        #     f"_setup_args='...', {timeout=}, "
-        #     f"caller: {con_caller}"
-        # )
-
-        # con_etrace_exit = (
-        #     "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value=None"
-        # )
-        #
-        # log_ver.add_pattern(
-        #     pattern=con_etrace_entry, log_name="scottbrian_utils.entry_trace"
-        # )
-
-        # log_ver.add_pattern(
-        #     pattern=f"{algo_app_ver.algo_app_msg_prefix} starting AlgoClient thread",
-        #     log_name="scottbrian_algo1.algo_app",
-        # )
-
-        # if timeout_type_arg != TimeoutType.TimeoutTrue:
-        #     log_ver.add_pattern(
-        #         pattern=f"{algo_app_ver.algo_app_msg_prefix} connect successful",
-        #         level=20,
-        #         log_name="scottbrian_algo1.algo_app",
-        #     )
-        #     log_ver.add_pattern(
-        #         pattern=f"{algo_app_ver.algo_wrapper_msg_prefix} next valid ID is 1",
-        #         level=20,
-        #         log_name="scottbrian_algo1.algo_wrapper",
-        #     )
-        #     log_ver.add_pattern(
-        #         pattern=con_etrace_exit, log_name="scottbrian_utils.entry_trace"
-        #     )
-
         ################################################################################
         # algo client disconnect expected log messages
         ################################################################################
-        dis_etrace_entry1 = (
-            "algo_client.py::AlgoClient.disconnect:[0-9]+ entry: "
-            "caller: algo_app.py::AlgoApp.disconnect_from_ib:[0-9]+"
-        )
-        dis_etrace_entry2 = (
-            "algo_client.py::AlgoClient.disconnect:[0-9]+ entry: "
-            "caller: client.py::EClient.run:[0-9]+"
-        )
-        dis_etrace_exit = (
-            "algo_client.py::AlgoClient.disconnect:[0-9]+ exit: " "return_value=None"
-        )
-        for _ in range(2):
-            log_ver.add_pattern(
-                pattern=dis_etrace_entry1, log_name="scottbrian_utils.entry_trace"
-            )
-        log_ver.add_pattern(
-            pattern=dis_etrace_entry2, log_name="scottbrian_utils.entry_trace"
-        )
-        for _ in range(3):
-            log_ver.add_pattern(
-                pattern=dis_etrace_exit, log_name="scottbrian_utils.entry_trace"
-            )
-        for _ in range(3):
-            log_ver.add_pattern(
-                pattern=f"{algo_app_ver.algo_client_msg_prefix} setting conn state to "
-                f"EClient.DISCONNECTED",
-                log_name="scottbrian_algo1.algo_client",
-            )
-        log_ver.add_pattern(
-            pattern=f"{algo_app_ver.algo_client_msg_prefix} disconnecting",
-            log_name="scottbrian_algo1.algo_client",
-        )
-        log_ver.add_pattern(
-            pattern=f"{algo_app_ver.algo_client_msg_prefix} about to join reader "
-            f"reader_id=[0-9]+ for my_id=[0-9]+",
-            log_name="scottbrian_algo1.algo_client",
-        )
-        log_ver.add_pattern(
-            pattern=f"{algo_app_ver.algo_client_msg_prefix} back from join "
-            f"reader_id=[0-9]+ for my_id=[0-9]+",
-            log_name="scottbrian_algo1.algo_client",
-        )
+        # dis_etrace_entry1 = (
+        #     "algo_client.py::AlgoClient.disconnect:[0-9]+ entry: "
+        #     "caller: algo_app.py::AlgoApp.disconnect_from_ib:[0-9]+"
+        # )
+        # dis_etrace_entry2 = (
+        #     "algo_client.py::AlgoClient.disconnect:[0-9]+ entry: "
+        #     "caller: client.py::EClient.run:[0-9]+"
+        # )
+        # dis_etrace_exit = (
+        #     "algo_client.py::AlgoClient.disconnect:[0-9]+ exit: " "return_value=None"
+        # )
+        # for _ in range(2):
+        #     log_ver.add_pattern(
+        #         pattern=dis_etrace_entry1, log_name="scottbrian_utils.entry_trace"
+        #     )
+        # log_ver.add_pattern(
+        #     pattern=dis_etrace_entry2, log_name="scottbrian_utils.entry_trace"
+        # )
+        # for _ in range(3):
+        #     log_ver.add_pattern(
+        #         pattern=dis_etrace_exit, log_name="scottbrian_utils.entry_trace"
+        #     )
+        # for _ in range(3):
+        #     log_ver.add_pattern(
+        #         pattern=f"{algo_app_ver.algo_client_msg_prefix} setting conn state to "
+        #         f"EClient.DISCONNECTED",
+        #         log_name="scottbrian_algo1.algo_client",
+        #     )
+        # log_ver.add_pattern(
+        #     pattern=f"{algo_app_ver.algo_client_msg_prefix} disconnecting",
+        #     log_name="scottbrian_algo1.algo_client",
+        # )
+        # log_ver.add_pattern(
+        #     pattern=f"{algo_app_ver.algo_client_msg_prefix} about to join reader "
+        #     f"reader_id=[0-9]+ for my_id=[0-9]+",
+        #     log_name="scottbrian_algo1.algo_client",
+        # )
+        # log_ver.add_pattern(
+        #     pattern=f"{algo_app_ver.algo_client_msg_prefix} back from join "
+        #     f"reader_id=[0-9]+ for my_id=[0-9]+",
+        #     log_name="scottbrian_algo1.algo_client",
+        # )
 
         # we get 2 disconnects, one for calling disconnect_from_ib, and
         # the other from calling shut_down
-        for _ in range(2):
-            log_ver.add_pattern(
-                pattern=f"{algo_app_ver.algo_app_msg_prefix} calling EClient disconnect",
-                log_name="scottbrian_algo1.algo_app",
-            )
-            log_ver.add_pattern(
-                pattern=f"{algo_app_ver.algo_app_msg_prefix} joining algo_client",
-                log_name="scottbrian_algo1.algo_app",
-            )
-            log_ver.add_pattern(
-                pattern=f"{algo_app_ver.algo_app_msg_prefix} disconnect complete",
-                level=20,
-                log_name="scottbrian_algo1.algo_app",
-            )
+        # for _ in range(2):
+        #     log_ver.add_pattern(
+        #         pattern=f"{algo_app_ver.algo_app_msg_prefix} calling EClient disconnect",
+        #         log_name="scottbrian_algo1.algo_app",
+        #     )
+        #     log_ver.add_pattern(
+        #         pattern=f"{algo_app_ver.algo_app_msg_prefix} joining algo_client",
+        #         log_name="scottbrian_algo1.algo_app",
+        #     )
+        #     log_ver.add_pattern(
+        #         pattern=f"{algo_app_ver.algo_app_msg_prefix} disconnect complete",
+        #         level=20,
+        #         log_name="scottbrian_algo1.algo_app",
+        #     )
 
         mock_ib = MockIB(
             test_cat=test_cat,
@@ -1460,20 +1428,10 @@ class TestAlgoAppBasicTests:
 
         mock_ib.delay_time = delay_arg
 
-        # algo_app = AlgoApp(
-        #     ds_catalog=app_cat,
-        #     group_name=algo_app_ver.algo_group_name,
-        #     algo_name=algo_app_ver.algo_name,
-        # )
-        # verify_algo_app_initialized(algo_app)
-
         # we are testing connect_to_ib and the subsequent code that gets
         # control as a result, such as getting the first requestID and
         # then starting a separate thread for the run loop.
-        # log_ver.test_msg("about to connect")
-        log_ver.test_msg("about to connect")
 
-        # smart_thread_name = algo_app_ver.algo_name
         if async_tf_arg:
             smart_thread_name = "alpha"
             alpha_smart_thread = SmartThread(group_name="test1", name=smart_thread_name)
@@ -1482,7 +1440,6 @@ class TestAlgoAppBasicTests:
                 name="beta",
                 target_rtn=f1,
                 thread_parm_name="f1_smart_thread",
-                kwargs={"f1_timeout_type_arg": timeout_type_arg, "f1_timeout": timeout},
             )
 
             alpha_smart_thread.smart_wait(resumers="beta")
@@ -1500,19 +1457,13 @@ class TestAlgoAppBasicTests:
                 con_caller=con_caller,
                 async_tf=async_tf_arg,
             )
-            # connect_test(timeout_type_arg, smart_thread_name, timeout)
 
-        log_ver.test_msg("back from connect")
-
-        # if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
-        #     time.sleep(delay_arg + 1)
-        #
-        # if mock_ib.delay_time != -1:
         if not (timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0):
             verify_algo_app_connected(algo_app_ver.algo_app)
 
             algo_app_ver.algo_app.disconnect_from_ib()
 
+        algo_app_ver.disconnect_from_ib()
         verify_algo_app_disconnected(algo_app_ver.algo_app)
 
         algo_app_ver.algo_app.shut_down()
