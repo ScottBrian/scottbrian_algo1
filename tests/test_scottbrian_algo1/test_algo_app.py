@@ -254,6 +254,8 @@ class AlgoAppVer:
             ds_catalog=app_cat, group_name=algo_group_name, algo_name=algo_name
         )
 
+        self.disconnect_completed: bool = False
+
         self.verify_algo_app_initialized()
 
     ####################################################################
@@ -366,76 +368,122 @@ class AlgoAppVer:
                     timeout=timeout,
                 )
 
+            self.disconnect_from_ib(patterns_only=True)
+
     ####################################################################
     # disconnect_from_ib
     ####################################################################
-    def disconnect_from_ib(self) -> None:
-        """Disconnect from ib."""
+    def disconnect_from_ib(self, patterns_only: bool = False) -> None:
+        """Disconnect from ib.
 
-        dis_etrace_entry1 = (
+        Args:
+            patterns_only: if True, add patterns only
+
+        """
+
+        dis_etrace_entry = (
             "algo_client.py::AlgoClient.disconnect:[0-9]+ entry: "
             "caller: algo_app.py::AlgoApp.disconnect_from_ib:[0-9]+"
         )
 
-        dis_etrace_entry2 = (
-            "algo_client.py::AlgoClient.disconnect:[0-9]+ entry: "
-            "caller: client.py::EClient.run:[0-9]+"
-        )
-
-        for _ in range(2):
-            self.log_ver.add_pattern(
-                pattern=dis_etrace_entry1, log_name="scottbrian_utils.entry_trace"
-            )
-
         self.log_ver.add_pattern(
-            pattern=dis_etrace_entry2, log_name="scottbrian_utils.entry_trace"
+            pattern=dis_etrace_entry, log_name="scottbrian_utils.entry_trace"
         )
 
         dis_etrace_exit = (
             "algo_client.py::AlgoClient.disconnect:[0-9]+ exit: return_value=None"
         )
-        for _ in range(3):
-            self.log_ver.add_pattern(
-                pattern=dis_etrace_exit, log_name="scottbrian_utils.entry_trace"
-            )
 
-        for _ in range(3):
-            self.log_ver.add_pattern(
-                pattern=f"{self.algo_client_msg_prefix} setting conn state to "
-                f"EClient.DISCONNECTED",
-                log_name="scottbrian_algo1.algo_client",
-            )
         self.log_ver.add_pattern(
-            pattern=f"{self.algo_client_msg_prefix} disconnecting",
-            log_name="scottbrian_algo1.algo_client",
+            pattern=dis_etrace_exit, log_name="scottbrian_utils.entry_trace"
         )
+
         self.log_ver.add_pattern(
-            pattern=f"{self.algo_client_msg_prefix} about to join reader "
-            f"reader_id=[0-9]+ for my_id=[0-9]+",
-            log_name="scottbrian_algo1.algo_client",
-        )
-        self.log_ver.add_pattern(
-            pattern=f"{self.algo_client_msg_prefix} back from join "
-            f"reader_id=[0-9]+ for my_id=[0-9]+",
+            pattern=f"{self.algo_client_msg_prefix} setting conn state to "
+            f"EClient.DISCONNECTED",
             log_name="scottbrian_algo1.algo_client",
         )
 
         # we get 2 disconnects, one for calling disconnect_from_ib, and
         # the other from calling shut_down
-        for _ in range(2):
-            self.log_ver.add_pattern(
-                pattern=f"{self.algo_app_msg_prefix} calling EClient disconnect",
-                log_name="scottbrian_algo1.algo_app",
+
+        self.log_ver.add_pattern(
+            pattern=f"{self.algo_app_msg_prefix} calling EClient disconnect",
+            log_name="scottbrian_algo1.algo_app",
+        )
+        self.log_ver.add_pattern(
+            pattern=f"{self.algo_app_msg_prefix} joining algo_client",
+            log_name="scottbrian_algo1.algo_app",
+        )
+        self.log_ver.add_pattern(
+            pattern=f"{self.algo_app_msg_prefix} disconnect complete",
+            level=20,
+            log_name="scottbrian_algo1.algo_app",
+        )
+
+        if not self.disconnect_completed:
+            self.disconnect_completed = True
+
+            run_dis_etrace_entry = (
+                "algo_client.py::AlgoClient.disconnect:[0-9]+ entry: "
+                "caller: client.py::EClient.run:[0-9]+"
             )
             self.log_ver.add_pattern(
-                pattern=f"{self.algo_app_msg_prefix} joining algo_client",
-                log_name="scottbrian_algo1.algo_app",
+                pattern=run_dis_etrace_entry, log_name="scottbrian_utils.entry_trace"
             )
             self.log_ver.add_pattern(
-                pattern=f"{self.algo_app_msg_prefix} disconnect complete",
-                level=20,
-                log_name="scottbrian_algo1.algo_app",
+                pattern=f"{self.algo_client_msg_prefix} disconnecting",
+                log_name="scottbrian_algo1.algo_client",
             )
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_client_msg_prefix} about to join reader "
+                f"reader_id=[0-9]+ for my_id=[0-9]+",
+                log_name="scottbrian_algo1.algo_client",
+            )
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_client_msg_prefix} back from join "
+                f"reader_id=[0-9]+ for my_id=[0-9]+",
+                log_name="scottbrian_algo1.algo_client",
+            )
+
+        if not patterns_only:
+            self.algo_app.disconnect_from_ib()
+
+    ####################################################################
+    # shut_down
+    ####################################################################
+    def shut_down(self, timeout: OptIntFloat = None) -> None:
+        """Disconnect from ib.
+
+        Args:
+            timeout: number seconds to use for timeout of shut_down call
+
+        """
+        etrace_caller = (
+            f"{get_formatted_call_sequence(latest=1, depth=1)} -> "
+            "test_algo_app.py::AlgoAppVer.shut_down:[0-9]+"
+        )
+
+        shut_down_etrace_entry = (
+            "algo_app.py::AlgoApp.shut_down:[0-9]+ entry: "
+            f"_setup_args='...', {timeout=}, "
+            f"caller: {etrace_caller}"
+        )
+        self.log_ver.add_pattern(
+            pattern=shut_down_etrace_entry, log_name="scottbrian_utils.entry_trace"
+        )
+
+        shut_down_etrace_exit = (
+            "algo_app.py::AlgoApp.shut_down:[0-9]+ exit: return_value=None"
+        )
+
+        self.log_ver.add_pattern(
+            pattern=shut_down_etrace_exit, log_name="scottbrian_utils.entry_trace"
+        )
+
+        self.algo_app.shut_down()
+
+        self.disconnect_from_ib(patterns_only=True)
 
     ########################################################################
     # verify_algo_app_initialized
@@ -1463,10 +1511,12 @@ class TestAlgoAppBasicTests:
 
             algo_app_ver.algo_app.disconnect_from_ib()
 
-        algo_app_ver.disconnect_from_ib()
+            algo_app_ver.disconnect_from_ib()
+
+        algo_app_ver.disconnect_from_ib(patterns_only=True)
         verify_algo_app_disconnected(algo_app_ver.algo_app)
 
-        algo_app_ver.algo_app.shut_down()
+        algo_app_ver.shut_down()
 
         ################################################################
         # check log results

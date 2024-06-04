@@ -7,6 +7,7 @@ algo_client
 The algo_client contains AlgoClient, a subclass of the ibapi EClient
 class.
 """
+
 ########################################################################
 # Standard Library
 ########################################################################
@@ -319,17 +320,21 @@ class AlgoClient(EClient, SmartThread, Thread):  # type: ignore
     @etrace(enable_trace=algo_client_etrace)
     def disconnect(self) -> None:
         """Call this function to terminate the connections with TWS."""
-        # We would like to call EClient.disconnect, but it does not wait
-        # for the reader thread to end leads to problems if a connect is
-        # done immediately after the disconnect. The still running
-        # reader thread snatches the early handshaking messages and
-        # leaves the connect hanging. The following code is from
-        # client.py and is modified here to add the thread join to
-        # ensure the reader ends before the disconnect returns. Note
-        # also the use of the disconnect lock to serialize the two known
-        # cases of disconnect being called from different threads:
+        # This method overloads the EClient.disconnect to address a
+        # problem with EClient.disconnect. EClient.disconnect fails to
+        # join the reader thread to ensure the reader thread has ended.
+        # This leads to potential problems if a connect is done
+        # immediately after the disconnect. The still running reader
+        # thread snatches the early handshaking messages and leaves the
+        # connect hanging.
+        # The following code is from client.py and is modified here to
+        # add the thread join to ensure the reader ends before the
+        # disconnect returns.
+        # Note also the use of the disconnect lock to serialize the two
+        # known cases of disconnect being called from different threads:
         # 1) from mainline through disconnect_from_ib in AlgoApp
         # 2) from the EClient run method in the run thread.
+
         with sel.SELockExcl(self.disconnect_lock):
             logger.debug(
                 f"{self.msg_prefix} setting conn state to EClient.DISCONNECTED"

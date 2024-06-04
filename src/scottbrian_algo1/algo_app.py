@@ -114,6 +114,7 @@ smart_recv request to receive the result.
     alpha_smart_thread.smart_unreg()
 
 """
+
 ########################################################################
 # Standard Library
 ########################################################################
@@ -185,6 +186,7 @@ from scottbrian_utils.timer import Timer
 from scottbrian_utils.unique_ts import UniqueTS, UniqueTStamp
 
 import wrapt
+
 ########################################################################
 # Local
 ########################################################################
@@ -325,10 +327,10 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 @wrapt.decorator
 def algo_setup(
-        wrapped: F,
-        instance: Optional[Any],
-        args: tuple[Any, ...],
-        kwargs: dict[str, Any],
+    wrapped: F,
+    instance: Optional[Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
 ) -> Any:
     # get unique timestamp to use for part of the smart thread name
     req_num = UniqueTS.get_unique_ts()
@@ -384,9 +386,7 @@ def algo_setup(
                 start_time=req_num,
             )
 
-    kwargs["_setup_args"] = SetupArgs(
-        smart_thread=req_smart_thread, req_num=req_num
-    )
+    kwargs["_setup_args"] = SetupArgs(smart_thread=req_smart_thread, req_num=req_num)
 
     try:
         ret_value = wrapped(*args, **kwargs)
@@ -546,6 +546,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     # shut_down
     ####################################################################
     @algo_setup
+    @etrace(enable_trace=etrace_enabled, omit_parms="_setup_args", latest=2, depth=2)
     def shut_down(
         self,
         _setup_args: SetupArgs,
