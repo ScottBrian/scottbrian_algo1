@@ -263,10 +263,10 @@ class AlgoAppVer:
     ####################################################################
     def connect_to_ib(
         self,
-        timeout_type: TimeoutType,
-        delay: int,
-        async_tf: bool,
-        con_caller: str = "",
+        timeout_type: TimeoutType = TimeoutType.TimeoutNone,
+        delay: int = 0,
+        async_tf: bool = False,
+        caller: str = "",
     ) -> None:
         """Connect to ib.
 
@@ -275,7 +275,7 @@ class AlgoAppVer:
             delay: number of seconds to delay response for the request
                 id
             async_tf: if True, connect is being done in remote thread
-            con_caller: caller string to use for error message
+            caller: caller string to use for error message
 
         """
 
@@ -286,18 +286,16 @@ class AlgoAppVer:
         else:
             timeout = delay / 2
 
-        etrace_caller = (
-            f"{con_caller} -> test_algo_app.py::AlgoAppVer.connect_to_ib:[0-9]+"
-        )
+        etrace_caller = f"{caller} -> test_algo_app.py::AlgoAppVer.connect_to_ib:[0-9]+"
 
-        con_etrace_entry = (
+        etrace_entry = (
             "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
             f"ip_addr='{self.ip_addr}', port={self.port}, client_id={self.client_id}, "
             f"_setup_args='...', {timeout=}, "
             f"caller: {etrace_caller}"
         )
         self.log_ver.add_pattern(
-            pattern=con_etrace_entry, log_name="scottbrian_utils.entry_trace"
+            pattern=etrace_entry, log_name="scottbrian_utils.entry_trace"
         )
 
         self.log_ver.add_pattern(
@@ -317,12 +315,10 @@ class AlgoAppVer:
                 level=20,
                 log_name="scottbrian_algo1.algo_wrapper",
             )
-            con_etrace_exit = (
-                "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value=None"
-            )
-
             self.log_ver.add_pattern(
-                pattern=con_etrace_exit, log_name="scottbrian_utils.entry_trace"
+                pattern="algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: "
+                "return_value=None",
+                log_name="scottbrian_utils.entry_trace",
             )
 
         self.connected = True  # tell client_disconnect we are connected
@@ -375,14 +371,51 @@ class AlgoAppVer:
     ####################################################################
     # disconnect_from_ib
     ####################################################################
-    def disconnect_from_ib(self, do_algo_disc: bool = True) -> None:
+    def disconnect_from_ib(
+        self,
+        timeout_type: TimeoutType = TimeoutType.TimeoutNone,
+        delay: int = 0,
+        async_tf: bool = False,
+        caller: str = "",
+        do_algo_disc: bool = True,
+    ) -> None:
         """Disconnect from ib.
 
         Args:
+            timeout_type: the TimeoutType,
+            delay: number of seconds to delay response for the request
+                id
+            async_tf: if True, disconnect is being done in remote thread
+            caller: caller string to use for error message
             do_algo_disc: if True, call algo disconnect, else patterns
                 only
 
         """
+        if timeout_type == TimeoutType.TimeoutNone:
+            timeout = None
+        elif timeout_type == TimeoutType.TimeoutFalse:
+            timeout = delay * 2
+        else:
+            timeout = delay / 2
+
+        etrace_entry = (
+            "algo_app.py::AlgoApp.disconnect_from_ib:[0-9]+ entry: "
+            f"_setup_args='...', {timeout=}, "
+            f"caller: "
+        )
+        self.log_ver.add_pattern(
+            pattern=etrace_entry,
+            log_name="scottbrian_utils.entry_trace",
+            fullmatch=False,
+        )
+
+        if timeout_type != TimeoutType.TimeoutTrue:
+            self.log_ver.add_pattern(
+                pattern="algo_app.py::AlgoApp.disconnect_from_ib:[0-9]+ exit: "
+                "return_value=None",
+                log_name="scottbrian_utils.entry_trace",
+            )
+
         self.log_ver.add_pattern(
             pattern=f"{self.algo_app_msg_prefix} calling EClient disconnect",
             log_name="scottbrian_algo1.algo_app",
@@ -1382,7 +1415,7 @@ class TestAlgoAppBasicTests:
             algo_app_ver.connect_to_ib(
                 timeout_type=timeout_type_arg,
                 delay=delay_arg,
-                con_caller="test_algo_app.py::f1:[0-9]+",
+                caller="test_algo_app.py::f1:[0-9]+",
                 async_tf=async_tf_arg,
             )
 
@@ -1428,14 +1461,14 @@ class TestAlgoAppBasicTests:
             alpha_smart_thread.smart_unreg()
 
         else:
-            con_caller = (
+            caller = (
                 "test_algo_app.py::TestAlgoAppBasicTests."
                 "test_mock_connect_to_ib:[0-9]+"
             )
             algo_app_ver.connect_to_ib(
                 timeout_type=timeout_type_arg,
                 delay=delay_arg,
-                con_caller=con_caller,
+                caller=caller,
                 async_tf=async_tf_arg,
             )
 

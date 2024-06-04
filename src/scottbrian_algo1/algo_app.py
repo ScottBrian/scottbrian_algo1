@@ -690,6 +690,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     # disconnect_from_ib
     ####################################################################
     @algo_setup
+    @etrace(enable_trace=etrace_enabled, omit_parms="_setup_args", latest=2, depth=2)
     def disconnect_from_ib(
         self,
         _setup_args: SetupArgs,
