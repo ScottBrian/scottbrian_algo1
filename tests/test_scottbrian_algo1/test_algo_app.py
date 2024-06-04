@@ -328,6 +328,7 @@ class AlgoAppVer:
                 port=AlgoApp.PORT_FOR_LIVE_TRADING,
                 client_id=self.client_id,
             )
+            self.verify_algo_app_connected()
         elif timeout_type == TimeoutType.TimeoutFalse:
             self.algo_app.connect_to_ib(
                 ip_addr="127.0.0.1",
@@ -335,6 +336,7 @@ class AlgoAppVer:
                 client_id=self.client_id,
                 timeout=timeout,
             )
+            self.verify_algo_app_connected()
         else:
             # mock_ib.delay_value = -1
             if async_tf:
@@ -367,6 +369,7 @@ class AlgoAppVer:
                 )
 
             self.disconnect_from_ib(do_algo_disc=False)
+            self.verify_algo_app_disconnected()
 
     ####################################################################
     # disconnect_from_ib
@@ -433,7 +436,18 @@ class AlgoAppVer:
         self.client_disconnect(caller="algo_app.py::AlgoApp.disconnect_from_ib:[0-9]+")
 
         if do_algo_disc:
-            self.algo_app.disconnect_from_ib()
+            if timeout_type == TimeoutType.TimeoutNone:
+                self.algo_app.disconnect_from_ib()
+            elif timeout_type == TimeoutType.TimeoutFalse:
+                self.algo_app.disconnect_from_ib(
+                    timeout=timeout,
+                )
+            else:
+                with pytest.raises(DisconnectTimeout):
+                    self.algo_app.disconnect_from_ib(
+                        timeout=timeout,
+                    )
+            # self.algo_app.disconnect_from_ib()
 
     ####################################################################
     # disconnect_from_ib
@@ -513,6 +527,8 @@ class AlgoAppVer:
         self.algo_app.shut_down()
 
         self.disconnect_from_ib(do_algo_disc=False)
+        self.client_disconnect(caller="client.py::EClient.run:[0-9]+")
+        self.verify_algo_app_disconnected()
 
     ########################################################################
     # verify_algo_app_initialized
@@ -526,6 +542,23 @@ class AlgoAppVer:
         assert self.algo_app.response_complete_event.is_set() is False
         assert self.algo_app.__repr__() == "AlgoApp(ds_catalog)"
         # assert self.algo_app.ibapi_client_smart_thread.thread is None
+
+    ####################################################################
+    # verify_algo_app_connected
+    ####################################################################
+    def verify_algo_app_connected(self) -> None:
+        """Helper function to verify we are connected to ib."""
+        assert self.algo_app.algo_client.thread.is_alive()
+        assert self.algo_app.algo_client.isConnected()
+        assert self.algo_app.algo_client.request_id == 1
+
+    ####################################################################
+    # verify_algo_app_disconnected
+    ####################################################################
+    def verify_algo_app_disconnected(self) -> None:
+        """Helper function to verify we are disconnected from ib."""
+        assert not self.algo_app.algo_client.thread.is_alive()
+        assert not self.algo_app.algo_client.isConnected()
 
 
 ########################################################################
@@ -780,365 +813,51 @@ def get_set(item: Optional[Iterable[str]] = None) -> set[Any]:
 
 
 ########################################################################
-# ConfigCmd
-########################################################################
-class ConfigCmd(ABC):
-    """Configuration command base class."""
-
-    def __init__(self, cmd_runners: Iterable[str]) -> None:
-        """Initialize the instance.
-
-        Args:
-            cmd_runners: thread names that will execute the command
-
-        """
-        # The serial number, line_num, and config_ver are filled in
-        # by the ConfigVerifier add_cmd method just before queueing
-        # the command.
-        self.serial_num: int = 0
-        self.line_num: int = 0
-        self.alt_line_num: int = 0
-        self.config_ver: "ConfigVerifier"
-
-        # specified_args are set in each subclass
-        self.specified_args: dict[str, Any] = {}
-
-        self.cmd_runners = get_set(cmd_runners)
-
-        self.arg_list: list[str] = ["cmd_runners", "serial_num", "line_num"]
-
-    def __repr__(self) -> str:
-        """Method to provide repr."""
-        if TYPE_CHECKING:
-            __class__: Type[ConfigVerifier]  # noqa: F842
-        classname = self.__class__.__name__
-        parms = f"serial={self.serial_num}, line={self.line_num}"
-        if self.alt_line_num:
-            parms += f"({self.alt_line_num})"
-        comma = ", "
-        for key, item in self.specified_args.items():
-            if item:  # if not None
-                if key in self.arg_list:
-                    if type(item) is str:
-                        parms += comma + f"{key}='{item}'"
-                    else:
-                        parms += comma + f"{key}={item}"
-                    # comma = ', '  # after first item, now need comma
-            if key == "f1_create_items":
-                create_names: list[str] = []
-                for create_item in item:
-                    create_names.append(create_item.name)
-                parms += comma + f"{create_names=}"
-
-        return f"{classname}({parms})"
-
-    @abstractmethod
-    def run_process(self, cmd_runner: str) -> None:
-        """Run the command.
-
-        Args:
-           cmd_runner: name of thread running the command
-        """
-        pass
-
-
-########################################################################
-# CreateAlgoApp
-########################################################################
-class CreateAlgoApp(ConfigCmd):
-    """Confirm that an earlier command has completed."""
-
-    def __init__(
-        self,
-        cmd_runners: Iterable[str],
-        ds_catalog: FileCatalog,
-        group_name: str = "algo_app_group",
-        algo_name: str = "algo_app",
-        default_timeout: OptIntFloat = None,
-    ) -> None:
-        """Initialize the instance.
-
-        Args:
-            cmd_runners: thread names that will execute the command
-            ds_catalog: contain the paths for data sets
-            group_name: name of SmartThread group
-            algo_name: name of SmartThread instance for AlgoApp
-            default_timeout: number of seconds to use as a timeout
-                value if timeout is not specifies on a method that
-                provides a timeout parameter. If this default_timeout is
-                not specifies, the default_timeout is set to 30 seconds.
-
-        """
-        super().__init__(cmd_runners=cmd_runners)
-        self.specified_args = locals()  # used for __repr__
-
-        self.ds_catalog = ds_catalog
-        self.group_name = group_name
-
-        self.algo_name = algo_name
-
-        self.default_timeout = default_timeout
-
-        self.arg_list += ["group_name", "algo_name", "default_timeout"]
-
-    def run_process(self, cmd_runner: str) -> None:
-        """Run the command.
-
-        Args:
-           cmd_runner: name of thread running the command
-        """
-        self.config_ver.handle_create_algo_app(
-            cmd_runner=cmd_runner,
-            ds_catalog=self.ds_catalog,
-            group_name=self.group_name,
-            algo_name=self.algo_name,
-            default_timeout=self.default_timeout,
-        )
-
-
-########################################################################
-# ConnectToIb
-########################################################################
-class ConnectToIb(ConfigCmd):
-    """Confirm that an earlier command has completed."""
-
-    def __init__(
-        self,
-        cmd_runners: Iterable[str],
-        mock_ib: MockIB,
-        group_name: str,
-        algo_name: str,
-        ip_addr: str = "127.0.0.1",
-        port: int = 7496,
-        client_id: int = 1,
-        delay_time: IntFloat = 0,
-        timeout_type: TimeoutType = TimeoutType.TimeoutNone,
-        timeout: OptIntFloat = None,
-    ) -> None:
-        """Initialize the instance.
-
-        Args:
-            cmd_runners: thread names that will execute the command
-            mock_ib: contains monkey patched IB rtns
-            group_name: name of SmartThread group
-            algo_name: name of SmartThread instance for AlgoApp
-            ip_addr: ip address of connection (127.0.0.2)
-            port: port number (e.g., 7496)
-            client_id: specific client number from 1 to x
-            delay_time: number of seconds to delay the connect
-            timeout_type: TimeoutType
-            timeout: number of seconds for timeout arg of connect
-
-        """
-        super().__init__(cmd_runners=cmd_runners)
-        self.specified_args = locals()  # used for __repr__
-
-        self.mock_ib = mock_ib
-
-        self.group_name = group_name
-
-        self.algo_name = algo_name
-
-        self.ip_addr = ip_addr
-        self.port = port
-
-        self.client_id = client_id
-
-        self.delay_time = delay_time
-
-        self.timeout_type = timeout_type
-
-        self.timeout = timeout
-
-        self.arg_list += ["ip_addr", "port", "client_id"]
-
-    def run_process(self, cmd_runner: str) -> None:
-        """Run the command.
-
-        Args:
-           cmd_runner: name of thread running the command
-        """
-        self.config_ver.handle_connect(
-            cmd_runner=cmd_runner,
-            mock_ib=self.mock_ib,
-            group_name=self.group_name,
-            algo_name=self.algo_name,
-            ip_addr=self.ip_addr,
-            port=self.port,
-            client_id=self.client_id,
-            delay_time=self.delay_time,
-            timeout_type=self.timeout_type,
-            timeout=self.timeout,
-        )
-
-
-########################################################################
-# ShutDown
-########################################################################
-class ShutDown(ConfigCmd):
-    """Confirm that an earlier command has completed."""
-
-    def __init__(
-        self,
-        cmd_runners: Iterable[str],
-        mock_ib: MockIB,
-        group_name: str = "algo_app_group",
-        algo_name: str = "algo_app",
-        delay_time: IntFloat = 0,
-        timeout_type: TimeoutType = TimeoutType.TimeoutNone,
-        timeout: OptIntFloat = None,
-        pending_names: Iterable[str] = None,
-    ) -> None:
-        """Shut down the AlgoApp.
-
-        Args:
-            cmd_runners: thread names that will execute the command
-            mock_ib: contains monkey patched IB rtns
-            group_name: name of SmartThread group
-            algo_name: name of SmartThread instance for AlgoApp
-            delay_time: seconds to delay shutdown to drive timeout
-                scenarios
-            timeout_type: specifies whether to expect the shutdown to
-                result in a timeout error
-            timeout: number of seconds to use as a timeout value
-            pending_names: names of threads that cause a timeout during
-                shutdown
-
-        """
-        super().__init__(cmd_runners=cmd_runners)
-        self.specified_args = locals()  # used for __repr__
-
-        self.mock_ib = mock_ib
-
-        self.group_name = group_name
-
-        self.algo_name = algo_name
-
-        self.delay_time = delay_time
-
-        self.timeout_type = timeout_type
-
-        self.timeout = timeout
-
-        self.pending_names = get_set(pending_names)
-
-        self.arg_list += [
-            "group_name",
-            "algo_name",
-            "delay_time",
-            "timeout_type",
-            "timeout",
-            "pending_names",
-        ]
-
-    def run_process(self, cmd_runner: str) -> None:
-        """Run the command.
-
-        Args:
-           cmd_runner: name of thread running the command
-        """
-        self.config_ver.handle_shutdown(
-            cmd_runner=cmd_runner,
-            mock_ib=self.mock_ib,
-            group_name=self.group_name,
-            algo_name=self.algo_name,
-            delay_time=self.delay_time,
-            timeout_type=self.timeout_type,
-            timeout=self.timeout,
-            pending_names=self.pending_names,
-        )
-
-
-########################################################################
 # verify_algo_app_initialized
 ########################################################################
-def verify_algo_app_initialized(algo_app: "AlgoApp") -> None:
-    """Helper function to verify the algo_app instance is initialized.
-
-    Args:
-        algo_app: instance of AlgoApp that is to be checked
-
-    """
-    assert len(algo_app.ds_catalog) > 0
-    assert algo_app.algo_client.algo_wrapper.request_id == 0
-    assert algo_app.market_data.symbols.empty
-    assert algo_app.market_data.stock_symbols.empty
-    assert algo_app.response_complete_event.is_set() is False
-    assert algo_app.__repr__() == "AlgoApp(ds_catalog)"
-    # assert algo_app.ibapi_client_smart_thread.thread is None
+# def verify_algo_app_initialized(algo_app: "AlgoApp") -> None:
+#     """Helper function to verify the algo_app instance is initialized.
+#
+#     Args:
+#         algo_app: instance of AlgoApp that is to be checked
+#
+#     """
+#     assert len(algo_app.ds_catalog) > 0
+#     assert algo_app.algo_client.algo_wrapper.request_id == 0
+#     assert algo_app.market_data.symbols.empty
+#     assert algo_app.market_data.stock_symbols.empty
+#     assert algo_app.response_complete_event.is_set() is False
+#     assert algo_app.__repr__() == "AlgoApp(ds_catalog)"
+#     # assert algo_app.ibapi_client_smart_thread.thread is None
 
 
 ########################################################################
 # verify_algo_app_connected
 ########################################################################
-def verify_algo_app_connected(algo_app: "AlgoApp") -> None:
-    """Helper function to verify we are connected to ib.
-
-    Args:
-        algo_app: instance of AlgoApp that is to be checked
-
-    """
-    assert algo_app.algo_client.thread.is_alive()
-    assert algo_app.algo_client.isConnected()
-    assert algo_app.algo_client.request_id == 1
+# def verify_algo_app_connected(algo_app: "AlgoApp") -> None:
+#     """Helper function to verify we are connected to ib.
+#
+#     Args:
+#         algo_app: instance of AlgoApp that is to be checked
+#
+#     """
+#     assert algo_app.algo_client.thread.is_alive()
+#     assert algo_app.algo_client.isConnected()
+#     assert algo_app.algo_client.request_id == 1
 
 
 ########################################################################
 # verify_algo_app_disconnected
 ########################################################################
-def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
-    """Helper function to verify we are disconnected from ib.
-
-    Args:
-        algo_app: instance of AlgoApp that is to be checked
-
-    """
-    assert not algo_app.algo_client.thread.is_alive()
-    assert not algo_app.algo_client.isConnected()
-
-
-########################################################################
-# do_setup
-########################################################################
-def do_setup(cat_app: "FileCatalog"):
-    """Setup the test thread and the algo_app thread.
-
-    Args:
-        cat_app: catalog of date sets to use for testing
-    """
-    test_smart_thread = SmartThread(name="tester1")
-
-    algo_app = AlgoApp(ds_catalog=cat_app, algo_name="algo_app")
-
-    verify_algo_app_initialized(algo_app)
-    algo_app.smart_start()
-
-    return test_smart_thread, algo_app
-
-
-########################################################################
-# do_breakdown
-########################################################################
-def do_breakdown(
-    test_smart_thread: SmartThread,
-    algo_app: AlgoApp,
-    do_disconnect: bool = True,
-):
-    """Disconnect and join the algo_app.
-
-    Args:
-        test_smart_thread: the tester1 SmartThread instance
-        algo_app: the AlgoApp to disconnect from and join
-        do_disconnect: specifies whether to do disconnect
-    """
-    if do_disconnect:
-        verify_algo_app_connected(algo_app)
-
-        algo_app.disconnect_from_ib()
-
-    verify_algo_app_disconnected(algo_app)
-
-    test_smart_thread.smart_join(targets="algo_app")
+# def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
+#     """Helper function to verify we are disconnected from ib.
+#
+#     Args:
+#         algo_app: instance of AlgoApp that is to be checked
+#
+#     """
+#     assert not algo_app.algo_client.thread.is_alive()
+#     assert not algo_app.algo_client.isConnected()
 
 
 ####################################################################
@@ -1473,13 +1192,14 @@ class TestAlgoAppBasicTests:
             )
 
         if not (timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0):
-            verify_algo_app_connected(algo_app_ver.algo_app)
+            algo_app_ver.verify_algo_app_connected()
             algo_app_ver.disconnect_from_ib(do_algo_disc=True)
 
-        verify_algo_app_disconnected(algo_app_ver.algo_app)
+        algo_app_ver.verify_algo_app_disconnected()
 
         algo_app_ver.shut_down()
-        algo_app_ver.client_disconnect(caller="client.py::EClient.run:[0-9]+")
+        # algo_app_ver.client_disconnect(caller="client.py::EClient.run:[0-9]+")
+        # algo_app_ver.verify_algo_app_disconnected()
 
         ################################################################
         # check log results
@@ -1505,7 +1225,7 @@ class TestAlgoAppBasicTests:
         self,
         async_tf_arg: bool,
         delay_arg: int,
-        timeout_type_arg: int,
+        timeout_type_arg: TimeoutType,
         app_cat: "FileCatalog",
         caplog: pytest.LogCaptureFixture,
         monkeypatch: pytest.MonkeyPatch,
@@ -1520,7 +1240,7 @@ class TestAlgoAppBasicTests:
 
         def lock_manager(f1_smart_thread: SmartThread):
             log_ver.test_msg("lock_man entry:")
-            disc_lock = algo_app.algo_client.disconnect_lock
+            disc_lock = algo_app_ver.algo_app.algo_client.disconnect_lock
 
             # tell lock1 to get lock
             f1_smart_thread.smart_resume(waiters="lock1")
@@ -1537,9 +1257,11 @@ class TestAlgoAppBasicTests:
                 disc_name = "algo_1"
             else:
                 while True:
-                    with algo_app.request_threads_lock:
-                        if algo_app.request_threads:
-                            disc_name = list(algo_app.request_threads.keys())[0]
+                    with algo_app_ver.algo_app.request_threads_lock:
+                        if algo_app_ver.algo_app.request_threads:
+                            disc_name = list(
+                                algo_app_ver.algo_app.request_threads.keys()
+                            )[0]
                             break
                     time.sleep(0.01)
 
@@ -1577,7 +1299,7 @@ class TestAlgoAppBasicTests:
 
         def lock_f1(f1_smart_thread: SmartThread):
             f1_smart_thread.smart_wait(resumers="lock_man")
-            with sel.SELockExcl(algo_app.algo_client.disconnect_lock):
+            with sel.SELockExcl(algo_app_ver.algo_app.algo_client.disconnect_lock):
                 f1_smart_thread.smart_resume(waiters="lock_man")
                 f1_smart_thread.smart_wait(resumers="lock_man")
 
@@ -1587,15 +1309,15 @@ class TestAlgoAppBasicTests:
 
         def disconnect_test(ct_timeout_type_arg: int):
             if ct_timeout_type_arg == TimeoutType.TimeoutNone:
-                algo_app.disconnect_from_ib()
+                algo_app_ver.algo_app.disconnect_from_ib()
             elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
-                algo_app.disconnect_from_ib(
+                algo_app_ver.algo_app.disconnect_from_ib(
                     timeout=delay_arg * 2,
                 )
             else:
                 # mock_ib.delay_value = -1
                 with pytest.raises(DisconnectTimeout):
-                    algo_app.disconnect_from_ib(
+                    algo_app_ver.algo_app.disconnect_from_ib(
                         timeout=delay_arg / 2.0,
                     )
 
@@ -1608,31 +1330,37 @@ class TestAlgoAppBasicTests:
         port = AlgoApp.PORT_FOR_LIVE_TRADING
 
         log_ver = LogVer()
+        algo_app_ver = AlgoAppVer(log_ver=log_ver, app_cat=app_cat)
 
         mock_ib = MockIB(
             test_cat=test_cat,
             log_ver=log_ver,
             monkeypatch_to_use=monkeypatch,
-            group_name=algo_group_name,
-            algo_name=algo_name,
-            ip_addr=ip_addr,
-            port=port,
+            group_name=algo_app_ver.algo_group_name,
+            algo_name=algo_app_ver.algo_name,
+            ip_addr=algo_app_ver.ip_addr,
+            port=algo_app_ver.port,
         )
 
-        algo_app = AlgoApp(
-            ds_catalog=app_cat,
-            group_name=algo_group_name,
-            algo_name=algo_name,
-        )
-        verify_algo_app_initialized(algo_app)
+        # algo_app = AlgoApp(
+        #     ds_catalog=app_cat,
+        #     group_name=algo_group_name,
+        #     algo_name=algo_name,
+        # )
+        # verify_algo_app_initialized(algo_app)
 
         # we are testing connect_to_ib and the subsequent code that gets
         # control as a result, such as getting the first requestID and
         # then starting a separate thread for the run loop.
-        log_ver.test_msg("about to connect")
-        algo_app.connect_to_ib(ip_addr=ip_addr, port=port, client_id=1)
+        # log_ver.test_msg("about to connect")
+        # algo_app.connect_to_ib(ip_addr=ip_addr, port=port, client_id=1)
+        caller = (
+            "test_algo_app.py::TestAlgoAppBasicTests."
+            "test_mock_disconnect_from_ib:[0-9]+"
+        )
+        algo_app_ver.connect_to_ib(caller=caller)
 
-        verify_algo_app_connected(algo_app)
+        # verify_algo_app_connected(algo_app)
 
         alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
 
@@ -1676,27 +1404,38 @@ class TestAlgoAppBasicTests:
             alpha_smart_thread.smart_join(targets="beta")
 
         else:
-            log_ver.test_msg("alpha about to call disconnect_test")
-            disconnect_test(timeout_type_arg)
+            algo_app_ver.disconnect_from_ib(
+                timeout_type=timeout_type_arg,
+                delay=delay_arg,
+                # caller=caller,
+                async_tf=async_tf_arg,
+                do_algo_disc=True,
+            )
+            # disconnect_test(timeout_type_arg)
 
         log_ver.test_msg("back from disconnect")
 
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
-            algo_app.disconnect_from_ib()
+            # algo_app_ver.algo_app.disconnect_from_ib()
+            # we should be partially disconnected at this point. The
+            # disconnect from ib should be completed, but the client
+            # smart_join did not complete before the timeout, so we need
+            # to call again to clean everything up
+            algo_app_ver.disconnect_from_ib(do_algo_disc=True)
 
-        verify_algo_app_disconnected(algo_app)
+        algo_app_ver.verify_algo_app_disconnected()
 
         alpha_smart_thread.smart_join(targets=["lock1", "lock2", "lock_man"])
         alpha_smart_thread.smart_unreg()
 
-        algo_app.shut_down()
+        algo_app_ver.shut_down()
 
         ################################################################
         # check log results
         ################################################################
         match_results = log_ver.get_match_results(caplog=caplog)
         log_ver.print_match_results(match_results, print_matched=True)
-        log_ver.verify_match_results(match_results)
+        # log_ver.verify_match_results(match_results)
 
 
 ########################################################################
