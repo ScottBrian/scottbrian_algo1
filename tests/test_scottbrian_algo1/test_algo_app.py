@@ -55,7 +55,15 @@ from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.msgs import Msgs
 from scottbrian_utils.log_verifier import LogVer
 from scottbrian_utils.diag_msg import get_formatted_call_sequence, get_caller_info
-from scottbrian_locking import se_lock as sel
+
+from scottbrian_locking.se_lock import (
+    SELock,
+    SELockShare,
+    SELockExcl,
+    SELockObtain,
+    SELockObtainMode,
+    LockItem,
+)
 
 import scottbrian_paratools.smart_thread as st
 from scottbrian_paratools.smart_thread import SmartThread, SmartThreadRequestTimedOut
@@ -139,54 +147,6 @@ test_cat = FileCatalog(
         "mock_contract_descs": Path(proj_dir / "t_datasets/mock_contract_descs.csv"),
     }
 )
-
-
-########################################################################
-# LogVerMgr
-########################################################################
-class LogVerMgr(LogVer):
-    """LogVerMgr to test with LogVer."""
-
-    ####################################################################
-    # __init__
-    ####################################################################
-    # def __init__(self, log_name: str = "root", str_col_width: Optional[int] = None):
-    #     super().__init__(log_name=log_name, str_col_width=str_col_width)
-    #
-    # ####################################################################
-    # # add_entry_trace_pattern
-    # ####################################################################
-    # def add_entry_trace_pattern(
-    #     self,
-    #     ip_addr: str,
-    #     port: int,
-    #     client_id: int,
-    #     timeout: IntFloat,
-    #     caller: str,
-    # ):
-    #     """Method to add entrr trace pattern to LogVer.
-    #
-    #     Args:
-    #         ip_addr (str): IP address of client.
-    #         port (int): Port of client.
-    #         client_id (int): Client ID.
-    #         timeout (IntFloat): Timeout in seconds.
-    #         caller (str): Caller ID.
-    #
-    #     """
-    #     con_etrace_entry = (
-    #         "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
-    #         f"{ip_addr=}, {port=}, {client_id=}, "
-    #         f"_setup_args='...', {timeout=}, "
-    #         f"caller: {caller}"
-    #     )
-    #     self.add_pattern(pattern=con_etrace_entry)
-    #
-    #     con_etrace_exit = (
-    #         "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ exit: return_value=None"
-    #     )
-    #
-    #     self.add_pattern(pattern=con_etrace_exit)
 
 
 ########################################################################
@@ -907,7 +867,7 @@ def get_smart_thread_name(
 ####################################################################
 # lock_verify
 ####################################################################
-def lock_verify(exp_positions: list[list[str, str]], lock: sel.SELock) -> None:
+def lock_verify(exp_positions: list[list[str, str]], lock: SELock) -> None:
     """Increment the pending operations count.
 
     Args:
@@ -938,6 +898,7 @@ def lock_verify(exp_positions: list[list[str, str]], lock: sel.SELock) -> None:
                 f"{len(lock.owner_wait_q)=}"
             )
             lock_verified = False
+
         else:
             for idx, expected_name_group in enumerate(exp_positions):
                 expected_name = expected_name_group[0]
@@ -1284,22 +1245,66 @@ class TestAlgoAppBasicTests:
 
             # verify lock1 and disconnector are locked
             log_ver.test_msg("lock_man about to verify locks held 1")
-            lock_verify(
-                exp_positions=[["lock1", "test1"], [disc_name, algo_group_name]],
-                lock=disc_lock,
+            # lock_verify(
+            #     exp_positions=[
+            #         ["lock1", "test1"],
+            #         [disc_name, algo_app_ver.algo_group_name],
+            #     ],
+            #     lock=disc_lock,
+            # )
+            disc_lock.verify_lock(
+                exp_q=[
+                    LockItem(
+                        mode=SELockObtainMode.Exclusive,
+                        event_flag=False,
+                        thread=lock1_thread.thread,
+                    ),
+                    LockItem(
+                        mode=SELockObtainMode.Exclusive,
+                        event_flag=False,
+                        thread=disc_thread,
+                    ),
+                ],
+                exp_owner_count=-1,
+                exp_excl_wait_count=1,
+                verify_structures=False,
+                timeout=15,
             )
 
             # tell lock2 to get lock
             f1_smart_thread.smart_resume(waiters="lock2")
 
             # verify lock1, disconnector, and lock2 are locked
-            lock_verify(
-                exp_positions=[
-                    ["lock1", "test1"],
-                    [disc_name, algo_group_name],
-                    ["lock2", "test1"],
+            # lock_verify(
+            #     exp_positions=[
+            #         ["lock1", "test1"],
+            #         [disc_name, algo_app_ver.algo_group_name],
+            #         ["lock2", "test1"],
+            #     ],
+            #     lock=disc_lock,
+            # )
+            disc_lock.verify_lock(
+                exp_q=[
+                    LockItem(
+                        mode=SELockObtainMode.Exclusive,
+                        event_flag=False,
+                        thread=lock1_thread.thread,
+                    ),
+                    LockItem(
+                        mode=SELockObtainMode.Exclusive,
+                        event_flag=False,
+                        thread=disc_thread,
+                    ),
+                    LockItem(
+                        mode=SELockObtainMode.Exclusive,
+                        event_flag=False,
+                        thread=lock2_thread.thread,
+                    ),
                 ],
-                lock=disc_lock,
+                exp_owner_count=-1,
+                exp_excl_wait_count=2,
+                verify_structures=False,
+                timeout=15,
             )
 
             # tell lock1 to drop lock
@@ -1316,12 +1321,13 @@ class TestAlgoAppBasicTests:
 
         def lock_f1(f1_smart_thread: SmartThread):
             f1_smart_thread.smart_wait(resumers="lock_man")
-            with sel.SELockExcl(algo_app_ver.algo_app.algo_client.disconnect_lock):
+            log_ver.test_msg(f"{f1_smart_thread.name} about to get lock")
+            with SELockExcl(algo_app_ver.algo_app.algo_client.disconnect_lock):
+                log_ver.test_msg(f"{f1_smart_thread.name} has lock")
                 f1_smart_thread.smart_resume(waiters="lock_man")
                 f1_smart_thread.smart_wait(resumers="lock_man")
 
         def f1(f1_smart_thread: SmartThread, f1_timeout_type_arg: int):
-            # disconnect_test(f1_timeout_type_arg)
             algo_app_ver.disconnect_from_ib(
                 timeout_type=timeout_type_arg,
                 delay=delay_arg,
@@ -1331,27 +1337,11 @@ class TestAlgoAppBasicTests:
             )
             f1_smart_thread.smart_resume(waiters="alpha")
 
-        # def disconnect_test(ct_timeout_type_arg: int):
-        #     if ct_timeout_type_arg == TimeoutType.TimeoutNone:
-        #         algo_app_ver.algo_app.disconnect_from_ib()
-        #     elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
-        #         algo_app_ver.algo_app.disconnect_from_ib(
-        #             timeout=delay_arg * 2,
-        #         )
-        #     else:
-        #         # mock_ib.delay_value = -1
-        #         with pytest.raises(DisconnectTimeout):
-        #             algo_app_ver.algo_app.disconnect_from_ib(
-        #                 timeout=delay_arg / 2.0,
-        #             )
-
+        ################################################################
+        # mainline
+        ################################################################
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
             return
-
-        algo_group_name = "algo_group_1"
-        algo_name = "algo_1"
-        ip_addr = "127.0.0.1"
-        port = AlgoApp.PORT_FOR_LIVE_TRADING
 
         log_ver = LogVer()
         algo_app_ver = AlgoAppVer(log_ver=log_ver, app_cat=app_cat)
@@ -1366,36 +1356,18 @@ class TestAlgoAppBasicTests:
             port=algo_app_ver.port,
         )
 
-        # algo_app = AlgoApp(
-        #     ds_catalog=app_cat,
-        #     group_name=algo_group_name,
-        #     algo_name=algo_name,
-        # )
-        # verify_algo_app_initialized(algo_app)
-
-        # we are testing connect_to_ib and the subsequent code that gets
-        # control as a result, such as getting the first requestID and
-        # then starting a separate thread for the run loop.
-        # log_ver.test_msg("about to connect")
-        # algo_app.connect_to_ib(ip_addr=ip_addr, port=port, client_id=1)
-        # caller = (
-        #     "test_algo_app.py::TestAlgoAppBasicTests."
-        #     "test_mock_disconnect_from_ib:[0-9]+"
-        # )
         algo_app_ver.connect_to_ib()
-
-        # verify_algo_app_connected(algo_app)
 
         alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
 
-        SmartThread(
+        lock1_thread = SmartThread(
             group_name="test1",
             name="lock1",
             target_rtn=lock_f1,
             thread_parm_name="f1_smart_thread",
         )
 
-        SmartThread(
+        lock2_thread = SmartThread(
             group_name="test1",
             name="lock2",
             target_rtn=lock_f1,
@@ -1416,18 +1388,20 @@ class TestAlgoAppBasicTests:
 
         if async_tf_arg:
             log_ver.test_msg("alpha about to start beta")
-            SmartThread(
+            f1_disc_thread = SmartThread(
                 group_name="test1",
                 name="beta",
                 target_rtn=f1,
                 thread_parm_name="f1_smart_thread",
                 kwargs={"f1_timeout_type_arg": timeout_type_arg},
             )
+            disc_thread = f1_disc_thread.thread
 
             alpha_smart_thread.smart_wait(resumers="beta")
             alpha_smart_thread.smart_join(targets="beta")
 
         else:
+            disc_thread = threading.current_thread()
             algo_app_ver.disconnect_from_ib(
                 timeout_type=timeout_type_arg,
                 delay=delay_arg,
@@ -1435,10 +1409,8 @@ class TestAlgoAppBasicTests:
                 async_tf=async_tf_arg,
                 do_algo_disc=True,
             )
-            # disconnect_test(timeout_type_arg)
 
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
-            # algo_app_ver.algo_app.disconnect_from_ib()
             # we should be partially disconnected at this point. The
             # disconnect from ib should be completed, but the client
             # smart_join did not complete before the timeout, so we need
