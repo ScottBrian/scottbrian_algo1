@@ -286,7 +286,11 @@ class AlgoAppVer:
         else:
             timeout = delay / 2
 
-        etrace_caller = f"{caller} -> test_algo_app.py::AlgoAppVer.connect_to_ib:[0-9]+"
+        # etrace_caller = f"{caller} -> test_algo_app.py::AlgoAppVer.connect_to_ib:[0-9]+"
+        etrace_caller = (
+            f"{get_formatted_call_sequence(latest=1, depth=1)} -> "
+            "test_algo_app.py::AlgoAppVer.connect_to_ib:[0-9]+"
+        )
 
         etrace_entry = (
             "algo_app.py::AlgoApp.connect_to_ib:[0-9]+ entry: "
@@ -338,7 +342,6 @@ class AlgoAppVer:
             )
             self.verify_algo_app_connected()
         else:
-            # mock_ib.delay_value = -1
             if async_tf:
                 smart_thread_name = f"algo_requestor_[0-9]+.[0-9]+"
             else:
@@ -418,6 +421,11 @@ class AlgoAppVer:
                 "return_value=None",
                 log_name="scottbrian_utils.entry_trace",
             )
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_app_msg_prefix} disconnect complete",
+                level=20,
+                log_name="scottbrian_algo1.algo_app",
+            )
 
         self.log_ver.add_pattern(
             pattern=f"{self.algo_app_msg_prefix} calling EClient disconnect",
@@ -425,11 +433,6 @@ class AlgoAppVer:
         )
         self.log_ver.add_pattern(
             pattern=f"{self.algo_app_msg_prefix} joining algo_client",
-            log_name="scottbrian_algo1.algo_app",
-        )
-        self.log_ver.add_pattern(
-            pattern=f"{self.algo_app_msg_prefix} disconnect complete",
-            level=20,
             log_name="scottbrian_algo1.algo_app",
         )
 
@@ -443,11 +446,24 @@ class AlgoAppVer:
                     timeout=timeout,
                 )
             else:
-                with pytest.raises(DisconnectTimeout):
+                func_name = "disconnect_from_ib"
+                error = "DisconnectTimeout"
+                extra = (
+                    "waiting for smart_join of client_name="
+                    f"{self.algo_app.client_name}."
+                )
+                test_error_msg = (
+                    f"{self.algo_app_msg_prefix} {func_name} raising {error} {extra}."
+                )
+                self.log_ver.add_pattern(
+                    pattern=test_error_msg,
+                    level=40,
+                    log_name="scottbrian_algo1.algo_app",
+                )
+                with pytest.raises(DisconnectTimeout, match=test_error_msg):
                     self.algo_app.disconnect_from_ib(
                         timeout=timeout,
                     )
-            # self.algo_app.disconnect_from_ib()
 
     ####################################################################
     # disconnect_from_ib
@@ -908,7 +924,8 @@ def lock_verify(exp_positions: list[list[str, str]], lock: sel.SELock) -> None:
     caller_info = get_caller_info(frame)
     line_num = caller_info.line_num
     del frame
-    logger.debug(f"lock_verify entry: {exp_positions=}, {line_num=}")
+    # logger.debug(f"lock_verify entry: {exp_positions=}, {line_num=}")
+    time.sleep(0.1)
     start_time = time.time()
     timeout_value = 15
     lock_verified = False
@@ -943,7 +960,7 @@ def lock_verify(exp_positions: list[list[str, str]], lock: sel.SELock) -> None:
                     f"{lock.owner_wait_q=} "
                 )
             time.sleep(0.2)
-    logger.debug(f"lock_verify exit: {exp_positions=}, {line_num=}")
+    # logger.debug(f"lock_verify exit: {exp_positions=}, {line_num=}")
 
 
 ########################################################################
@@ -1304,22 +1321,29 @@ class TestAlgoAppBasicTests:
                 f1_smart_thread.smart_wait(resumers="lock_man")
 
         def f1(f1_smart_thread: SmartThread, f1_timeout_type_arg: int):
-            disconnect_test(f1_timeout_type_arg)
+            # disconnect_test(f1_timeout_type_arg)
+            algo_app_ver.disconnect_from_ib(
+                timeout_type=timeout_type_arg,
+                delay=delay_arg,
+                # caller=caller,
+                async_tf=async_tf_arg,
+                do_algo_disc=True,
+            )
             f1_smart_thread.smart_resume(waiters="alpha")
 
-        def disconnect_test(ct_timeout_type_arg: int):
-            if ct_timeout_type_arg == TimeoutType.TimeoutNone:
-                algo_app_ver.algo_app.disconnect_from_ib()
-            elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
-                algo_app_ver.algo_app.disconnect_from_ib(
-                    timeout=delay_arg * 2,
-                )
-            else:
-                # mock_ib.delay_value = -1
-                with pytest.raises(DisconnectTimeout):
-                    algo_app_ver.algo_app.disconnect_from_ib(
-                        timeout=delay_arg / 2.0,
-                    )
+        # def disconnect_test(ct_timeout_type_arg: int):
+        #     if ct_timeout_type_arg == TimeoutType.TimeoutNone:
+        #         algo_app_ver.algo_app.disconnect_from_ib()
+        #     elif ct_timeout_type_arg == TimeoutType.TimeoutFalse:
+        #         algo_app_ver.algo_app.disconnect_from_ib(
+        #             timeout=delay_arg * 2,
+        #         )
+        #     else:
+        #         # mock_ib.delay_value = -1
+        #         with pytest.raises(DisconnectTimeout):
+        #             algo_app_ver.algo_app.disconnect_from_ib(
+        #                 timeout=delay_arg / 2.0,
+        #             )
 
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
             return
@@ -1354,11 +1378,11 @@ class TestAlgoAppBasicTests:
         # then starting a separate thread for the run loop.
         # log_ver.test_msg("about to connect")
         # algo_app.connect_to_ib(ip_addr=ip_addr, port=port, client_id=1)
-        caller = (
-            "test_algo_app.py::TestAlgoAppBasicTests."
-            "test_mock_disconnect_from_ib:[0-9]+"
-        )
-        algo_app_ver.connect_to_ib(caller=caller)
+        # caller = (
+        #     "test_algo_app.py::TestAlgoAppBasicTests."
+        #     "test_mock_disconnect_from_ib:[0-9]+"
+        # )
+        algo_app_ver.connect_to_ib()
 
         # verify_algo_app_connected(algo_app)
 
@@ -1413,8 +1437,6 @@ class TestAlgoAppBasicTests:
             )
             # disconnect_test(timeout_type_arg)
 
-        log_ver.test_msg("back from disconnect")
-
         if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg > 0:
             # algo_app_ver.algo_app.disconnect_from_ib()
             # we should be partially disconnected at this point. The
@@ -1435,7 +1457,7 @@ class TestAlgoAppBasicTests:
         ################################################################
         match_results = log_ver.get_match_results(caplog=caplog)
         log_ver.print_match_results(match_results, print_matched=True)
-        # log_ver.verify_match_results(match_results)
+        log_ver.verify_match_results(match_results)
 
 
 ########################################################################

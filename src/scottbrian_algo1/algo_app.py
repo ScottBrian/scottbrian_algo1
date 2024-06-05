@@ -757,8 +757,8 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                 except SmartThreadRequestTimedOut:
                     error_msg = self._get_error_msg(
                         error="DisconnectTimeout",
-                        extra=f"waiting for smart_join of "
-                        f"client_name={self.client_name}.",
+                        extra="waiting for smart_join of client_name="
+                        f"{self.client_name}.",
                     )
                     logger.error(error_msg)
                     raise DisconnectTimeout(error_msg)
