@@ -788,54 +788,6 @@ def get_set(item: Optional[Iterable[str]] = None) -> set[Any]:
     return set({item} if isinstance(item, str) else item or "")
 
 
-########################################################################
-# verify_algo_app_initialized
-########################################################################
-# def verify_algo_app_initialized(algo_app: "AlgoApp") -> None:
-#     """Helper function to verify the algo_app instance is initialized.
-#
-#     Args:
-#         algo_app: instance of AlgoApp that is to be checked
-#
-#     """
-#     assert len(algo_app.ds_catalog) > 0
-#     assert algo_app.algo_client.algo_wrapper.request_id == 0
-#     assert algo_app.market_data.symbols.empty
-#     assert algo_app.market_data.stock_symbols.empty
-#     assert algo_app.response_complete_event.is_set() is False
-#     assert algo_app.__repr__() == "AlgoApp(ds_catalog)"
-#     # assert algo_app.ibapi_client_smart_thread.thread is None
-
-
-########################################################################
-# verify_algo_app_connected
-########################################################################
-# def verify_algo_app_connected(algo_app: "AlgoApp") -> None:
-#     """Helper function to verify we are connected to ib.
-#
-#     Args:
-#         algo_app: instance of AlgoApp that is to be checked
-#
-#     """
-#     assert algo_app.algo_client.thread.is_alive()
-#     assert algo_app.algo_client.isConnected()
-#     assert algo_app.algo_client.request_id == 1
-
-
-########################################################################
-# verify_algo_app_disconnected
-########################################################################
-# def verify_algo_app_disconnected(algo_app: "AlgoApp") -> None:
-#     """Helper function to verify we are disconnected from ib.
-#
-#     Args:
-#         algo_app: instance of AlgoApp that is to be checked
-#
-#     """
-#     assert not algo_app.algo_client.thread.is_alive()
-#     assert not algo_app.algo_client.isConnected()
-
-
 ####################################################################
 # get_smart_thread_name
 ####################################################################
@@ -1068,6 +1020,118 @@ class TestAlgoExamples:
 
 
 ########################################################################
+# TestAlgoAppErrorCases
+########################################################################
+class TestAlgoAppErrorCases:
+    """TestAlgoAppErrorCases class."""
+
+    ####################################################################
+    # test_already_connected_error
+    ####################################################################
+    @pytest.mark.parametrize("con1_async_tf_arg", [True, False])
+    @pytest.mark.parametrize("con2_async_tf_arg", [True, False])
+    @pytest.mark.parametrize("delay_arg", [0, 2, 4])
+
+    def test_already_connected_error(
+        self,
+        con1_async_tf_arg: bool,
+        con2_async_tf_arg: bool,
+        app_cat: "FileCatalog",
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test connecting to IB.
+
+        Args:
+            con1_async_tf_arg: If True, first connect is async
+            con2_async_tf_arg: If True, seconds connect is async
+            app_cat: testing infrastructure
+            caplog: pytest fixture that captures log messages
+            monkeypatch: used to alter code
+        """
+        pass
+
+    ####################################################################
+    # test_connect_to_ib_already_connected
+    ####################################################################
+    @pytest.mark.parametrize(
+        "first_sync_async_arg",
+        [
+            SyncAsync.RequestSync,
+            SyncAsync.RequestAsync,
+        ],
+    )
+    @pytest.mark.parametrize(
+        "second_sync_async_arg",
+        [
+            SyncAsync.RequestSync,
+            SyncAsync.RequestAsync,
+        ],
+    )
+    def test_connect_to_ib_already_connected(
+        self,
+        first_sync_async_arg: SyncAsync,
+        second_sync_async_arg: SyncAsync,
+        cat_app: "MockIB",
+    ) -> None:
+        """Test connecting to IB twice.
+
+        Args:
+            first_sync_async_arg: specifies how to connect
+            second_sync_async_arg: specifies how to connect
+            cat_app: pytest fixture (see conftest.py)
+
+        """
+        algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
+        verify_algo_app_initialized(algo_app)
+
+        # we are testing connect_to_ib and the subsequent code that gets
+        # control as a result, such as getting the first requestID and
+        # then starting a separate thread for the run loop.
+        logger.debug("about to connect")
+
+        if first_sync_async_arg == SyncAsync.RequestSync:
+            algo_app.connect_to_ib(
+                ip_addr="127.0.0.1", port=algo_app.PORT_FOR_LIVE_TRADING, client_id=1
+            )
+        else:
+            req_num = algo_app.start_async_request(
+                algo_app.connect_to_ib,
+                ip_addr="127.0.0.1",
+                port=algo_app.PORT_FOR_LIVE_TRADING,
+                client_id=1,
+            )
+            req_result = algo_app.get_async_results(req_num, timeout=10)
+            assert req_result.ret_data is None
+
+        # try to connect again - should get error
+        if second_sync_async_arg == SyncAsync.RequestSync:
+            with pytest.raises(AlreadyConnected):
+                algo_app.connect_to_ib(
+                    ip_addr="127.0.0.1",
+                    port=algo_app.PORT_FOR_LIVE_TRADING,
+                    client_id=1,
+                )
+        else:
+            req_num = algo_app.start_async_request(
+                algo_app.connect_to_ib,
+                ip_addr="127.0.0.1",
+                port=algo_app.PORT_FOR_LIVE_TRADING,
+                client_id=1,
+            )
+            with pytest.raises(AlreadyConnected):
+                algo_app.get_async_results(req_num, timeout=10)
+
+        # verify that algo_app is still connected
+        verify_algo_app_connected(algo_app)
+
+        algo_app.disconnect_from_ib()
+
+        verify_algo_app_disconnected(algo_app)
+
+        # algo_app.shut_down()
+
+########################################################################
 # TestAlgoAppBasicTests
 ########################################################################
 class TestAlgoAppBasicTests:
@@ -1216,7 +1280,7 @@ class TestAlgoAppBasicTests:
             app_cat: catalog to use for connect
         """
 
-        def lock_manager(f1_smart_thread: SmartThread):
+        def lock_manager(f1_smart_thread: SmartThread, disc_thread: threading.Thread):
             log_ver.test_msg("lock_man entry:")
             disc_lock = algo_app_ver.algo_app.algo_client.disconnect_lock
 
@@ -1245,13 +1309,7 @@ class TestAlgoAppBasicTests:
 
             # verify lock1 and disconnector are locked
             log_ver.test_msg("lock_man about to verify locks held 1")
-            # lock_verify(
-            #     exp_positions=[
-            #         ["lock1", "test1"],
-            #         [disc_name, algo_app_ver.algo_group_name],
-            #     ],
-            #     lock=disc_lock,
-            # )
+
             disc_lock.verify_lock(
                 exp_q=[
                     LockItem(
@@ -1275,14 +1333,6 @@ class TestAlgoAppBasicTests:
             f1_smart_thread.smart_resume(waiters="lock2")
 
             # verify lock1, disconnector, and lock2 are locked
-            # lock_verify(
-            #     exp_positions=[
-            #         ["lock1", "test1"],
-            #         [disc_name, algo_app_ver.algo_group_name],
-            #         ["lock2", "test1"],
-            #     ],
-            #     lock=disc_lock,
-            # )
             disc_lock.verify_lock(
                 exp_q=[
                     LockItem(
@@ -1374,10 +1424,24 @@ class TestAlgoAppBasicTests:
             thread_parm_name="f1_smart_thread",
         )
 
+        if async_tf_arg:
+            f1_disc_thread = SmartThread(
+                group_name="test1",
+                name="beta",
+                target_rtn=f1,
+                auto_start=False,
+                thread_parm_name="f1_smart_thread",
+                kwargs={"f1_timeout_type_arg": timeout_type_arg},
+            )
+            disconnect_thread = f1_disc_thread.thread
+        else:
+            disconnect_thread = threading.current_thread()
+
         SmartThread(
             group_name="test1",
             name="lock_man",
             target_rtn=lock_manager,
+            kwargs={"disc_thread": disconnect_thread},
             thread_parm_name="f1_smart_thread",
         )
 
@@ -1388,20 +1452,13 @@ class TestAlgoAppBasicTests:
 
         if async_tf_arg:
             log_ver.test_msg("alpha about to start beta")
-            f1_disc_thread = SmartThread(
-                group_name="test1",
-                name="beta",
-                target_rtn=f1,
-                thread_parm_name="f1_smart_thread",
-                kwargs={"f1_timeout_type_arg": timeout_type_arg},
-            )
-            disc_thread = f1_disc_thread.thread
+
+            f1_disc_thread.smart_start()
 
             alpha_smart_thread.smart_wait(resumers="beta")
             alpha_smart_thread.smart_join(targets="beta")
 
         else:
-            disc_thread = threading.current_thread()
             algo_app_ver.disconnect_from_ib(
                 timeout_type=timeout_type_arg,
                 delay=delay_arg,
@@ -1438,342 +1495,7 @@ class TestAlgoAppBasicTests:
 class TestAlgoAppConnect:
     """TestAlgoAppConnect class."""
 
-    ####################################################################
-    # test_connect_scenario
-    ####################################################################
-    @pytest.mark.parametrize(
-        "timeout_type_arg",
-        [
-            TimeoutType.TimeoutNone,
-            TimeoutType.TimeoutFalse,
-            TimeoutType.TimeoutTrue,
-        ],
-    )
-    def test_connect_scenario(
-        self,
-        timeout_type_arg: int,
-        caplog: pytest.LogCaptureFixture,
-        monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Any,
-    ) -> None:
-        """Test meta configuration scenarios.
 
-        Args:
-            timeout_type_arg: specifies whether timeout should occur
-            caplog: pytest fixture to capture log output
-            monkeypatch: pytest monkeypatch
-
-        Notes:
-            1) Sync will do various combinations of targets such that
-               a partial or full sync of all targets is done
-
-        """
-        # async_tf_arg: if True, do async connect
-        # delay_arg: number of seconds to delay
-        sdparms: list[ScenarioDriverParms] = []
-        config_idx = -1
-        for async_tf_arg in (True, False):
-            for delay_arg in (0, 2, 4):
-                if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
-                    continue
-                config_idx += 1
-                args_for_scenario_builder: dict[str, Any] = {
-                    "group_name": f"algo_group_{config_idx}",
-                    "algo_name": f"algo_name_{config_idx}",
-                    "ip_addr": "127.0.0.1",
-                    "port": MockIB.PORT_FOR_MOCK_TRADING + config_idx,
-                    "client_id": config_idx,
-                    "async_tf": async_tf_arg,
-                    "delay": delay_arg,
-                    "timeout_type": timeout_type_arg,
-                    "monkeypatch_to_use": monkeypatch,
-                    "tmp_path_to_use": tmp_path,
-                }
-
-                sdparms.append(
-                    ScenarioDriverParms(
-                        scenario_builder=ConfigVerifier.build_connect_scenario,
-                        scenario_builder_args=args_for_scenario_builder,
-                        commander_config=AppConfig(config_idx % len(AppConfig) + 1),
-                        commander_name=f"alpha{config_idx}",
-                        group_name=f"test{config_idx}",
-                    )
-                )
-
-        scenario_driver(
-            caplog_to_use=caplog,
-            scenario_driver_parms=sdparms,
-        )
-
-    ####################################################################
-    # test_mock_connect_to_ib_async
-    ####################################################################
-    @pytest.mark.parametrize("delay_arg", [0, 2, 4])
-    @pytest.mark.parametrize(
-        "timeout_type_arg",
-        [
-            TimeoutType.TimeoutNone,
-            TimeoutType.TimeoutFalse,
-            TimeoutType.TimeoutTrue,
-        ],
-    )
-    def test_mock_connect_to_ib_async(
-        self,
-        delay_arg: int,
-        timeout_type_arg: TimeoutType,
-        cat_app: "MockIB",
-    ) -> None:
-        """Test connecting to IB.
-
-        Args:
-            delay_arg: number of seconds to delay
-            timeout_type_arg: specifies whether timeout should occur
-            cat_app: pytest fixture (see conftest.py)
-        """
-
-        def f1(smart_thread: SmartThread, timeout_type_arg: TimeoutType):
-            if timeout_type_arg == TimeoutType.TimeoutNone:
-                req_num = algo_app.start_async_request(
-                    algo_app.connect_to_ib,
-                    ip_addr="127.0.0.1",
-                    port=algo_app.PORT_FOR_LIVE_TRADING,
-                    client_id=1,
-                )
-            elif timeout_type_arg == TimeoutType.TimeoutFalse:
-                timeout_value = delay_arg * 2
-                req_num = algo_app.start_async_request(
-                    algo_app.connect_to_ib,
-                    ip_addr="127.0.0.1",
-                    port=algo_app.PORT_FOR_LIVE_TRADING,
-                    client_id=1,
-                    timeout=timeout_value,
-                )
-            else:
-                # set timeout high so we don't timeout on the actual
-                # request - instead, we want to timeout getting the results
-                timeout_value = 10
-                req_num = algo_app.start_async_request(
-                    algo_app.connect_to_ib,
-                    ip_addr="127.0.0.1",
-                    port=algo_app.PORT_FOR_LIVE_TRADING,
-                    client_id=1,
-                    timeout=timeout_value,
-                )
-            assert req_num is not None
-
-        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
-            return
-
-        cat_app.delay_value = delay_arg
-
-        alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
-        beta_smart_thread = SmartThread(
-            group_name="test1",
-            name="beta",
-            target_rtn=f1,
-            auto_start=False,
-            thread_parm_name="smart_thread",
-            kwargs={"timeout_type_arg": timeout_type_arg},
-        )
-
-        algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
-        verify_algo_app_initialized(algo_app)
-
-        # we are testing connect_to_ib and the subsequent code that gets
-        # control as a result, such as getting the first requestID and
-        # then starting a separate thread for the run loop.
-        logger.debug("about to connect")
-
-        if timeout_type_arg == TimeoutType.TimeoutNone:
-            req_result = None
-            while req_result is None:
-                req_result = algo_app.get_async_results(req_num)
-                time.sleep(0.2)
-            assert req_result.ret_data is None
-        elif timeout_type_arg == TimeoutType.TimeoutFalse:
-            req_result = algo_app.get_async_results(req_num, timeout=10)
-            assert req_result.ret_data is None
-        else:
-            with pytest.raises(SmartThreadRequestTimedOut):
-                timeout_value = delay_arg / 2.0
-                algo_app.get_async_results(req_num, timeout=timeout_value)
-
-            # allow more time for request to complete
-            time.sleep(delay_arg + 1)
-            req_result = algo_app.get_async_results(req_num, timeout=timeout_value)
-            assert req_result.ret_data is None
-
-        verify_algo_app_connected(algo_app)
-
-        cat_app.delay_value = 0  # no delay for disconnect
-
-        algo_app.disconnect_from_ib()
-        req_num = algo_app.start_async_request(algo_app.disconnect_from_ib)
-        req_result = algo_app.get_async_results(req_num, timeout=10)
-        assert req_result.ret_data is None
-
-        verify_algo_app_disconnected(algo_app)
-
-        # algo_app.shut_down()
-
-    ####################################################################
-    # test_mock_disconnect_from_ib_async
-    ####################################################################
-    @pytest.mark.parametrize("delay_arg", [0, 2, 4])
-    @pytest.mark.parametrize(
-        "timeout_type_arg",
-        [
-            TimeoutType.TimeoutNone,
-            TimeoutType.TimeoutFalse,
-            TimeoutType.TimeoutTrue,
-        ],
-    )
-    def test_mock_disconnect_from_ib_async(
-        self,
-        delay_arg: int,
-        timeout_type_arg: int,
-        cat_app: "MockIB",
-    ) -> None:
-        """Test disconnecting from IB.
-
-        Args:
-            delay_arg: number of seconds to delay
-            timeout_type_arg: specifies whether timeout should occur
-            cat_app: pytest fixture (see conftest.py)
-        """
-        if timeout_type_arg == TimeoutType.TimeoutTrue and delay_arg == 0:
-            return
-
-        algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
-        verify_algo_app_initialized(algo_app)
-
-        logger.debug("about to connect")
-        algo_app.connect_to_ib(
-            ip_addr="127.0.0.1", port=algo_app.PORT_FOR_LIVE_TRADING, client_id=1
-        )
-
-        verify_algo_app_connected(algo_app)
-
-        cat_app.delay_value = delay_arg
-
-        if timeout_type_arg == TimeoutType.TimeoutNone:
-            req_num = algo_app.start_async_request(algo_app.disconnect_from_ib)
-        elif timeout_type_arg == TimeoutType.TimeoutFalse:
-            timeout_value = abs(delay_arg) * 2
-            req_num = algo_app.start_async_request(
-                algo_app.disconnect_from_ib, timeout=timeout_value
-            )
-        else:
-            # set timeout high so we don't timeout on the actual
-            # request - instead, we want to timeout getting the results
-            timeout_value = 10
-            req_num = algo_app.start_async_request(
-                algo_app.disconnect_from_ib, timeout=timeout_value
-            )
-
-        assert req_num is not None
-        if timeout_type_arg == TimeoutType.TimeoutNone:
-            req_result = None
-            while req_result is None:
-                req_result = algo_app.get_async_results(req_num)
-                time.sleep(0.2)
-            assert req_result.ret_data is None
-        elif timeout_type_arg == TimeoutType.TimeoutFalse:
-            req_result = algo_app.get_async_results(req_num, timeout=10)
-            assert req_result.ret_data is None
-        else:
-            with pytest.raises(SmartThreadRequestTimedOut):
-                timeout_value = delay_arg / 2.0
-                algo_app.get_async_results(req_num, timeout=timeout_value)
-
-            # allow more time for request to complete
-            time.sleep(delay_arg + 1)
-            req_result = algo_app.get_async_results(req_num, timeout=10)
-            assert req_result.ret_data is None
-
-        verify_algo_app_disconnected(algo_app)
-
-        # algo_app.shut_down()
-
-    ####################################################################
-    # test_connect_to_ib_already_connected
-    ####################################################################
-    @pytest.mark.parametrize(
-        "first_sync_async_arg",
-        [
-            SyncAsync.RequestSync,
-            SyncAsync.RequestAsync,
-        ],
-    )
-    @pytest.mark.parametrize(
-        "second_sync_async_arg",
-        [
-            SyncAsync.RequestSync,
-            SyncAsync.RequestAsync,
-        ],
-    )
-    def test_connect_to_ib_already_connected(
-        self,
-        first_sync_async_arg: SyncAsync,
-        second_sync_async_arg: SyncAsync,
-        cat_app: "MockIB",
-    ) -> None:
-        """Test connecting to IB twice.
-
-        Args:
-            first_sync_async_arg: specifies how to connect
-            second_sync_async_arg: specifies how to connect
-            cat_app: pytest fixture (see conftest.py)
-
-        """
-        algo_app = AlgoApp(ds_catalog=cat_app.app_cat, algo_name="algo_app")
-        verify_algo_app_initialized(algo_app)
-
-        # we are testing connect_to_ib and the subsequent code that gets
-        # control as a result, such as getting the first requestID and
-        # then starting a separate thread for the run loop.
-        logger.debug("about to connect")
-
-        if first_sync_async_arg == SyncAsync.RequestSync:
-            algo_app.connect_to_ib(
-                ip_addr="127.0.0.1", port=algo_app.PORT_FOR_LIVE_TRADING, client_id=1
-            )
-        else:
-            req_num = algo_app.start_async_request(
-                algo_app.connect_to_ib,
-                ip_addr="127.0.0.1",
-                port=algo_app.PORT_FOR_LIVE_TRADING,
-                client_id=1,
-            )
-            req_result = algo_app.get_async_results(req_num, timeout=10)
-            assert req_result.ret_data is None
-
-        # try to connect again - should get error
-        if second_sync_async_arg == SyncAsync.RequestSync:
-            with pytest.raises(AlreadyConnected):
-                algo_app.connect_to_ib(
-                    ip_addr="127.0.0.1",
-                    port=algo_app.PORT_FOR_LIVE_TRADING,
-                    client_id=1,
-                )
-        else:
-            req_num = algo_app.start_async_request(
-                algo_app.connect_to_ib,
-                ip_addr="127.0.0.1",
-                port=algo_app.PORT_FOR_LIVE_TRADING,
-                client_id=1,
-            )
-            with pytest.raises(AlreadyConnected):
-                algo_app.get_async_results(req_num, timeout=10)
-
-        # verify that algo_app is still connected
-        verify_algo_app_connected(algo_app)
-
-        algo_app.disconnect_from_ib()
-
-        verify_algo_app_disconnected(algo_app)
-
-        # algo_app.shut_down()
 
     ####################################################################
     # test_connect_to_ib_with_lock_held
