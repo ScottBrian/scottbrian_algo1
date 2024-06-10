@@ -226,7 +226,6 @@ class AlgoAppVer:
         timeout_type: TimeoutType = TimeoutType.TimeoutNone,
         delay: int = 0,
         async_tf: bool = False,
-        caller: str = "",
     ) -> None:
         """Connect to ib.
 
@@ -246,7 +245,6 @@ class AlgoAppVer:
         else:
             timeout = delay / 2
 
-        # etrace_caller = f"{caller} -> test_algo_app.py::AlgoAppVer.connect_to_ib:[0-9]+"
         etrace_caller = (
             f"{get_formatted_call_sequence(latest=1, depth=1)} -> "
             "test_algo_app.py::AlgoAppVer.connect_to_ib:[0-9]+"
@@ -262,12 +260,13 @@ class AlgoAppVer:
             pattern=etrace_entry, log_name="scottbrian_utils.entry_trace"
         )
 
-        self.log_ver.add_pattern(
-            pattern=f"{self.algo_app_msg_prefix} starting AlgoClient thread",
-            log_name="scottbrian_algo1.algo_app",
-        )
+        if not self.connected:
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_app_msg_prefix} starting AlgoClient thread",
+                log_name="scottbrian_algo1.algo_app",
+            )
 
-        if timeout_type != TimeoutType.TimeoutTrue:
+        if timeout_type != TimeoutType.TimeoutTrue and not self.connected:
 
             self.log_ver.add_pattern(
                 pattern=f"{self.algo_app_msg_prefix} connect successful",
@@ -285,54 +284,105 @@ class AlgoAppVer:
                 log_name="scottbrian_utils.entry_trace",
             )
 
-        self.connected = True  # tell client_disconnect we are connected
-        if timeout_type == TimeoutType.TimeoutNone:
-            self.algo_app.connect_to_ib(
-                ip_addr="127.0.0.1",
-                port=AlgoApp.PORT_FOR_LIVE_TRADING,
-                client_id=self.client_id,
-            )
-            self.verify_algo_app_connected()
-        elif timeout_type == TimeoutType.TimeoutFalse:
-            self.algo_app.connect_to_ib(
-                ip_addr="127.0.0.1",
-                port=AlgoApp.PORT_FOR_LIVE_TRADING,
-                client_id=self.client_id,
-                timeout=timeout,
-            )
-            self.verify_algo_app_connected()
+        if async_tf:
+            smart_thread_name = f"algo_requestor_[0-9]+.[0-9]+"
         else:
-            if async_tf:
-                smart_thread_name = f"algo_requestor_[0-9]+.[0-9]+"
-            else:
-                smart_thread_name = self.algo_name
+            smart_thread_name = self.algo_name
 
-            func_name = "connect_to_ib"
-            error = "ConnectTimeout"
+        func_name = "connect_to_ib"
+
+        if self.connected:
+            error = "AlreadyConnected"
             extra = (
-                "waiting to receive nextValid_ID. "
                 f"SmartThread name={smart_thread_name}, "
                 f"ip_addr='{self.ip_addr}', port={self.port}, "
                 f"client_id={self.client_id}"
             )
             test_error_msg = (
-                f"{self.algo_app_msg_prefix} {func_name} " f"raising {error} {extra}."
+                f"{self.algo_app_msg_prefix} {func_name} "
+                f"raising {error} "
+                f"{extra}."
             )
             self.log_ver.add_pattern(
                 pattern=test_error_msg,
                 level=40,
                 log_name="scottbrian_algo1.algo_app",
             )
-            with pytest.raises(ConnectTimeout, match=test_error_msg):
+
+        if timeout_type == TimeoutType.TimeoutNone:
+            if self.connected:
+                with pytest.raises(AlreadyConnected, match=test_error_msg):
+                    self.algo_app.connect_to_ib(
+                        ip_addr="127.0.0.1",
+                        port=AlgoApp.PORT_FOR_LIVE_TRADING,
+                        client_id=self.client_id,
+                    )
+                self.verify_algo_app_connected()
+            else:
+                self.algo_app.connect_to_ib(
+                    ip_addr="127.0.0.1",
+                    port=AlgoApp.PORT_FOR_LIVE_TRADING,
+                    client_id=self.client_id,
+                )
+                self.verify_algo_app_connected()
+                self.connected = True  # tell client_disconnect we are connected
+        elif timeout_type == TimeoutType.TimeoutFalse:
+            if self.connected:
+                with pytest.raises(AlreadyConnected, match=test_error_msg):
+                    self.algo_app.connect_to_ib(
+                        ip_addr="127.0.0.1",
+                        port=AlgoApp.PORT_FOR_LIVE_TRADING,
+                        client_id=self.client_id,
+                        timeout=timeout,
+                    )
+                self.verify_algo_app_connected()
+            else:
                 self.algo_app.connect_to_ib(
                     ip_addr="127.0.0.1",
                     port=AlgoApp.PORT_FOR_LIVE_TRADING,
                     client_id=self.client_id,
                     timeout=timeout,
                 )
-
-            self.disconnect_from_ib(do_algo_disc=False)
-            self.verify_algo_app_disconnected()
+                self.verify_algo_app_connected()
+                self.connected = True  # tell client_disconnect we are connected
+        else:
+            if self.connected:
+                with pytest.raises(AlreadyConnected, match=test_error_msg):
+                    self.algo_app.connect_to_ib(
+                        ip_addr="127.0.0.1",
+                        port=AlgoApp.PORT_FOR_LIVE_TRADING,
+                        client_id=self.client_id,
+                        timeout=timeout,
+                    )
+                self.verify_algo_app_connected()
+            else:
+                error = "ConnectTimeout"
+                extra = (
+                    "waiting to receive nextValid_ID. "
+                    f"SmartThread name={smart_thread_name}, "
+                    f"ip_addr='{self.ip_addr}', port={self.port}, "
+                    f"client_id={self.client_id}"
+                )
+                test_error_msg = (
+                    f"{self.algo_app_msg_prefix} {func_name} "
+                    f"raising {error} "
+                    f"{extra}."
+                )
+                self.log_ver.add_pattern(
+                    pattern=test_error_msg,
+                    level=40,
+                    log_name="scottbrian_algo1.algo_app",
+                )
+                with pytest.raises(ConnectTimeout, match=test_error_msg):
+                    self.algo_app.connect_to_ib(
+                        ip_addr="127.0.0.1",
+                        port=AlgoApp.PORT_FOR_LIVE_TRADING,
+                        client_id=self.client_id,
+                        timeout=timeout,
+                    )
+                self.connected = True  # tell client_disconnect we are connected
+                self.disconnect_from_ib(do_algo_disc=False)
+                self.verify_algo_app_disconnected()
 
     ####################################################################
     # disconnect_from_ib
@@ -1030,12 +1080,28 @@ class TestAlgoAppErrorCases:
     ####################################################################
     @pytest.mark.parametrize("con1_async_tf_arg", [True, False])
     @pytest.mark.parametrize("con2_async_tf_arg", [True, False])
-    @pytest.mark.parametrize("delay_arg", [0, 2, 4])
-
+    @pytest.mark.parametrize(
+        "con1_timeout_type_arg",
+        [
+            TimeoutType.TimeoutNone,
+            TimeoutType.TimeoutFalse,
+            TimeoutType.TimeoutTrue,
+        ],
+    )
+    @pytest.mark.parametrize(
+        "con2_timeout_type_arg",
+        [
+            TimeoutType.TimeoutNone,
+            TimeoutType.TimeoutFalse,
+            TimeoutType.TimeoutTrue,
+        ],
+    )
     def test_already_connected_error(
         self,
         con1_async_tf_arg: bool,
         con2_async_tf_arg: bool,
+        con1_timeout_type_arg: TimeoutType,
+        con2_timeout_type_arg: TimeoutType,
         app_cat: "FileCatalog",
         caplog: pytest.LogCaptureFixture,
         monkeypatch: pytest.MonkeyPatch,
@@ -1045,11 +1111,124 @@ class TestAlgoAppErrorCases:
         Args:
             con1_async_tf_arg: If True, first connect is async
             con2_async_tf_arg: If True, seconds connect is async
+            con1_timeout_type_arg: specifies whether first connect
+                should timeout
+            con2_timeout_type_arg: specifies whether seccond connect
+                should timeout
             app_cat: testing infrastructure
             caplog: pytest fixture that captures log messages
             monkeypatch: used to alter code
         """
-        pass
+
+        def f1(
+            f1_smart_thread: SmartThread,
+            timeout_type: TimeoutType,
+            delay: int,
+            async_tf: bool,
+        ) -> None:
+            """F1 connect routine."""
+
+            algo_app_ver.connect_to_ib(
+                timeout_type=timeout_type,
+                delay=delay,
+                async_tf=async_tf,
+            )
+
+            f1_smart_thread.smart_resume(waiters="alpha")
+            f1_smart_thread.smart_wait(resumers="alpha")
+
+        ################################################################
+        # mainline
+        ################################################################
+        delay_arg = 2
+        log_ver = LogVer(log_name="algo_app_test_log")
+        algo_app_ver = AlgoAppVer(log_ver=log_ver, app_cat=app_cat)
+
+        mock_ib = MockIB(
+            test_cat=test_cat,
+            log_ver=log_ver,
+            monkeypatch_to_use=monkeypatch,
+            group_name=algo_app_ver.algo_group_name,
+            algo_name=algo_app_ver.algo_name,
+            ip_addr=algo_app_ver.ip_addr,
+            port=algo_app_ver.port,
+        )
+
+        mock_ib.delay_time = delay_arg
+
+        # we are testing connect_to_ib and the subsequent code that gets
+        # control as a result, such as getting the first requestID and
+        # then starting a separate thread for the run loop.
+
+        alpha_smart_thread = SmartThread(group_name="test1", name="alpha")
+
+        ################################################################
+        # first connect
+        ################################################################
+        if con1_async_tf_arg:
+            SmartThread(
+                group_name="test1",
+                name="beta",
+                target_rtn=f1,
+                thread_parm_name="f1_smart_thread",
+                kwargs={
+                    "timeout_type": con1_timeout_type_arg,
+                    "delay": delay_arg,
+                    "async_tf": con1_async_tf_arg,
+                },
+            )
+
+            alpha_smart_thread.smart_wait(resumers="beta")
+
+        else:
+            algo_app_ver.connect_to_ib(
+                timeout_type=con1_timeout_type_arg,
+                delay=delay_arg,
+                async_tf=con1_async_tf_arg,
+            )
+        ################################################################
+        # second connect
+        ################################################################
+        if con2_async_tf_arg:
+            SmartThread(
+                group_name="test1",
+                name="charlie",
+                target_rtn=f1,
+                thread_parm_name="f1_smart_thread",
+                kwargs={
+                    "timeout_type": con2_timeout_type_arg,
+                    "delay": delay_arg,
+                    "async_tf": con2_async_tf_arg,
+                },
+            )
+
+            alpha_smart_thread.smart_wait(resumers="charlie")
+
+        else:
+            algo_app_ver.connect_to_ib(
+                timeout_type=con2_timeout_type_arg,
+                delay=delay_arg,
+                async_tf=con2_async_tf_arg,
+            )
+
+        algo_app_ver.shut_down()
+
+        if con1_async_tf_arg:
+            alpha_smart_thread.smart_resume(waiters="beta")
+            alpha_smart_thread.smart_join(targets="beta")
+
+        if con2_async_tf_arg:
+            alpha_smart_thread.smart_resume(waiters="charlie")
+            alpha_smart_thread.smart_join(targets="charlie")
+
+        alpha_smart_thread.smart_unreg()
+
+        ################################################################
+        # check log results
+        ################################################################
+        match_results = log_ver.get_match_results(caplog=caplog)
+        log_ver.print_match_results(match_results, print_matched=True)
+        log_ver.verify_match_results(match_results)
 
     ####################################################################
     # test_connect_to_ib_already_connected
@@ -1131,6 +1310,7 @@ class TestAlgoAppErrorCases:
 
         # algo_app.shut_down()
 
+
 ########################################################################
 # TestAlgoAppBasicTests
 ########################################################################
@@ -1176,7 +1356,6 @@ class TestAlgoAppBasicTests:
             algo_app_ver.connect_to_ib(
                 timeout_type=timeout_type_arg,
                 delay=delay_arg,
-                caller="test_algo_app.py::f1:[0-9]+",
                 async_tf=async_tf_arg,
             )
 
@@ -1229,7 +1408,6 @@ class TestAlgoAppBasicTests:
             algo_app_ver.connect_to_ib(
                 timeout_type=timeout_type_arg,
                 delay=delay_arg,
-                caller=caller,
                 async_tf=async_tf_arg,
             )
 
@@ -1494,8 +1672,6 @@ class TestAlgoAppBasicTests:
 ########################################################################
 class TestAlgoAppConnect:
     """TestAlgoAppConnect class."""
-
-
 
     ####################################################################
     # test_connect_to_ib_with_lock_held

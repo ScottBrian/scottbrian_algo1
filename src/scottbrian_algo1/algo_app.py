@@ -643,7 +643,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
                     extra=f"SmartThread name={_setup_args.smart_thread.name}, "
                     f"{ip_addr=}, {port=}, {client_id=}",
                 )
-                logger.debug(error_msg)
+                logger.error(error_msg)
                 raise AlreadyConnected(error_msg)
 
             if self.algo_client.st_state == ThreadState.Unregistered:
