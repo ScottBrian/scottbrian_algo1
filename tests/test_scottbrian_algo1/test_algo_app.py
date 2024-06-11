@@ -215,6 +215,8 @@ class AlgoAppVer:
         )
 
         self.connected: bool = False
+        self.client_registered = True
+        self.do_run_disconnect = False
 
         self.verify_algo_app_initialized()
 
@@ -263,6 +265,14 @@ class AlgoAppVer:
         if not self.connected:
             self.log_ver.add_pattern(
                 pattern=f"{self.algo_app_msg_prefix} starting AlgoClient thread",
+                log_name="scottbrian_algo1.algo_app",
+            )
+            self.do_run_disconnect = True
+
+        if not self.client_registered:
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_app_msg_prefix} instantiating AlgoClient",
+                level=logging.INFO,
                 log_name="scottbrian_algo1.algo_app",
             )
 
@@ -326,6 +336,7 @@ class AlgoAppVer:
                 )
                 self.verify_algo_app_connected()
                 self.connected = True  # tell client_disconnect we are connected
+                self.client_registered = True
         elif timeout_type == TimeoutType.TimeoutFalse:
             if self.connected:
                 with pytest.raises(AlreadyConnected, match=test_error_msg):
@@ -345,6 +356,7 @@ class AlgoAppVer:
                 )
                 self.verify_algo_app_connected()
                 self.connected = True  # tell client_disconnect we are connected
+                self.client_registered = True
         else:
             if self.connected:
                 with pytest.raises(AlreadyConnected, match=test_error_msg):
@@ -383,6 +395,7 @@ class AlgoAppVer:
                 self.connected = True  # tell client_disconnect we are connected
                 self.disconnect_from_ib(do_algo_disc=False)
                 self.verify_algo_app_disconnected()
+                self.client_registered = False
 
     ####################################################################
     # disconnect_from_ib
@@ -447,6 +460,9 @@ class AlgoAppVer:
         )
 
         self.client_disconnect(caller="algo_app.py::AlgoApp.disconnect_from_ib:[0-9]+")
+        if self.do_run_disconnect:
+            self.client_disconnect(caller="client.py::EClient.run:[0-9]+")
+            self.do_run_disconnect = False
 
         if do_algo_disc:
             if timeout_type == TimeoutType.TimeoutNone:
@@ -553,7 +569,9 @@ class AlgoAppVer:
         self.algo_app.shut_down()
 
         self.disconnect_from_ib(do_algo_disc=False)
-        self.client_disconnect(caller="client.py::EClient.run:[0-9]+")
+        if self.do_run_disconnect:
+            self.client_disconnect(caller="client.py::EClient.run:[0-9]+")
+            self.do_run_disconnect = False
         self.verify_algo_app_disconnected()
 
     ########################################################################
