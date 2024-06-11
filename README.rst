@@ -61,12 +61,12 @@ To install ibapi into venv312:
 
 To install beta versions of paratools for testing:
     1) get into venv312 folder
-    2) run: py -m pip install file:///C:/Users/Tiger/PycharmProjects/scottbrian_paratools/dist/scottbrian_paratools-1.0.0-py2.py3-none-any.whl
+    2) run: py -m pip install file:///C:/Users/Tiger/PycharmProjects/scottbrian_paratools/dist/scottbrian_paratools-1.0.0-py3-none-any.whl
     3) in pyproject.toml dependencies section, comment out the official line and add temporary file line:
            commented out line:
                # "scottbrian_paratools ~=1.0",
            add temporary line:
-               "scottbrian_paratools @  file://C:/Users/Tiger/PycharmProjects/scottbrian_paratools/dist/scottbrian_paratools-1.0.0-py2.py3-none-any.whl",
+               "scottbrian_paratools @  file://C:/Users/Tiger/PycharmProjects/scottbrian_paratools/dist/scottbrian_paratools-1.0.0-py3-none-any.whl",
 
 To install beta versions of utils for testing:
     1) get into venv312 folder

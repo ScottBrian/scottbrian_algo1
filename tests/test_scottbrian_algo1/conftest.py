@@ -29,6 +29,7 @@ from scottbrian_algo1.algo_app import AlgoApp
 
 from scottbrian_paratools.smart_thread import SmartThread
 
+from scottbrian_utils.entry_trace import etrace
 from scottbrian_utils.file_catalog import FileCatalog
 from scottbrian_utils.log_verifier import LogVer
 
@@ -63,6 +64,9 @@ for key, item in logging.Logger.manager.loggerDict.items():
     if key[0:5] == "ibapi" and not isinstance(item, logging.PlaceHolder):
         logging.Logger.manager.loggerDict[key].setLevel(logging.CRITICAL)
 
+
+etrace_enabled = True
+test_msg_enabled = False
 
 proj_dir = Path.cwd().resolve().parents[1]  # back two directories
 
@@ -308,34 +312,27 @@ class MockIB:
             Connection, "recvMsg", MockIB.mock_connection_recv_msg
         )
 
-    ####################################################################
-    # log_test_msg
-    ####################################################################
-    # def log_test_msg(self, log_msg: str) -> None:
+    # ####################################################################
+    # # log_test_msg
+    # ####################################################################
+    # def test_msg(self, log_msg: str) -> None:
     #     """Issue log msgs for test rtn.
     #
     #     Args:
     #         log_msg: the message to log
     #
     #     """
-    #     # if (
-    #     #     self.allow_log_test_msg
-    #     #     or "waiting for monitor" in log_msg
-    #     #     or "has been stopped by" in log_msg
-    #     #     or "Monitor Checkpoint" in log_msg
-    #     #     or "OuterF1ThreadApp.run() exit: " in log_msg
-    #     #     or "outer_f1 exit: " in log_msg
-    #     #     or "abort" in log_msg
-    #     # ):
-    #     self.log_ver.add_msg(
-    #         log_msg=re.escape(log_msg),
-    #         log_name="test_scottbrian_algo1.conftest",
-    #     )
-    #     logger.debug(log_msg, stacklevel=2)
+    #     if allow_test_msgs:
+    #         self.log_ver.add_pattern(
+    #             pattern=re.escape(log_msg),
+    #             log_name="test_scottbrian_algo1.conftest",
+    #         )
+    #         logger.debug(log_msg, stacklevel=2)
 
     ###########################################################################
     # MockIB: send_msg
     ###########################################################################
+    # @etrace(enable_trace=etrace_enabled, log_ver=True)
     def send_msg(self, msg: str):
         """Mock send to ib by interpreting and placing on receive queue.
 
@@ -343,11 +340,11 @@ class MockIB:
             msg: message to be sent (i.e., interpreted and queued)
 
         """
-        self.log_ver.test_msg(f"entered with {msg=}")
+        self.log_ver.test_msg(f"entered with {msg=}", enabled=test_msg_enabled)
         (size, msg2, buf) = read_msg(msg)
-        self.log_ver.test_msg(f"{size=}, {msg2=}, {buf=}")
+        self.log_ver.test_msg(f"{size=}, {msg2=}, {buf=}", enabled=test_msg_enabled)
         fields = read_fields(msg2)
-        self.log_ver.test_msg(f"{fields=}")
+        self.log_ver.test_msg(f"{fields=}", enabled=test_msg_enabled)
 
         recv_msg = b""
 
@@ -384,19 +381,23 @@ class MockIB:
         #######################################################################
         elif int(fields[0]) == OUT.START_API:
             self.log_ver.test_msg(
-                f"startAPI detected: {self.reqId_timeout=}, {self.delay_time=}"
+                f"startAPI detected: {self.reqId_timeout=}, {self.delay_time=}",
+                enabled=test_msg_enabled,
             )
             # recv_msg = b'\x00\x00\x00\x069\x001\x001\x00'
             # if self.reqId_timeout:  # if test timeout case
             # zero mean infinite
             if self.delay_time == -1:
-                self.log_ver.test_msg(f"preventing connect ack with {self.delay_time=}")
+                self.log_ver.test_msg(
+                    f"preventing connect ack with {self.delay_time=}",
+                    enabled=test_msg_enabled,
+                )
                 recv_msg = make_msg("0")  # simulate timeout
             else:  # build the normal next valid id message
                 recv_msg = make_msg(
                     make_field(IN.NEXT_VALID_ID) + make_field("1") + make_field("1")
                 )
-            self.log_ver.test_msg(f"{recv_msg=}")
+            self.log_ver.test_msg(f"{recv_msg=}", enabled=test_msg_enabled)
         #######################################################################
         # Handle special test cases for request disconnect and timeout
         #######################################################################
@@ -409,10 +410,12 @@ class MockIB:
         # reqMatchingSymbols
         #######################################################################
         elif int(fields[0]) == OUT.REQ_MATCHING_SYMBOLS:
-            self.log_ver.test_msg("reqMatchingSymbols detected")
+            self.log_ver.test_msg(
+                "reqMatchingSymbols detected", enabled=test_msg_enabled
+            )
             reqId = int(fields[1])
             pattern = fields[2].decode(errors="backslashreplace")
-            self.log_ver.test_msg(f"{pattern=}")
+            self.log_ver.test_msg(f"{pattern=}", enabled=test_msg_enabled)
 
             # construct start of receive message for wrapper
             build_msg = make_field(IN.SYMBOL_SAMPLES) + make_field(reqId)
@@ -462,7 +465,9 @@ class MockIB:
         # reqContractDetails
         #######################################################################
         elif int(fields[0]) == OUT.REQ_CONTRACT_DATA:
-            self.log_ver.test_msg("reqContractDetails detected")
+            self.log_ver.test_msg(
+                "reqContractDetails detected", enabled=test_msg_enabled
+            )
             version = int(fields[1])
             reqId = int(fields[2])
             conId = int(fields[3])
@@ -544,7 +549,9 @@ class MockIB:
         #######################################################################
         # queue the message to be received
         #######################################################################
-        self.log_ver.test_msg(f"queueing onto msg_rcv_q: {recv_msg=}")
+        self.log_ver.test_msg(
+            f"queueing onto msg_rcv_q: {recv_msg=}", enabled=test_msg_enabled
+        )
         self.msg_rcv_q.put(recv_msg, timeout=5)
 
     ###########################################################################
@@ -559,14 +566,21 @@ class MockIB:
         """
         # if the queue is empty, the get will wait up to 1 second for an item
         # to be queued - if no item shows up, an Empty exception is raised
-        self.log_ver.test_msg("about to get msg from msg_rcv_q")
+        self.log_ver.test_msg(
+            "about to get msg from msg_rcv_q", enabled=test_msg_enabled
+        )
         msg = self.msg_rcv_q.get(timeout=1)  # wait for 1 second if empty
-        self.log_ver.test_msg(f"obtained from msg_recv_q {msg=}")
+        self.log_ver.test_msg(
+            f"obtained from msg_recv_q {msg=}", enabled=test_msg_enabled
+        )
         if msg == b"\x00\x00\x00\x069\x001\x001\x00":
-            self.log_ver.test_msg(f"*** recv_msg next valid ID msg detected")
+            self.log_ver.test_msg(
+                f"*** recv_msg next valid ID msg detected", enabled=test_msg_enabled
+            )
             if self.delay_time > 0:  # non_zero case
                 self.log_ver.test_msg(
-                    f"delaying recv of next valid ID with " f"{self.delay_time=}"
+                    f"delaying recv of next valid ID with " f"{self.delay_time=}",
+                    enabled=test_msg_enabled,
                 )
                 sleep_time = self.delay_time
                 # if self.delay_time > 1000:
@@ -787,7 +801,10 @@ class MockIB:
     def build_contract_descriptions(self):
         """Build the set of contract descriptions to use for testing."""
         contract_descs_path = self.test_cat.get_path("mock_contract_descs")
-        self.log_ver.test_msg(f"mock_contract_descs path: {contract_descs_path=}")
+        self.log_ver.test_msg(
+            f"mock_contract_descs path: {contract_descs_path=}",
+            enabled=test_msg_enabled,
+        )
 
         self.contract_descriptions = pd.DataFrame()
 
@@ -804,7 +821,7 @@ class MockIB:
         self.delta_neutral_contract.sort_index(inplace=True)
 
         self.log_ver.test_msg(
-            f"built mock_con_descs DataFrame with {len(self.contract_descriptions)=}"
+            f"built mock_con_descs DataFrame with {len(self.contract_descriptions)=}, enabled=test_msg_enabled"
         )
 
     ###########################################################################
@@ -901,12 +918,14 @@ class MockIB:
 
         """
         mock_ib: MockIB = MockIB.mock_obj_array[(self.host, self.port)]
-        mock_ib.log_ver.test_msg(f"entry: {self.port=}, {self.host=}")
+        mock_ib.log_ver.test_msg(
+            f"entry: {self.port=}, {self.host=}", enabled=test_msg_enabled
+        )
         try:
             self.socket = socket.socket()
         # TO DO list the exceptions you want to catch
         except socket.error:
-            mock_ib.log_ver.test_msg("socket.error exception")
+            mock_ib.log_ver.test_msg("socket.error exception", enabled=test_msg_enabled)
             if self.wrapper:
                 self.wrapper.error(
                     NO_VALID_ID, FAIL_CREATE_SOCK.code(), FAIL_CREATE_SOCK.msg()
@@ -936,7 +955,9 @@ class MockIB:
 
         self.socket.settimeout(1)  # non-blocking
 
-        mock_ib.log_ver.test_msg(f"exit: {self.port=}, {self.host=}")
+        mock_ib.log_ver.test_msg(
+            f"exit: {self.port=}, {self.host=}", enabled=test_msg_enabled
+        )
 
     ###########################################################################
     # algo_app: mock_connection_disconnect
@@ -970,10 +991,10 @@ class MockIB:
 
         try:
             if self.socket is not None:
-                mock_ib.log_ver.test_msg("disconnecting")
+                mock_ib.log_ver.test_msg("disconnecting", enabled=test_msg_enabled)
                 # self.socket.close()
                 self.socket = None
-                mock_ib.log_ver.test_msg("disconnected")
+                mock_ib.log_ver.test_msg("disconnected", enabled=test_msg_enabled)
                 if self.wrapper:
                     self.wrapper.connectionClosed()
         finally:
@@ -982,6 +1003,7 @@ class MockIB:
     ###########################################################################
     # algo_app: mock_connection_send_msg
     ###########################################################################
+    # @etrace(enable_trace=etrace_enabled, log_ver=True)
     def mock_connection_send_msg(self, msg: bytes) -> int:
         """Mock sendMsg routine.
 
@@ -997,26 +1019,33 @@ class MockIB:
 
         """
         mock_ib: MockIB = MockIB.mock_obj_array[(self.host, self.port)]
-        mock_ib.log_ver.test_msg(f"entered with msg: {msg}")
-        mock_ib.log_ver.test_msg("acquiring lock")
+        mock_ib.log_ver.test_msg(f"entered with msg: {msg}", enabled=test_msg_enabled)
+        mock_ib.log_ver.test_msg("acquiring lock", enabled=test_msg_enabled)
         self.lock.acquire()
-        mock_ib.log_ver.test_msg("acquired lock")
+        mock_ib.log_ver.test_msg("acquired lock", enabled=test_msg_enabled)
         if not self.isConnected():
-            mock_ib.log_ver.test_msg("sendMsg attempt while not connected, releasing lock")
+            mock_ib.log_ver.test_msg(
+                "sendMsg attempt while not connected, releasing lock",
+                enabled=test_msg_enabled,
+            )
             self.lock.release()
             return 0
         try:
             nSent = len(msg)
             mock_ib.send_msg(msg)
         except queue.Full:
-            mock_ib.log_ver.test_msg("queue full exception on sendMsg attempt")
+            mock_ib.log_ver.test_msg(
+                "queue full exception on sendMsg attempt", enabled=test_msg_enabled
+            )
             raise
         finally:
-            mock_ib.log_ver.test_msg("releasing lock")
+            mock_ib.log_ver.test_msg("releasing lock", enabled=test_msg_enabled)
             self.lock.release()
-            mock_ib.log_ver.test_msg("released lock")
+            mock_ib.log_ver.test_msg("released lock", enabled=test_msg_enabled)
 
-        mock_ib.log_ver.test_msg(f"sendMsg: number bytes sent: {nSent}")
+        mock_ib.log_ver.test_msg(
+            f"sendMsg: number bytes sent: {nSent}", enabled=test_msg_enabled
+        )
         return nSent
 
     ###########################################################################
@@ -1034,16 +1063,21 @@ class MockIB:
         """
         mock_ib: MockIB = MockIB.mock_obj_array[(self.host, self.port)]
         if not self.isConnected():
-            mock_ib.log_ver.test_msg("recvMsg attempted while not connected")
+            mock_ib.log_ver.test_msg(
+                "recvMsg attempted while not connected", enabled=test_msg_enabled
+            )
             return b""
         try:
             buf = mock_ib.recv_msg()  # <-- mock
             # receiving 0 bytes outside a timeout means the connection is
             # either closed or broken
             if len(buf) == 0:
-                mock_ib.log_ver.test_msg("socket either closed or broken, disconnecting")
+                mock_ib.log_ver.test_msg(
+                    "socket either closed or broken, disconnecting",
+                    enabled=test_msg_enabled,
+                )
                 self.disconnect()
         except queue.Empty:
-            mock_ib.log_ver.test_msg("timeout from recvMsg")
+            mock_ib.log_ver.test_msg("timeout from recvMsg", enabled=test_msg_enabled)
             buf = b""
         return buf

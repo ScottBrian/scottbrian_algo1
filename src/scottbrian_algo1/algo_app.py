@@ -609,7 +609,6 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
     ###########################################################################
     # connect_to_ib
     ###########################################################################
-    # @etrace(enable_trace=etrace_enabled, omit_parms="_setup_args", latest=2, depth=2)
     @algo_setup
     @etrace(enable_trace=etrace_enabled, omit_parms="_setup_args", latest=2, depth=2)
     def connect_to_ib(
