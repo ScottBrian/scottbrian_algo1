@@ -1471,9 +1471,13 @@ class TestAlgoAppBasicTests:
         """Test disconnecting from IB.
 
         Args:
+            async_tf_arg: if True, do async connect
             delay_arg: number of seconds to delay
             timeout_type_arg: specifies whether timeout should occur
-            app_cat: catalog to use for connect
+            app_cat: testing infrastructure
+            caplog: pytest fixture that captures log messages
+            monkeypatch: used to alter code
+
         """
 
         def lock_manager(f1_smart_thread: SmartThread, disc_thread: threading.Thread):
@@ -1676,6 +1680,202 @@ class TestAlgoAppBasicTests:
         alpha_smart_thread.smart_unreg()
 
         algo_app_ver.shut_down()
+
+        ################################################################
+        # check log results
+        ################################################################
+        match_results = log_ver.get_match_results(caplog=caplog)
+        log_ver.print_match_results(match_results, print_matched=True)
+        log_ver.verify_match_results(match_results)
+
+    ####################################################################
+    # test_connect_to_ib_with_lock_contention
+    ####################################################################
+    def test_connect_to_ib_with_lock_contention(
+        self,
+        app_cat: "FileCatalog",
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test connecting to IB with lock contention.
+
+        Args:
+            app_cat: testing infrastructure
+            caplog: pytest fixture that captures log messages
+            monkeypatch: used to alter code
+
+        """
+
+        ################################################################
+        # f1
+        ################################################################
+        def f1(f1_smart_thread: SmartThread) -> None:
+            """F1 connect/disconnect routine.
+
+            Args:
+                f1_smart_thread: smart thread
+
+            """
+            if f1_smart_thread.name in ("conn1", "conn2"):
+                algo_app_ver.connect_to_ib(
+                    async_tf=True,
+                )
+            else:
+                algo_app_ver.disconnect_from_ib(
+                    async_tf=True,
+                )
+
+            if f1_smart_thread.name == "disc2":
+                f1_smart_thread.smart_resume(waiters="mainline")
+
+            f1_smart_thread.smart_wait(resumers="mainline")
+
+        ################################################################
+        # mainline
+        ################################################################
+        delay_arg = 5
+
+        log_ver = LogVer()
+        algo_app_ver = AlgoAppVer(log_ver=log_ver, app_cat=app_cat)
+
+        mock_ib = MockIB(
+            test_cat=test_cat,
+            log_ver=log_ver,
+            monkeypatch_to_use=monkeypatch,
+            group_name=algo_app_ver.algo_group_name,
+            algo_name=algo_app_ver.algo_name,
+            ip_addr=algo_app_ver.ip_addr,
+            port=algo_app_ver.port,
+        )
+
+        mock_ib.delay_time = delay_arg
+
+        mainline_smart_thread = SmartThread(group_name="test1", name="mainline")
+
+        conn1_smart_thread = SmartThread(
+            group_name="test1",
+            name="conn1",
+            target_rtn=f1,
+            thread_parm_name="f1_smart_thread",
+        )
+
+        config_lock = algo_app_ver.algo_app._config_lock
+
+        config_lock.verify_lock(
+            exp_q=[
+                LockItem(
+                    mode=SELockObtainMode.Exclusive,
+                    event_flag=False,
+                    thread=conn1_smart_thread.thread,
+                ),
+            ],
+            exp_owner_count=-1,
+            exp_excl_wait_count=0,
+            verify_structures=False,
+            timeout=15,
+        )
+
+        # mock_ib.delay_time = 0
+
+        disc1_smart_thread = SmartThread(
+            group_name="test1",
+            name="disc1",
+            target_rtn=f1,
+            thread_parm_name="f1_smart_thread",
+        )
+
+        config_lock.verify_lock(
+            exp_q=[
+                LockItem(
+                    mode=SELockObtainMode.Exclusive,
+                    event_flag=False,
+                    thread=conn1_smart_thread.thread,
+                ),
+                LockItem(
+                    mode=SELockObtainMode.Exclusive,
+                    event_flag=False,
+                    thread=disc1_smart_thread.thread,
+                ),
+            ],
+            exp_owner_count=-1,
+            exp_excl_wait_count=1,
+            verify_structures=False,
+            timeout=15,
+        )
+
+        conn2_smart_thread = SmartThread(
+            group_name="test1",
+            name="conn2",
+            target_rtn=f1,
+            thread_parm_name="f1_smart_thread",
+        )
+        config_lock.verify_lock(
+            exp_q=[
+                LockItem(
+                    mode=SELockObtainMode.Exclusive,
+                    event_flag=False,
+                    thread=conn1_smart_thread.thread,
+                ),
+                LockItem(
+                    mode=SELockObtainMode.Exclusive,
+                    event_flag=False,
+                    thread=disc1_smart_thread.thread,
+                ),
+                LockItem(
+                    mode=SELockObtainMode.Exclusive,
+                    event_flag=False,
+                    thread=conn2_smart_thread.thread,
+                ),
+            ],
+            exp_owner_count=-1,
+            exp_excl_wait_count=2,
+            verify_structures=False,
+            timeout=15,
+        )
+
+        disc2_smart_thread = SmartThread(
+            group_name="test1",
+            name="disc2",
+            target_rtn=f1,
+            thread_parm_name="f1_smart_thread",
+        )
+        config_lock.verify_lock(
+            exp_q=[
+                LockItem(
+                    mode=SELockObtainMode.Exclusive,
+                    event_flag=False,
+                    thread=conn1_smart_thread.thread,
+                ),
+                LockItem(
+                    mode=SELockObtainMode.Exclusive,
+                    event_flag=False,
+                    thread=disc1_smart_thread.thread,
+                ),
+                LockItem(
+                    mode=SELockObtainMode.Exclusive,
+                    event_flag=False,
+                    thread=conn2_smart_thread.thread,
+                ),
+                LockItem(
+                    mode=SELockObtainMode.Exclusive,
+                    event_flag=False,
+                    thread=disc2_smart_thread.thread,
+                ),
+            ],
+            exp_owner_count=-1,
+            exp_excl_wait_count=3,
+            verify_structures=False,
+            timeout=15,
+        )
+
+        mainline_smart_thread.smart_wait(resumers="disc4")
+
+        algo_app_ver.shut_down()
+
+        mainline_smart_thread.smart_resume(waiters=["conn1", "disc1", "conn2", "disc2"])
+        mainline_smart_thread.smart_join(targets=["conn1", "disc1", "conn2", "disc2"])
+
+        mainline_smart_thread.smart_unreg()
 
         ################################################################
         # check log results
