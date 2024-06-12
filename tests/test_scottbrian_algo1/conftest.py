@@ -821,7 +821,8 @@ class MockIB:
         self.delta_neutral_contract.sort_index(inplace=True)
 
         self.log_ver.test_msg(
-            f"built mock_con_descs DataFrame with {len(self.contract_descriptions)=}, enabled=test_msg_enabled"
+            f"built mock_con_descs DataFrame with {len(self.contract_descriptions)=}",
+            enabled=test_msg_enabled,
         )
 
     ###########################################################################

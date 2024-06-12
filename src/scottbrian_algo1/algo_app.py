@@ -268,6 +268,12 @@ class RequestError(AlgoAppError):
     pass
 
 
+class ShutDownTimeout(AlgoAppError):
+    """Shutdown request did not complete in time."""
+
+    pass
+
+
 class AlgoApiNotReady(AlgoAppError):
     """Request attempted with no connection established."""
 
@@ -488,6 +494,7 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         self.loop_idle_event: threading.Event = threading.Event()
         self.stop_monitor: bool = False
+        self.shut_down_in_process = False
 
         self.client_name = "ibapi_client"
 
@@ -557,12 +564,45 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
         Args:
             _setup_args: internal use only
             timeout: specifies the amount of time allowed for the
-                request. If exceeded, a DisconnectTimeout error will be
+                request. If exceeded, a ShutDownTimeout error will be
                 raised.
 
         """
-        # self.stop_monitor = True
+        ################################################################
+        # cleanup request threads
+        ################################################################
+        timer = Timer(timeout=timeout, default_timeout=self.default_timeout)
+        self.shut_down_in_process = True  # tell others to end
+        while True:
+            names_to_remove: set[str] = set()
+            pending_names: list[str] = []
+            with self.request_threads_lock:
+                # the algo_api smartThread is not in self.request_threads
+                for key, item in self.request_threads.items():
+                    if item.smart_thread is not _setup_args.smart_thread:
+                        if item.in_use_count > 0:
+                            pending_names.append(key)
+                        else:
+                            names_to_remove |= {item.smart_thread.name}
+                for name in names_to_remove:
+                    del self.request_threads[name]
+
+            if names_to_remove:
+                _setup_args.smart_thread.smart_unreg(targets=names_to_remove)
+
+            if not pending_names:
+                break
+
+            if timer.is_expired():
+                error_msg = self._get_error_msg(
+                    error="ShutDownTimeout", extra=f"waiting for {pending_names=}"
+                )
+                logging.error(error_msg)
+                raise ShutDownTimeout(error_msg)
+            time.sleep(0.2)
+
         self.disconnect_from_ib(timeout=timeout)
+        self.shut_down_in_process = False
         _setup_args.smart_thread.smart_unreg(targets=self.algo_name)
 
     ####################################################################
@@ -710,34 +750,9 @@ class AlgoApp(SmartThread, Thread):  # type: ignore
 
         self.ready_for_work = False
 
-        while True:
-            names_to_remove: set[str] = set()
-            pending_names: list[str] = []
-            with self.request_threads_lock:
-                # the algo_api smartThread is not in self.request_threads
-                for key, item in self.request_threads.items():
-                    if item.smart_thread is not _setup_args.smart_thread:
-                        if item.in_use_count > 0:
-                            pending_names.append(key)
-                        else:
-                            names_to_remove |= {item.smart_thread.name}
-                for name in names_to_remove:
-                    del self.request_threads[name]
-
-            if names_to_remove:
-                _setup_args.smart_thread.smart_unreg(targets=names_to_remove)
-
-            if not pending_names:
-                break
-
-            if timer.is_expired():
-                error_msg = self._get_error_msg(
-                    error="DisconnectTimeout", extra=f"waiting for {pending_names=}"
-                )
-                logging.error(error_msg)
-                raise DisconnectTimeout(error_msg)
-            time.sleep(0.2)
-
+        ################################################################
+        # do disconnect
+        ################################################################
         with se_lock.SELockExcl(AlgoApp._config_lock, allow_recursive_obtain=True):
             logger.debug(f"{self.msg_prefix} calling EClient disconnect")
 

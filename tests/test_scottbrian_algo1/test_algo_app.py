@@ -262,19 +262,20 @@ class AlgoAppVer:
             pattern=etrace_entry, log_name="scottbrian_utils.entry_trace"
         )
 
-        if not self.connected:
-            self.log_ver.add_pattern(
-                pattern=f"{self.algo_app_msg_prefix} starting AlgoClient thread",
-                log_name="scottbrian_algo1.algo_app",
-            )
-            self.do_run_disconnect = True
-
         if not self.client_registered:
             self.log_ver.add_pattern(
                 pattern=f"{self.algo_app_msg_prefix} instantiating AlgoClient",
                 level=logging.INFO,
                 log_name="scottbrian_algo1.algo_app",
             )
+            self.client_registered = True
+
+        if not self.connected:
+            self.log_ver.add_pattern(
+                pattern=f"{self.algo_app_msg_prefix} starting AlgoClient thread",
+                log_name="scottbrian_algo1.algo_app",
+            )
+            self.do_run_disconnect = True
 
         if timeout_type != TimeoutType.TimeoutTrue and not self.connected:
 
@@ -329,14 +330,14 @@ class AlgoAppVer:
                     )
                 self.verify_algo_app_connected()
             else:
+                self.connected = True  # tell client_disconnect we are connected
                 self.algo_app.connect_to_ib(
                     ip_addr="127.0.0.1",
                     port=AlgoApp.PORT_FOR_LIVE_TRADING,
                     client_id=self.client_id,
                 )
                 self.verify_algo_app_connected()
-                self.connected = True  # tell client_disconnect we are connected
-                self.client_registered = True
+
         elif timeout_type == TimeoutType.TimeoutFalse:
             if self.connected:
                 with pytest.raises(AlreadyConnected, match=test_error_msg):
@@ -356,7 +357,7 @@ class AlgoAppVer:
                 )
                 self.verify_algo_app_connected()
                 self.connected = True  # tell client_disconnect we are connected
-                self.client_registered = True
+
         else:
             if self.connected:
                 with pytest.raises(AlreadyConnected, match=test_error_msg):
@@ -395,7 +396,6 @@ class AlgoAppVer:
                 self.connected = True  # tell client_disconnect we are connected
                 self.disconnect_from_ib(do_algo_disc=False)
                 self.verify_algo_app_disconnected()
-                self.client_registered = False
 
     ####################################################################
     # disconnect_from_ib
@@ -458,6 +458,7 @@ class AlgoAppVer:
             pattern=f"{self.algo_app_msg_prefix} joining algo_client",
             log_name="scottbrian_algo1.algo_app",
         )
+        self.client_registered = False
 
         self.client_disconnect(caller="algo_app.py::AlgoApp.disconnect_from_ib:[0-9]+")
         if self.do_run_disconnect:
@@ -1733,7 +1734,7 @@ class TestAlgoAppBasicTests:
         ################################################################
         # mainline
         ################################################################
-        delay_arg = 5
+        delay_arg = 3
 
         log_ver = LogVer()
         algo_app_ver = AlgoAppVer(log_ver=log_ver, app_cat=app_cat)
@@ -1868,7 +1869,7 @@ class TestAlgoAppBasicTests:
             timeout=15,
         )
 
-        mainline_smart_thread.smart_wait(resumers="disc4")
+        mainline_smart_thread.smart_wait(resumers="disc2")
 
         algo_app_ver.shut_down()
 
