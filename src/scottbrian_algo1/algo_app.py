@@ -16,7 +16,7 @@ The information that can be obtained includes:
     5) current cash balance
     6) total balance of cash and positions
 
-Much of the information is saved in a MongoDb database and updated
+Much of the information is saved in a PostgreSQL database and updated
 periodically.
 
 There are 3 possible configurations:
